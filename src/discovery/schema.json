@@ -1,5 +1,5 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://agentmanager.dev/schemas/discovery/v1.json",
   "title": "Agent Manager Discovery Document",
   "description": "Discovery document for agent-manager, served at <base_url>/.well-known/agents/discovery.json",
