@@ -1,5 +1,6 @@
 export { fetchDiscoveryDocument, DiscoveryError } from './fetcher.js';
 export { importGitSkills, type GitImportResult } from './git-importer.js';
+export { resolveDiscoverySkills, type ResolvedSkills } from './resolver.js';
 export type {
   DiscoveryDocument,
   DiscoveryAuth,

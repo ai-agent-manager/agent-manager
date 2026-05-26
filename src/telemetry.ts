@@ -1,7 +1,5 @@
 import { randomUUID } from "node:crypto";
 import type { BundleSource } from "./bundle/source.js";
-// SHIM: git source telemetry — to be superseded by discovery mechanism (PR #16, PR #14)
-import { gitSourceTelemetryProperties } from "./discovery/git-source-shim.js";
 import type { DiscoveryTelemetry } from "./discovery/types.js";
 
 const DEFAULT_TIMEOUT_MS = 1000;
@@ -46,16 +44,11 @@ export function getBundleEndpointTelemetryValue(baseUrl: string): string {
 }
 
 export function getBundleSourceTelemetryProperties(source: BundleSource): Record<string, TelemetryValue> {
-    if (source.type === "url") {
+    if (source.type === "url" || source.type === "discovery") {
         return {
             source: source.type,
             bundleEndpoint: getBundleEndpointTelemetryValue(source.baseUrl),
         };
-    }
-
-    // SHIM: git source telemetry — to be superseded by discovery mechanism (PR #16, PR #14)
-    if (source.type === "git") {
-        return gitSourceTelemetryProperties();
     }
 
     return {

@@ -3,9 +3,11 @@ import { parse as parseYaml } from 'yaml';
 import { downloadBundle } from './bundle/downloader.js';
 import { extractBundle } from './bundle/extractor.js';
 import { importLocalBundle } from './bundle/importer.js';
-import { scanBundle } from './bundle/scanner.js';
+import { scanBundle, type SkillInfo } from './bundle/scanner.js';
 import { setCurrentBundle } from './bundle/cache.js';
 import { resolveSource } from './bundle/source.js';
+import { resolveDiscoverySkills } from './discovery/index.js';
+import { authenticate } from './auth/index.js';
 import { ClaudeCodeProvisioner } from './provisioners/ClaudeCodeProvisioner.js';
 import { WindsurfProvisioner } from './provisioners/WindsurfProvisioner.js';
 import { CopilotProvisioner } from './provisioners/CopilotProvisioner.js';
@@ -81,36 +83,79 @@ export async function runHeadless(sourceInput: string, configPath: string, force
   console.log(`  Skills:  ${config.skills.join(', ')}\n`);
   console.log(`  Bundle version: ${config.bundleVersion ?? 'latest'}\n`);
 
-  // Acquire bundle
+  // Acquire skills
   const source = await resolveSource(sourceInput);
-  let bundleDir: string;
+  let allSkills: SkillInfo[];
   let bundleVersion: string;
 
-  if (source.type === 'url') {
-    console.log('[agentman] Downloading bundle...');
-    const { zipPath } = await downloadBundle(source.baseUrl, config.bundleVersion);
-    console.log('[agentman] Extracting bundle...');
-    const result = await extractBundle(zipPath);
-    bundleDir = result.bundleDir;
-    bundleVersion = result.manifest.version;
-    if (result.isNew) {
-      await setCurrentBundle(bundleVersion);
+  if (source.type === 'discovery') {
+    console.log('[agentman] Discovery document found');
+
+    let accessToken: string | undefined;
+    if (source.discovery.auth?.required) {
+      // In headless mode, use AGENTMAN_ACCESS_TOKEN env var or attempt cached token
+      const envToken = process.env['AGENTMAN_ACCESS_TOKEN'];
+      if (envToken) {
+        accessToken = envToken;
+        console.log('[agentman] Using access token from AGENTMAN_ACCESS_TOKEN');
+      } else {
+        console.log('[agentman] Attempting cached token authentication...');
+        const authResult = await authenticate(
+          source.baseUrl,
+          source.discovery.auth,
+          (url) => {
+            // In headless mode, print the URL and exit — interactive login is not supported
+            console.error(`\n[agentman] ERROR: Authentication required. Visit this URL to authorise:`);
+            console.error(`  ${url}\n`);
+            console.error(`  Or set AGENTMAN_ACCESS_TOKEN environment variable.\n`);
+            process.exit(1);
+          },
+        );
+        accessToken = authResult.accessToken;
+      }
     }
-  } else if (source.type === 'directory') {
-    console.log('[agentman] Importing local bundle...');
-    const result = await importLocalBundle(source.dirPath);
-    bundleDir = result.bundleDir;
-    bundleVersion = result.manifest.version;
+
+
+    console.log(`[agentman] Resolving ${source.discovery.skills.length} skill(s) from discovery document...`);
+    const result = await resolveDiscoverySkills(
+      source.discovery,
+      accessToken,
+      (msg) => console.log(`[agentman] ${msg}`),
+    );
+
+    for (const { skill, error } of result.errors) {
+      console.warn(`[agentman] WARNING: Failed to resolve skill '${skill.name}': ${error}`);
+    }
+
+    allSkills = result.skills;
+    bundleVersion = result.bundleVersion ?? 'discovery';
   } else {
-    // SHIM: git sources not supported in headless mode — to be superseded by discovery mechanism (PR #16, PR #14)
-    throw new Error('Git source is not supported in headless mode. Use a URL or directory path.');
+    let bundleDir: string;
+    let bundleVersion: string;
+
+    if (source.type === 'url') {
+      console.log('[agentman] Downloading bundle...');
+      const { zipPath } = await downloadBundle(source.baseUrl, config.bundleVersion);
+      console.log('[agentman] Extracting bundle...');
+      const result = await extractBundle(zipPath);
+      bundleDir = result.bundleDir;
+      bundleVersion = result.manifest.version;
+      if (result.isNew) {
+        await setCurrentBundle(bundleVersion);
+      }
+    } else {
+      console.log('[agentman] Importing local bundle...');
+      const result = await importLocalBundle(source.dirPath);
+      bundleDir = result.bundleDir;
+      bundleVersion = result.manifest.version;
+    }
+
+    console.log(`[agentman] Bundle version: ${bundleVersion}`);
+    const contents = await scanBundle(bundleDir);
+    allSkills = contents.skills;
   }
 
-  console.log(`[agentman] Bundle version: ${bundleVersion}`);
-
-  // Scan bundle once — shared across all tools
-  const contents = await scanBundle(bundleDir);
-  const availableSkills = new Map(contents.skills.map(s => [s.dirName, s]));
+  const availableSkills = new Map(allSkills.map(s => [s.dirName, s]));
 
   // Match requested skills
   const toInstall = [];
