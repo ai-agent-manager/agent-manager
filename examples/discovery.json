@@ -1,0 +1,30 @@
+{
+  "$schema": "../src/discovery/schema.json",
+  "version": "1",
+  "auth": {
+    "required": true,
+    "oidcDiscoveryUrl": "https://auth.example.com/.well-known/openid-configuration",
+    "clientId": "agent-manager-abc123",
+    "scopes": ["openid", "skills:read"]
+  },
+  "skills": [
+    {
+      "name": "quality-review",
+      "type": "git",
+      "url": "https://github.com/acme-corp/quality-review-plugin.git",
+      "status": "official"
+    },
+    {
+      "name": "security-scanner",
+      "type": "git",
+      "url": "https://github.com/acme-corp/security-scanner-plugin.git",
+      "status": "official"
+    },
+    {
+      "name": "deployment-tools",
+      "type": "http",
+      "url": "https://skills.example.com/bundles/deployment-tools",
+      "status": "community"
+    }
+  ]
+}
