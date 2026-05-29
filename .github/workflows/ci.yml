@@ -63,7 +63,6 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version-file: '.nvmrc'
-          registry-url: 'https://registry.npmjs.org/'
           cache: 'npm'
           cache-dependency-path: package-lock.json
 
@@ -77,9 +76,7 @@ jobs:
         run: npm run build
 
       - name: Publish to npmjs.org
-        run: npm publish
-        env:
-          NPM_CONFIG_PROVENANCE: true
+        run: npm publish --provenance --access public
 
   publish-gpr:
     name: Publish to GitHub Packages (beta)
