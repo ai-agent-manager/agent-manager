@@ -38,6 +38,10 @@
     "cursor"
   ],
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ai-agent-manager/agent-manager.git"
+  },
   "engines": {
     "node": ">=22"
   },

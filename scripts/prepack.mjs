@@ -26,7 +26,6 @@ console.log('prepack: swapped README.md → scripts/README.npm.md');
 // Back up package.json to temp dir, then strip internal fields
 await copyFile('package.json', join(tmp, 'agentman-package.json.bak'));
 const pkg = JSON.parse(await readFile('package.json', 'utf-8'));
-delete pkg.repository;
 delete pkg.homepage;
 await writeFile('package.json', JSON.stringify(pkg, null, 2) + '\n');
-console.log('prepack: removed repository and homepage from package.json');
+console.log('prepack: removed homepage from package.json');
