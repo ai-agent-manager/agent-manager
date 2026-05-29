@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agentman</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- Screen: Connect -->
+    <div id="screen-connect" class="screen">
+      <h1>Agent Manager</h1>
+      <p class="subtitle">Rovo Agent Provisioner</p>
+
+      <div class="form-group">
+        <label for="token-input">Auth Token</label>
+        <input
+          type="text"
+          id="token-input"
+          placeholder="Paste token from agent manager CLI"
+          spellcheck="false"
+          autocomplete="off"
+        >
+        <p class="hint">Run Agent Manager in your terminal and select "Connect to Chrome Extension" to get a token.</p>
+      </div>
+
+      <button id="btn-connect" class="btn btn-primary">Connect</button>
+
+      <div id="connect-error" class="error hidden"></div>
+    </div>
+
+    <!-- Screen: Agent List -->
+    <div id="screen-agents" class="screen hidden">
+      <div class="header-row">
+        <h1>Agents</h1>
+        <button id="btn-disconnect" class="btn btn-small btn-secondary">Disconnect</button>
+      </div>
+      <p id="bundle-info" class="subtitle"></p>
+
+      <div id="agent-list" class="agent-list"></div>
+
+      <div id="no-studio-tab" class="warning hidden">
+        Open <a href="https://studio.atlassian.com" target="_blank" rel="noopener">Atlassian Studio</a>
+        and navigate to your workspace agents page before provisioning.
+      </div>
+    </div>
+
+    <!-- Screen: Provisioning -->
+    <div id="screen-provisioning" class="screen hidden">
+      <h1>Provisioning</h1>
+      <p id="provisioning-agent-name" class="subtitle"></p>
+
+      <div class="progress-container">
+        <div class="progress-bar">
+          <div id="progress-fill" class="progress-fill"></div>
+        </div>
+        <p id="progress-message" class="progress-message">Starting...</p>
+        <p id="progress-step" class="progress-step"></p>
+      </div>
+    </div>
+
+    <!-- Screen: Result -->
+    <div id="screen-result" class="screen hidden">
+      <div id="result-success" class="result-block hidden">
+        <div class="result-icon success">&#x2714;</div>
+        <h2>Agent Provisioned</h2>
+        <p id="result-success-name"></p>
+      </div>
+
+      <div id="result-error" class="result-block hidden">
+        <div class="result-icon error">&#x2718;</div>
+        <h2>Provisioning Failed</h2>
+        <p id="result-error-message" class="error"></p>
+      </div>
+
+      <div class="result-actions">
+        <button id="btn-back-to-agents" class="btn btn-primary">Provision Another</button>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "Agentman - Rovo Agent Provisioner",
+  "version": "0.1.0",
+  "description": "Provision Atlassian Rovo agents in Studio from your browser, powered by Agent Manager.",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://studio.atlassian.com/*",
+    "http://127.0.0.1:19876/*",
+    "http://localhost:19876/*"
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://studio.atlassian.com/*"],
+      "js": ["content/content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
