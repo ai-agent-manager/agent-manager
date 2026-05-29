@@ -131,7 +131,6 @@ export async function runHeadless(sourceInput: string, configPath: string, force
     bundleVersion = result.bundleVersion ?? 'discovery';
   } else {
     let bundleDir: string;
-    let bundleVersion: string;
 
     if (source.type === 'url') {
       console.log('[agentman] Downloading bundle...');
