@@ -66,7 +66,7 @@ When `auth.required` is `true`:
 3. Generates PKCE `code_verifier` and `code_challenge`.
 4. Constructs the authorization URL with:
    - `client_id` from the discovery document
-   - `redirect_uri=http://localhost:19876/callback`
+   - `redirect_uri=http://localhost:19875/callback`
    - `response_type=code`
    - `scope` from `auth.scopes` (or `openid` by default)
    - `code_challenge` + `code_challenge_method=S256`
@@ -74,7 +74,7 @@ When `auth.required` is `true`:
 5. Displays the URL in the TUI, allowing the user to:
    - Copy the link
    - Press a key to open it in the default browser
-6. Starts an HTTP server on `localhost:19876` to receive the callback.
+6. Starts an HTTP server on `localhost:19875` to receive the callback.
 7. On receiving the callback with `?code=...&state=...`:
    - Validates state
    - Exchanges the code for tokens at the `token_endpoint`
@@ -89,34 +89,3 @@ Before making authenticated requests, agent-manager checks token expiry. If expi
 
 Tokens are stored at `~/.agentman/auth/<domain>.json` where `<domain>` is derived from the base URL. A warning is displayed to the user that tokens are stored on the filesystem (not in a system keychain).
 
-## Implementation Phases
-
-### Phase 1: Discovery + Git Import
-
-- JSON Schema for the discovery document (`src/discovery/schema.json`)
-- TypeScript types (`src/discovery/types.ts`)
-- Discovery fetcher — fetch and validate the document (`src/discovery/fetcher.ts`)
-- Git skill importer — clone repos, scan for plugin marketplace format (`src/discovery/git-importer.ts`)
-
-### Phase 2: Authentication
-
-- OIDC discovery client (`src/auth/oidc.ts`)
-- Authorization Code + PKCE flow (`src/auth/flow.ts`)
-- Callback server on port 19876 (`src/auth/callback-server.ts`)
-- Token storage in `~/.agentman/auth/` (`src/auth/token-store.ts`)
-- TUI component for auth prompt (`src/components/AuthPrompt.tsx`)
-
-### Phase 3: Integration
-
-- Replace existing source resolution to require discovery document
-- Wire auth into skill fetching (Bearer token on HTTP requests, git credential helper for private repos)
-- Update headless mode to support pre-configured tokens
-- Error handling and user feedback for all failure modes
-
-## Design Decisions
-
-1. **No fallback** — If the discovery document is not found, agent-manager fails with a clear error. The old `agents/index.json` approach is not attempted.
-2. **Fixed port (19876)** — The OAuth redirect server always binds to `localhost:19876` so the `redirect_uri` is predictable and can be pre-registered with OAuth providers.
-3. **Filesystem token storage** — Tokens are stored in `~/.agentman/auth/` with a user-facing warning. This avoids platform-specific keychain dependencies.
-4. **OIDC discovery** — Rather than hard-coding auth endpoints, we expect the standard OIDC discovery document path, making agent-manager a standards-compliant OAuth2/OIDC client.
-5. **Plugin marketplace format for git skills** — Git-based skills follow the Claude Code plugin marketplace layout, enabling interoperability with the broader Claude Code ecosystem.
