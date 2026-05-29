@@ -1,8 +1,12 @@
 # Agent Manager
 
-A terminal UI tool for installing AI agent skills and provisioning Atlassian Rovo agents from a centrally-hosted bundle.
+![Agent Manager](assets/logo-terminal.png)
 
-Agent Manager downloads a versioned bundle of skills and agent configs from a URL you provide, then lets you interactively install skills to your coding tools via symlinks — or non-interactively via a config file for use in CI pipelines.
+Your team has AI skills. This tool makes sure everyone's coding agent actually uses them.
+
+Agent Manager pulls a versioned bundle of skills and Rovo agent configs from a URL you control, then installs them into Claude Code, Windsurf, GitHub Copilot, or Cursor — interactively on a laptop, or silently in CI.
+
+---
 
 ## Quick Start
 
@@ -10,42 +14,44 @@ Agent Manager downloads a versioned bundle of skills and agent configs from a UR
 npx -y @ai-agent-manager/cli@latest https://your-bundle-server.com
 ```
 
-This fetches the version index from `https://your-bundle-server.com/agents/index.json`, downloads the latest versioned bundle (e.g. `agents/1.2.0/bundle.zip`), caches it locally at `~/.agentman/`, and opens an interactive menu.
+That's it. It fetches the version index, downloads the latest bundle, caches it at `~/.agentman/`, and opens an interactive menu.
+
+---
+
+## Why this exists
+
+AI coding tools are only as useful as the skills they're given. Without a distribution mechanism, skills get shared in Slack, go stale, diverge per developer, and never make it into CI.
+
+Agent Manager gives you a single source of truth for your team's agent skills — versioned, cacheable, and deployable anywhere Node runs.
+
+---
 
 ## Requirements
 
-- Node.js 22 or higher
-- Playwright (optional, only needed for Rovo agent provisioning)
+- Node.js 22+
+- Playwright _(optional — only needed for Rovo agent provisioning)_
+
+---
 
 ## Usage
 
-### Run with npx
+### Interactive (recommended for local use)
 
 ```bash
 npx -y @ai-agent-manager/cli@latest <base-url>
 ```
 
-The tool fetches `/agents/index.json` from the base URL to discover available versions, then downloads the latest versioned zip (e.g. `/agents/1.2.0/bundle.zip`). You only need to pass the root URL of the bundle server.
+Fetches `/agents/index.json` from your bundle server, downloads the latest versioned zip, and opens the TUI.
 
-### Force re-download
+### Headless (recommended for CI)
 
-Re-download the latest bundle even if a cached version exists:
-
-```bash
-npx -y @ai-agent-manager/cli@latest <base-url> --update
-```
-
-### Headless install (non-interactive)
-
-Install skills without the interactive menu by providing a config file. This is designed for CI pipelines and automated workflows such as GitHub Actions.
+Skip the menu entirely with a config file:
 
 ```bash
-npx -y @ai-agent-manager/cli@latest <base-url> --config <path-to-config>
+npx -y @ai-agent-manager/cli@latest <base-url> --config .github/ai-skills.yml
 ```
 
-The config file can be named anything and placed anywhere. The recommended convention for GitHub-based projects is `.github/ai-skills.yml`.
-
-**Config file format:**
+**Config format:**
 
 ```yaml
 tools: claude-code        # one or more: claude-code | windsurf | github-copilot | cursor
@@ -58,21 +64,29 @@ skills:
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `tools` | Yes | One or more AI coding tools to install skills for. Accepts a list. |
-| `scope` | No | `repo` installs into the current directory (default), `system` installs to the home directory |
-| `bundle-version` | No | Specific bundle version to install from. Omit to always use the latest published version. |
-| `skills` | Yes | List of skill names to install from the bundle |
+| `tools` | Yes | AI coding tool(s) to install skills for |
+| `scope` | No | `repo` installs into the current directory; `system` installs to the home directory |
+| `bundle-version` | No | Pin to a specific bundle version, or omit to track latest |
+| `skills` | Yes | Skills to install from the bundle |
 
-**Example — GitHub Actions:**
+Unknown skill names log a warning and are skipped. If no valid skills are found, the tool exits non-zero.
+
+**GitHub Actions example:**
 
 ```yaml
-- name: Install skills
+- name: Install AI skills
   run: |
     npx -y @ai-agent-manager/cli@latest https://bundles.example.com \
       --config .github/ai-skills.yml
 ```
 
-When `--config` is provided, the tool installs the listed skills and exits immediately — no menu, no prompts. If a skill name is not found in the bundle, a warning is logged and installation continues with the remaining valid skills. If no valid skills are found, the tool exits with a non-zero code.
+### Force re-download
+
+Bypass the local cache and pull the latest bundle:
+
+```bash
+npx -y @ai-agent-manager/cli@latest <base-url> --update
+```
 
 ### Help
 
@@ -80,247 +94,107 @@ When `--config` is provided, the tool installs the listed skills and exits immed
 npx -y @ai-agent-manager/cli@latest --help
 ```
 
-### Interactive Menu
+---
 
-Once launched, the TUI presents the following options:
+## Interactive Menu
 
-- **Install Skills** -- Choose system-wide or repository-scoped installation, select a coding tool, then choose which skills to install or uninstall via symlink.
-- **Rovo Agents** -- Provision Atlassian Rovo agents. By default this runs Playwright-driven browser automation from the command line. Set `AGENTMAN_CHROME_EXTENSION=1` to also offer the Chrome Extension provisioning method (see [Feature Flags](#feature-flags)).
-- **Manage Bundle Versions** -- View cached bundle versions, switch the active bundle, or remove old cached bundles.
-- **Update Agent Manager App** -- Update the Agent Manager CLI application itself via npm. This is separate from bundle, skill, and Rovo agent version management.
-- **Exit** -- Quit the tool.
+The TUI has four options:
 
-When a newer app version or bundle is detected on startup, Agent Manager shows a bordered update panel above the main menu. From that screen you can press `U` to open the app updater or `B` to download and switch to the latest bundle immediately, ready for skill installs or updates.
+- **Install Skills** — Pick system-wide or repo-scoped, choose your coding tool, then select which skills to install or uninstall via symlink.
+- **Rovo Agents** — Provision Atlassian Rovo agents using Playwright-driven browser automation. Set `AGENTMAN_CHROME_EXTENSION=1` to also expose the Chrome Extension provisioning path.
+- **Manage Bundle Versions** — View cached versions, switch the active bundle, or clean up old ones.
+- **Update Agent Manager** — Update the CLI itself via npm. Separate from bundle and skill versioning.
 
-You can disable startup update checks by setting `"startupUpdateChecksDisabled": true` in `~/.agentman/config.json` or by setting `AGENTMAN_DISABLE_STARTUP_UPDATE_CHECKS=1` before launching the CLI.
+On startup, if a newer app version or bundle is available, a bordered update panel appears above the menu. Press `U` to update the app, or `B` to pull the latest bundle immediately.
 
-## Telemetry
-
-Agent Manager emits a small set of privacy-safe usage events so the team can understand adoption and operational health.
-
-Tracked events include:
-
-- CLI start
-- Bundle download start, success, and failure
-- Bundle extract, import, manifest load, and scan failures
-- Update checks
-- Repository scope and pinned bundle failures
-- Bundle version switches
-- Bundle version browse and switch failures
-- Tool selection
-- Skill install, uninstall, and installed-skill loading failures
-- Rovo auth, knowledge-base checks, and provisioning start, success, and failure
-
-Telemetry is designed to stay anonymous and low risk:
-
-- No prompts, skill content, repo names, file paths, or local URLs are sent
-- No personal identifiers are generated or persisted across runs
-- Only coarse event metadata is sent, such as tool ID, scope, selected skill IDs, success and failure counts, bundle version, bundle endpoint URL, mode, and non-PII error category
-- Delivery is non-blocking and failures are ignored
-
-Telemetry is automatically disabled in CI and other non-interactive runs.
-
-### Disable telemetry
-
-Set any of the following environment variables before running the CLI:
+To suppress startup update checks:
 
 ```bash
-DISABLE_TELEMETRY=1
-DO_NOT_TRACK=1
-AGENTMAN_TELEMETRY_DISABLED=1
+AGENTMAN_DISABLE_STARTUP_UPDATE_CHECKS=1 npx -y @ai-agent-manager/cli@latest <base-url>
 ```
 
-### Override the endpoint
+Or set `"startupUpdateChecksDisabled": true` in `~/.agentman/config.json`.
 
-By default, Agent Manager posts to the configured Matomo-compatible telemetry endpoint with site ID `13`.
-
-You can override this for testing or redirection:
-
-```bash
-AGENTMAN_TELEMETRY_URL=https://telemetry.example.com
-AGENTMAN_TELEMETRY_SITE_ID=13
-```
-
-`AGENTMAN_TELEMETRY_URL` can be either the Matomo base URL or a full `matomo.php` endpoint.
-
-## Feature Flags
-
-Experimental and in-progress features can be enabled with environment variables.
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `AGENTMAN_CHROME_EXTENSION` | off | Enable the Chrome Extension provisioning method under **Provision Rovo Agents**. When off (default), the method menu is skipped and Playwright command-line provisioning is used directly. |
-
-**Example — enable the Chrome Extension option:**
-
-```bash
-AGENTMAN_CHROME_EXTENSION=1 npx -y @ai-agent-manager/cli@latest <base-url>
-```
-
-## Beta / prerelease builds
-
-Pre-release builds are published to GitHub Packages when a pre-release version tag is pushed (e.g. `v1.2.3-beta.0`) as `@ai-agent-manager/cli` with the `beta` dist-tag. These require authentication to consume.
-
-### Authenticate with GitHub Packages
-
-You need a GitHub Personal Access Token (classic) with at least `read:packages` scope.
-
-1. Create a token at <https://github.com/settings/tokens> — select **Generate new token (classic)** and tick `read:packages`.
-
-2. Add the following to your `~/.npmrc` (create the file if it does not exist):
-
-   ```
-   //npm.pkg.github.com/:_authToken=YOUR_GITHUB_TOKEN
-   ```
-
-   Replace `YOUR_GITHUB_TOKEN` with the token you just created.
-
-3. Tell npm to resolve the `@ai-agent-manager` scope from GitHub Packages. Create or update a `.npmrc` in the directory you are running `npx` from (or add it to your home directory alongside the auth token):
-
-   ```
-  @ai-agent-manager:registry=https://npm.pkg.github.com/
-   ```
-
-### Run the beta build with npx
-
-```bash
-npx -y @ai-agent-manager/cli@beta https://your-bundle-server.com
-```
-
-Or pin to a specific version:
-
-```bash
-npx -y @ai-agent-manager/cli@0.1.0-beta https://your-bundle-server.com
-```
+---
 
 ## Supported Coding Tools
 
 Skills are installed as symlinks into each tool's native skills directory:
 
-| Tool | Install Path |
-|------|-------------|
-| Claude Code | `~/.claude/skills/<skill-name>/` |
-| Windsurf | `~/.codeium/windsurf/skills/<skill-name>/` |
-| GitHub Copilot | `~/.copilot/skills/<skill-name>/` |
-| Cursor | `~/.agents/skills/<skill-name>/` |
+| Tool | System-wide Path | Repo-scoped Path |
+|------|-----------------|-----------------|
+| Claude Code | `~/.claude/skills/<skill>/` | `<repo>/.claude/skills/<skill>/` |
+| Windsurf | `~/.codeium/windsurf/skills/<skill>/` | `<repo>/.windsurf/skills/<skill>/` |
+| GitHub Copilot | `~/.copilot/skills/<skill>/` | `<repo>/.github/copilot/skills/<skill>/` |
+| Cursor | `~/.agents/skills/<skill>/` | `<repo>/.cursor/skills/<skill>/` |
 
-Cursor does not have a global filesystem skills path. Skills are installed to `~/.agents/skills/` using the cross-client convention. You may need to configure Cursor to discover this location.
+> **Cursor note:** There is no official global filesystem skills path for Cursor. Skills install to `~/.agents/skills/` using the cross-client convention. You may need to configure Cursor to discover this location.
 
-On Windows, if symlink creation fails (requires admin or developer mode), the tool falls back to copying the skill directory.
+> **Windows note:** If symlink creation fails (requires admin rights or Developer Mode), the tool falls back to copying the skill directory instead.
 
-### Repository-Scoped Installation
+### Repository-scoped installation
 
-Skills can also be installed into a specific git repository instead of system-wide. When you run Agent Manager from inside a git repo, the scope selector offers **System-wide** or **This repository**.
+When you run Agent Manager from inside a git repo, the scope selector offers **System-wide** or **This repository**. Repo-scoped installs symlink from the shared bundle cache — the bundle itself isn't copied into the repo.
 
-Repository-scoped installs use tool-specific paths within the repo:
+A `.agentman.json` file is written at the repo root tracking the pinned bundle version and installed skills. Commit this so everyone on the team stays in sync.
 
-| Tool           | Repo Install Path                             |
-| -------------- | --------------------------------------------- |
-| Claude Code    | `<repo>/.claude/skills/<skill-name>/`         |
-| Windsurf       | `<repo>/.windsurf/skills/<skill-name>/`       |
-| GitHub Copilot | `<repo>/.github/copilot/skills/<skill-name>/` |
-| Cursor         | `<repo>/.cursor/skills/<skill-name>/`         |
-
-Symlinks still point to `~/.agentman/bundles/<version>/<skill>` -- the bundle content is not copied into the repo.
-
-A `.agentman.json` file is created at the repo root to track the pinned bundle version and installed skills. Commit this file so your team shares the same version.
-
-## Bundle Format
-
-The tool expects the bundle server to host an index at `<base-url>/agents/index.json` listing available versions, with versioned zip files at `<base-url>/agents/<version>/bundle.zip`. Each zip contains:
-
-- **`manifest.json`** -- Bundle metadata with `version` (semver) and `published` (ISO date).
-- **Skill directories** -- Each containing a `SKILL.md` file per the [agentskills.io specification](https://agentskills.io/specification). Optionally includes `scripts/`, `references/`, and `assets/` subdirectories.
-- **Rovo agent directories** -- Each containing a `rovo-agent.yaml` file with the agent configuration for Playwright automation.
-- **`README.md` frontmatter** -- Each directory can have a `README.md` with YAML frontmatter (`name`, `description`, `tags[]`) used for display metadata in the TUI.
+---
 
 ## How It Works
 
 1. On first run, the bundle is downloaded and extracted to `~/.agentman/bundles/<version>/`.
-2. A `~/.agentman/current` symlink points to the active bundle version.
-3. Multiple bundle versions can coexist. Use "Manage Versions" to switch between them.
-4. When you install a skill, the tool symlinks the entire skill directory from the cached bundle into the target tool's skills path.
-5. Installation records are tracked in `~/.agentman/config.json` (system-wide) or `.agentman.json` at the repo root (repository-scoped).
+2. `~/.agentman/current` symlinks to the active version.
+3. Multiple bundle versions coexist on disk. Switch between them from the **Manage Versions** menu.
+4. Installing a skill symlinks the entire skill directory from the cache into the target tool's skills path.
+5. Installation state is tracked in `~/.agentman/config.json` (system-wide) or `.agentman.json` (repo-scoped).
+
+---
+
+## Bundle Format
+
+The tool expects a version index at `<base-url>/agents/index.json` and versioned zips at `<base-url>/agents/<version>/bundle.zip`. See [docs/bundle-format.md](docs/bundle-format.md) for the full spec.
+
+---
+
+## Telemetry
+
+Agent Manager can send a small set of anonymous usage events to help understand adoption and catch operational failures. Telemetry is opt-in, based on your bundle server. No prompts, skill content, repo names, file paths, or personal identifiers are ever sent. Telemetry is automatically disabled in CI.
+
+See [docs/telemetry.md](docs/telemetry.md) for the full event list and instructions to disable or override the endpoint.
+
+---
+
+## Feature Flags
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AGENTMAN_CHROME_EXTENSION` | off | Expose the Chrome Extension provisioning path under **Rovo Agents**. When off, Playwright CLI automation is used directly. |
+
+```bash
+AGENTMAN_CHROME_EXTENSION=1 npx -y @ai-agent-manager/cli@latest <base-url>
+```
+
+---
 
 ## Development
 
-### Setup
-
 ```bash
-npm install
+npm install          # install dependencies
+npm run dev -- <url> # run locally against a bundle server
+npm run build        # compile to dist/
+npm test             # run tests once
+npm run test:watch   # watch mode
+npm run typecheck    # type check without emitting
 ```
 
-### Run locally
-
-```bash
-npm run dev -- https://your-bundle-server.com
-```
-
-### Build
-
-```bash
-npm run build
-```
-
-Produces compiled output in `dist/`.
-
-### Tests
-
-```bash
-npm test            # run once
-npm run test:watch  # watch mode
-```
-
-### Type Check
-
-```bash
-npm run typecheck
-```
+---
 
 ## Publishing
 
-Publishing is handled automatically by CI when a version tag is pushed. The version in `package.json` is set from the tag at publish time — no manual version bumps are needed. The publish jobs use the repository's `.nvmrc` configuration.
+CI publishes automatically on version tags. See [docs/publishing.md](docs/publishing.md) for tag conventions, required secrets, manual publish steps, and beta/prerelease instructions.
 
-| Tag pattern | Registry | Package name | Dist-tag |
-|-------------|----------|--------------|----------|
-| `v*.*.*` (stable) | npmjs.org | `@ai-agent-manager/cli` | `latest` |
-| `v*.*.*-*` (pre-release) | GitHub Packages | `@ai-agent-manager/cli` | `beta` |
+---
 
-To publish:
+## Contributing
 
-```bash
-# Stable release
-git tag v1.3.0
-git push origin v1.3.0
-
-# Beta release
-git tag v1.3.0-beta.0
-git push origin v1.3.0-beta.0
-```
-
-The production build is published to https://www.npmjs.com/package/@ai-agent-manager/cli
-
-### Required secrets
-
-The following secrets must be configured in the repository's **Settings → Secrets and variables → Actions**:
-
-- **`NPM_TOKEN`** — an npm automation token with publish access to the `@ai-agent-manager` organisation. Generate one at <https://www.npmjs.com/settings/~/tokens> (select **Automation** type).
-
-The `develop` → GitHub Packages job uses the built-in `GITHUB_TOKEN` — no extra secret is needed.
-
-### Manual publish (npmjs.org)
-
-If you need to publish manually outside of CI, make sure you are logged in with access to the `@ai-agent-manager` org:
-
-```bash
-npm login
-```
-
-Set the version and publish:
-
-```bash
-npm version 1.3.0 --no-git-tag-version
-npm publish
-```
-
-`prepublishOnly` runs typecheck, tests, and a fresh build automatically before publishing.
+Bug reports, fixes, and features are all welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for commit conventions, branch naming, and how to get a dev environment running.
