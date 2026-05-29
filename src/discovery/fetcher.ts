@@ -1,5 +1,9 @@
-import Ajv from 'ajv';
-import addFormats from 'ajv-formats';
+import { Ajv2020 } from 'ajv/dist/2020.js';
+import _addFormats from 'ajv-formats';
+
+// ajv-formats CJS interop: the default export is the function itself
+// under NodeNext module resolution.
+const addFormats = _addFormats as unknown as typeof _addFormats.default;
 import schema from './schema.json' with { type: 'json' };
 import type { DiscoveryDocument } from './types.js';
 
@@ -61,13 +65,15 @@ export async function fetchDiscoveryDocument(
     );
   }
 
-  const ajv = new Ajv({ allErrors: true });
+  const ajv = new Ajv2020({ allErrors: true });
   addFormats(ajv);
   const validate = ajv.compile<DiscoveryDocument>(schema);
 
   if (!validate(body)) {
     const errors = validate.errors
-      ?.map((e) => `${e.instancePath || '/'}: ${e.message}`)
+      ?.map((e: { instancePath?: string; message?: string }) =>
+        `${e.instancePath || '/'}: ${e.message}`,
+      )
       .join('; ');
     throw new DiscoveryError(
       `Discovery document validation failed: ${errors}`,
