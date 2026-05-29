@@ -43,6 +43,23 @@
         "required": ["required", "oidcDiscoveryUrl", "clientId"]
       }
     },
+    "telemetry": {
+      "type": "object",
+      "description": "Telemetry configuration. Omit entirely to leave telemetry unconfigured (env vars still apply).",
+      "required": ["url", "siteId"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Base URL of the telemetry endpoint (e.g. https://telemetry.example.com)"
+        },
+        "siteId": {
+          "type": "string",
+          "description": "Site identifier for the telemetry service"
+        }
+      },
+      "additionalProperties": false
+    },
     "skills": {
       "type": "array",
       "description": "List of available skills",

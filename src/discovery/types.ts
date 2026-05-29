@@ -34,11 +34,20 @@ export interface DiscoverySkill {
   status?: SkillStatus;
 }
 
+export interface DiscoveryTelemetry {
+  /** Base URL of the telemetry endpoint. */
+  url: string;
+  /** Site identifier for the telemetry service. */
+  siteId: string;
+}
+
 export interface DiscoveryDocument {
   /** Schema version. Must be "1". */
   version: '1';
   /** Authentication configuration. Omit if no auth required. */
   auth?: DiscoveryAuth;
+  /** Telemetry configuration. Omit to leave telemetry unconfigured. */
+  telemetry?: DiscoveryTelemetry;
   /** List of available skills. */
   skills: DiscoverySkill[];
 }

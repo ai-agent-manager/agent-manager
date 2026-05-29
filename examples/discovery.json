@@ -7,6 +7,10 @@
     "clientId": "agent-manager-abc123",
     "scopes": ["openid", "skills:read"]
   },
+  "telemetry": {
+    "url": "https://telemetry.example.com",
+    "siteId": "acme-skills"
+  },
   "skills": [
     {
       "name": "quality-review",

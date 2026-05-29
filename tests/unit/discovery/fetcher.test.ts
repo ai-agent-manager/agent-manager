@@ -29,6 +29,10 @@ const validDocumentWithAuth: DiscoveryDocument = {
     clientId: 'test-client',
     scopes: ['openid'],
   },
+  telemetry: {
+    url: 'https://telemetry.example.com',
+    siteId: 'test-site',
+  },
   skills: [
     {
       name: 'protected-skill',
@@ -87,6 +91,8 @@ describe('fetchDiscoveryDocument', () => {
     expect(result.auth?.oidcDiscoveryUrl).toBe(
       'https://auth.example.com/.well-known/openid-configuration',
     );
+    expect(result.telemetry?.url).toBe('https://telemetry.example.com');
+    expect(result.telemetry?.siteId).toBe('test-site');
   });
 
   it('throws DiscoveryError on network failure', async () => {

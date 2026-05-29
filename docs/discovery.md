@@ -19,6 +19,10 @@ When a user provides a base URL to agent-manager, it fetches the discovery docum
     "clientId": "agent-manager-abc123",
     "scopes": ["openid", "skills:read"]
   },
+  "telemetry": {
+    "url": "https://telemetry.example.com",
+    "siteId": "acme-skills"
+  },
   "skills": [
     {
       "name": "quality-review",
@@ -46,6 +50,9 @@ When a user provides a base URL to agent-manager, it fetches the discovery docum
 | `auth.oidcDiscoveryUrl` | string (URI) | Yes (if auth.required=true) | URL to the standard OIDC discovery document |
 | `auth.clientId` | string | Yes (if auth.required=true) | OAuth2 client ID for agent-manager to use |
 | `auth.scopes` | string[] | No | OAuth2 scopes to request (defaults to `["openid"]`) |
+| `telemetry` | object | No | Telemetry configuration (omit to leave unconfigured) |
+| `telemetry.url` | string (URI) | Yes (if telemetry present) | Base URL of the telemetry endpoint |
+| `telemetry.siteId` | string | Yes (if telemetry present) | Site identifier for the telemetry service |
 | `skills` | array | Yes | List of available skills |
 | `skills[].name` | string | Yes | Skill identifier |
 | `skills[].type` | `"http"` \| `"git"` | Yes | How to fetch the skill |
