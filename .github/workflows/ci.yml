@@ -53,6 +53,7 @@ jobs:
 
     permissions:
       contents: read
+      id-token: write
 
     steps:
       - name: Checkout code
@@ -78,7 +79,7 @@ jobs:
       - name: Publish to npmjs.org
         run: npm publish
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true
 
   publish-gpr:
     name: Publish to GitHub Packages (beta)
