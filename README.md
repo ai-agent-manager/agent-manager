@@ -1,5 +1,7 @@
 # Agent Manager
 
+![Agent Manager](assets/logo-terminal.png)
+
 A terminal UI tool for installing AI agent skills and provisioning Atlassian Rovo agents from a centrally-hosted bundle.
 
 Agent Manager downloads a versioned bundle of skills and agent configs from a URL you provide, then lets you interactively install skills to your coding tools via symlinks — or non-interactively via a config file for use in CI pipelines.
