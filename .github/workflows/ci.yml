@@ -76,16 +76,12 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Get npm OIDC token
-        run: |
-          OIDC_TOKEN=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=npm" | python3 -c "import sys,json; print(json.load(sys.stdin)['value'])")
-          echo "NPM_TOKEN=${OIDC_TOKEN}" >> $GITHUB_ENV
-
       - name: Publish to npmjs.org
-        run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ env.NPM_TOKEN }}
+        run: |
+          NODE_AUTH_TOKEN=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=npm" | python3 -c "import sys,json; print(json.load(sys.stdin)['value'])")
+          export NODE_AUTH_TOKEN
+          npm publish --provenance --access public
 
   publish-gpr:
     name: Publish to GitHub Packages (beta)
