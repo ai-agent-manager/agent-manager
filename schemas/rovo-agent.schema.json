@@ -1,0 +1,205 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-agent-manager.dev/schemas/rovo-agent.schema.json",
+  "title": "Rovo Agent Manifest",
+  "description": "Schema for rovo-agent.yaml — defines an Atlassian Studio Rovo agent for automated provisioning.",
+  "type": "object",
+  "required": ["apiVersion", "kind", "identity", "scenarios"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "type": "string",
+      "const": "rovo.atlassian.com/v1",
+      "description": "API version identifier. Must be 'rovo.atlassian.com/v1'."
+    },
+    "kind": {
+      "type": "string",
+      "const": "StudioAgent",
+      "description": "Resource kind. Must be 'StudioAgent'."
+    },
+    "identity": {
+      "type": "object",
+      "description": "Agent identity — maps to the Identity page in Studio.",
+      "required": ["name", "description", "behavior"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 30,
+          "description": "Agent display name (max 30 characters in Studio)."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 400,
+          "description": "Short agent description (max 400 characters in Studio)."
+        },
+        "avatar": {
+          "type": "string",
+          "description": "Optional emoji avatar for the agent."
+        },
+        "behavior": {
+          "$ref": "#/$defs/stringOrFileRef",
+          "description": "Multi-line behaviour text (tone, style, approach). Maps to the Behaviour field in Studio. Can be an inline string or a $file reference."
+        },
+        "conversationStarters": {
+          "type": "array",
+          "description": "Optional conversation starter prompts shown to users (max 3 in Studio).",
+          "maxItems": 3,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "scenarios": {
+      "type": "object",
+      "description": "Agent scenarios — maps to the Scenarios section in Studio.",
+      "required": ["default"],
+      "additionalProperties": false,
+      "properties": {
+        "default": {
+          "$ref": "#/$defs/defaultScenario"
+        },
+        "custom": {
+          "type": "array",
+          "description": "Additional custom scenarios.",
+          "items": {
+            "$ref": "#/$defs/customScenario"
+          }
+        }
+      }
+    },
+    "knowledgeSources": {
+      "type": "array",
+      "description": "Knowledge sources for scenarios using 'custom' knowledge. Maps to the Custom Knowledge dialog in Studio.",
+      "items": {
+        "$ref": "#/$defs/knowledgeSource"
+      }
+    }
+  },
+  "$defs": {
+    "fileRef": {
+      "type": "object",
+      "description": "Reference to an external file whose text contents replace this value. The path is resolved relative to the rovo-agent.yaml directory.",
+      "required": ["$file"],
+      "additionalProperties": false,
+      "properties": {
+        "$file": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*\\.\\.(/|$))",
+          "description": "Relative path to a text file (e.g. './scenarios/default/instructions.md'). Must not be absolute or escape the directory with '..'."
+        }
+      }
+    },
+    "stringOrFileRef": {
+      "description": "Either an inline string or a { $file: './path' } reference to external file content.",
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        { "$ref": "#/$defs/fileRef" }
+      ]
+    },
+    "defaultScenario": {
+      "type": "object",
+      "description": "The default scenario — always present, has no trigger, and no deep research toggle.",
+      "required": ["instructions"],
+      "additionalProperties": false,
+      "properties": {
+        "instructions": {
+          "$ref": "#/$defs/stringOrFileRef",
+          "description": "Multi-line instructions for the agent in this scenario. Can be an inline string or a $file reference."
+        },
+        "knowledge": {
+          "type": "string",
+          "enum": ["all", "custom", "none"],
+          "default": "all",
+          "description": "Knowledge scope: 'all' (all organisational), 'custom' (selected sources), 'none'."
+        },
+        "webSearch": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable web search capability."
+        },
+        "skills": {
+          "type": "array",
+          "description": "Skills (actions) available in this scenario. Use the display name from Studio (e.g., 'Create page', 'Create work item').",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "customScenario": {
+      "type": "object",
+      "description": "A custom scenario with a natural-language trigger.",
+      "required": ["name", "trigger", "instructions"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Scenario display name."
+        },
+        "trigger": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Natural language trigger description (e.g., 'When someone asks about getting a replacement laptop')."
+        },
+        "instructions": {
+          "$ref": "#/$defs/stringOrFileRef",
+          "description": "Multi-line instructions for the agent in this scenario. Can be an inline string or a $file reference."
+        },
+        "knowledge": {
+          "type": "string",
+          "enum": ["all", "custom", "none"],
+          "default": "all",
+          "description": "Knowledge scope: 'all' (all organisational), 'custom' (selected sources), 'none'."
+        },
+        "webSearch": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable web search capability."
+        },
+        "deepResearch": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable deep research capability (only available on custom scenarios in Studio)."
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether the scenario is enabled. Studio requires a trigger before enabling."
+        },
+        "skills": {
+          "type": "array",
+          "description": "Skills (actions) available in this scenario.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "knowledgeSource": {
+      "type": "object",
+      "description": "A knowledge source integration (Confluence, Jira, JSM, or Atlassian Support Docs).",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["confluence", "jira", "jsm", "atlassian-support-docs"],
+          "description": "The Atlassian product integration type."
+        },
+        "filter": {
+          "type": "string",
+          "description": "Filter expression — 'all' for all content, or a specific space/project identifier."
+        }
+      }
+    }
+  }
+}

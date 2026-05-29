@@ -1,0 +1,18 @@
+{
+  "version": "abc1234def5678",
+  "published": "2026-03-10T14:30:00",
+  "agents": [
+    {
+      "id": "test-skill",
+      "name": "Test Skill",
+      "description": "A test skill for unit tests",
+      "tags": ["agent-skill", "testing"]
+    },
+    {
+      "id": "test-rovo-agent",
+      "name": "Test Agent",
+      "description": "A test Rovo agent for unit tests",
+      "tags": ["rovo-agent", "testing"]
+    }
+  ]
+}
