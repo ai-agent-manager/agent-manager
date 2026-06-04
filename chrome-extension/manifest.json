@@ -2,17 +2,10 @@
   "manifest_version": 3,
   "name": "Agentman - Rovo Agent Provisioner",
   "version": "0.1.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAz6jXbb/3BemmwjsvabtpU3GfKTKD4YEEAlBWgp+mkJMoY6j5xhtEjvnR2bkx1yyifT3GdmglXD4ddt8M6ZoEkAT9o9fWgnhQG+u+1hOTINlap9TorpVeMfnyVnzz/Tc7VR1lySKEvrVWw+4hbP6rqjc81xSvo4qYHncBD2XXnXQy8J7h7UgUsF9hX40DPGK/ZBeH+BSXbodb5kB1sCFbVY5hSnfs6RUVmpDS1jf8r27EisAA/OJ8ln8EdS3EkHjglokI/rikhrhgmPNqoR/0uU9Ef1YFGT+5wo2lrY3te6dgOrkugLq8EUWsXty4srYam/144Js+uG9Nk94db/QoxQIDAQAB",
   "description": "Provision Atlassian Rovo agents in Studio from your browser, powered by Agent Manager.",
-  "permissions": [
-    "activeTab",
-    "storage",
-    "scripting"
-  ],
-  "host_permissions": [
-    "https://studio.atlassian.com/*",
-    "http://127.0.0.1:19876/*",
-    "http://localhost:19876/*"
-  ],
+  "permissions": ["activeTab", "storage", "scripting"],
+  "host_permissions": ["https://studio.atlassian.com/*", "http://127.0.0.1:19876/*", "http://localhost:19876/*"],
   "action": {
     "default_popup": "popup/popup.html",
     "default_icon": {
