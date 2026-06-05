@@ -82,6 +82,8 @@ export async function runHeadless(sourceInput: string, configPath: string, force
   console.log(`  Bundle version: ${config.bundleVersion ?? 'latest'}\n`);
 
   // Acquire bundle
+  // TODO: migrate to resolveSkillSource() once repo/artefact install flows
+  // handle the SkillSource union. Using legacy resolveSource() (bundle-only) until then.
   const source = await resolveSource(sourceInput);
   let bundleDir: string;
   let bundleVersion: string;

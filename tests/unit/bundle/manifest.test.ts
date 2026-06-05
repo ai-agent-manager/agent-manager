@@ -28,6 +28,21 @@ describe('parseManifest', () => {
     expect(result.agents![1].tags).toBeUndefined();
   });
 
+  it('parses phases from agent entries', () => {
+    const raw = JSON.stringify({
+      version: 'abc123',
+      published: '2026-03-10T14:30:00',
+      agents: [
+        { id: 'my-skill', name: 'My Skill', description: 'A skill', phases: ['design', 'build'] },
+        { id: 'legacy-skill', name: 'Legacy Skill', description: 'No phases' },
+      ],
+    });
+    const result = parseManifest(raw);
+    expect(result.agents![0].phases).toEqual(['design', 'build']);
+    // Legacy entries without phases parse cleanly — field is absent
+    expect(result.agents![1].phases).toBeUndefined();
+  });
+
   it('throws on missing version', () => {
     expect(() => parseManifest(JSON.stringify({ published: '2026-01-01' }))).toThrow('version');
   });

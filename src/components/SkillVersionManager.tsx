@@ -42,7 +42,7 @@ function buildInstalledSkills(config: Awaited<ReturnType<typeof readConfig>>): I
         const tool = SKILL_TOOLS.find((t) => t.id === toolId);
         const toolName = tool?.name ?? toolId;
         for (const [skillName, record] of Object.entries(skillRecords)) {
-            skills.push({ skillName, toolId, toolName, currentVersion: record.bundleVersion, scope: "system" });
+            skills.push({ skillName, toolId, toolName, currentVersion: record.bundleVersion ?? '', scope: "system" });
         }
     }
     return skills;

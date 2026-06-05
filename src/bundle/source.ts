@@ -13,6 +13,13 @@ export type BundleSource =
  *   The path must exist and be a directory. manifest.json is optional.
  *
  * Throws descriptive errors for invalid inputs.
+ *
+ * @deprecated Use `resolveSkillSource()` from './skill-source.js' instead,
+ * which returns a first-class `SkillSource` (repo | artefact | bundle) rather
+ * than the legacy `BundleSource` (url | directory).
+ *
+ * Retained for backward compatibility until existing callers are migrated to
+ * the multi-source model. Do not add new callers.
  */
 export async function resolveSource(input: string): Promise<BundleSource> {
   if (/^https?:\/\//i.test(input)) {
