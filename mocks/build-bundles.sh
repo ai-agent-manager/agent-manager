@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Rebuild bundle.zip for every version directory under agents/.
 #
-# Usage (from frontend/mocks/):
+# Usage (from mocks/):
 #   ./build-bundles.sh
 #
 # Each agents/<version>/ directory is zipped in-place, producing

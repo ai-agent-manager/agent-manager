@@ -3,7 +3,7 @@
 # Serves /agents/index.json, per-version manifests and agent README.md files
 # with permissive CORS so the local SPA can fetch without cross-origin errors.
 #
-# Start:  imposter up -t native        (from frontend/mocks/)
+# Start:  imposter up -t native        (from mocks/)
 # Stop:   imposter down -a
 
 plugin: rest

@@ -1,0 +1,57 @@
+name: Integration
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: integration-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mock-install:
+    name: Install skills from mock server
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Setup Imposter
+        uses: imposter-project/imposter-github-action/setup@v1.1.0
+
+      - name: Start mock server
+        id: mocks
+        uses: imposter-project/imposter-github-action/start-mocks@v1.1.0
+        with:
+          config-dir: './mocks'
+          port: '8080'
+          engine-type: 'native'
+
+      - name: Install skills from mock
+        run: node dist/index.js ${{ steps.mocks.outputs.base-url }} --config mocks/test-config.yml
+
+      - name: Verify installed skills
+        run: |
+          test -d "$HOME/.claude/skills/react-component-generator"
+          test -d "$HOME/.claude/skills/api-endpoint-generator"
+          echo "All expected skills installed successfully"
+
+      - name: Stop mock server
+        if: always()
+        uses: imposter-project/imposter-github-action/stop-mocks@v1.1.0

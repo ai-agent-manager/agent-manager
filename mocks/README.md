@@ -15,19 +15,18 @@ mocks/
         ├── manifest.json   # Bundle manifest — agent IDs, names, tags, phases
         ├── bundle.zip      # Downloadable bundle (built from this directory)
         ├── bundle.zip.sha256
-        ├── agent-epic-elaboration-v1/
+        ├── react-component-generator/
         │   ├── README.md         # Display metadata (frontmatter) + docs
-        │   └── rovo-agent.yaml   # Rovo agent definition for Playwright automation
-        ├── agent-story-build-ready-v1/
-        │   ├── README.md
-        │   └── rovo-agent.yaml
-        ├── hld-architecture-generator-v1/
-        │   ├── README.md
         │   └── SKILL.md          # agentskills.io skill definition
-        ├── code-review-backend-v1/
-        ├── mock-apis/
-        ├── rest-api-generator-v1/
-        └── tdd-frontend-generator-v1/
+        ├── api-endpoint-generator/
+        │   ├── README.md
+        │   └── SKILL.md
+        ├── agent-sprint-planner/
+        │   ├── README.md
+        │   └── rovo-agent.yaml   # Rovo agent definition for Playwright automation
+        └── agent-release-notes/
+            ├── README.md
+            └── rovo-agent.yaml
 ```
 
 ## Starting and stopping
@@ -95,9 +94,9 @@ Each subdirectory of a version represents one agent or skill. The layout depends
 
 After adding or modifying content, update `manifest.json` in the same version directory to keep the agent list in sync, then rebuild the bundle with `build-bundles.sh`.
 
-## Keeping the mock in sync with production
+## Keeping the mock in sync
 
-The mock was originally copied from `future-bootstrap/frontend/mocks` and should be updated whenever the real CDN structure changes (new fields in `manifest.json`, new agent types, new URL paths). When the production bundle format changes, also check:
+When the bundle format changes (new fields in `manifest.json`, new agent types, new URL paths), update the mock content to match and also check:
 
 - `src/bundle/` — the downloader, scanner, and manifest parser
 - `tests/fixtures/valid-bundle/` — the unit-test fixtures, which use a minimal bundle and may need updating independently
