@@ -1,0 +1,240 @@
+/**
+ * OAuth2 Authorization Code + PKCE flow orchestrator.
+ *
+ * Ties together OIDC discovery, PKCE, the callback server, and
+ * token storage into a single high-level API.
+ */
+
+import { exec } from 'node:child_process';
+import { fetchOidcConfiguration, type OidcConfiguration } from './oidc.js';
+import { generateCodeVerifier, generateCodeChallenge, generateState } from './pkce.js';
+import { waitForCallback, REDIRECT_URI } from './callback-server.js';
+import {
+  saveTokens,
+  loadTokens,
+  isTokenExpired,
+  type StoredTokens,
+} from './token-store.js';
+import type { DiscoveryAuth } from '../discovery/types.js';
+import { getPlatform } from '../lib/platform.js';
+
+export interface TokenResponse {
+  access_token: string;
+  refresh_token?: string;
+  expires_in?: number;
+  token_type: string;
+}
+
+export interface AuthResult {
+  accessToken: string;
+  /** Whether the token was obtained from cache (true) or a fresh login (false). */
+  fromCache: boolean;
+}
+
+export class AuthFlowError extends Error {
+  constructor(message: string, public readonly cause?: unknown) {
+    super(message);
+    this.name = 'AuthFlowError';
+  }
+}
+
+/**
+ * Obtain a valid access token for the given base URL.
+ *
+ * 1. Check for a cached token — if valid, return it.
+ * 2. If expired but has a refresh token, attempt a refresh.
+ * 3. Otherwise, run the full interactive authorization flow.
+ *
+ * @param baseUrl   The base URL of the discovery endpoint.
+ * @param auth      The auth configuration from the discovery document.
+ * @param onPrompt  Callback invoked with the authorization URL so the
+ *                  TUI can display it to the user.
+ */
+export async function authenticate(
+  baseUrl: string,
+  auth: DiscoveryAuth,
+  onPrompt: (authorizeUrl: string) => void,
+): Promise<AuthResult> {
+  if (!auth.oidcDiscoveryUrl || !auth.clientId) {
+    throw new AuthFlowError(
+      'Discovery document requires authentication but is missing oidcDiscoveryUrl or clientId',
+    );
+  }
+
+  // Check cached tokens first
+  const cached = await loadTokens(baseUrl);
+  if (cached && !isTokenExpired(cached)) {
+    return { accessToken: cached.accessToken, fromCache: true };
+  }
+
+  // Fetch OIDC configuration
+  const oidcConfig = await fetchOidcConfiguration(auth.oidcDiscoveryUrl);
+
+  // Try refresh if we have a refresh token
+  if (cached?.refreshToken) {
+    try {
+      const refreshed = await refreshAccessToken(
+        oidcConfig,
+        auth.clientId,
+        cached.refreshToken,
+      );
+      const tokens = toStoredTokens(refreshed, auth);
+      await saveTokens(baseUrl, tokens);
+      return { accessToken: tokens.accessToken, fromCache: false };
+    } catch {
+      // Refresh failed — fall through to interactive login
+    }
+  }
+
+  // Full interactive authorization code flow
+  return interactiveLogin(baseUrl, auth, oidcConfig, onPrompt);
+}
+
+/**
+ * Run the interactive Authorization Code + PKCE flow.
+ */
+async function interactiveLogin(
+  baseUrl: string,
+  auth: DiscoveryAuth,
+  oidcConfig: OidcConfiguration,
+  onPrompt: (authorizeUrl: string) => void,
+): Promise<AuthResult> {
+  const codeVerifier = generateCodeVerifier();
+  const codeChallenge = generateCodeChallenge(codeVerifier);
+  const state = generateState();
+  const scopes = auth.scopes ?? ['openid'];
+
+  const params = new URLSearchParams({
+    client_id: auth.clientId!,
+    response_type: 'code',
+    redirect_uri: REDIRECT_URI,
+    scope: scopes.join(' '),
+    state,
+    code_challenge: codeChallenge,
+    code_challenge_method: 'S256',
+  });
+
+  const authorizeUrl = `${oidcConfig.authorization_endpoint}?${params.toString()}`;
+
+  // Notify the TUI so it can display the URL
+  onPrompt(authorizeUrl);
+
+  // Wait for the callback
+  const { code } = await waitForCallback(state);
+
+  // Exchange code for tokens
+  const tokenResponse = await exchangeCode(
+    oidcConfig,
+    auth.clientId!,
+    code,
+    codeVerifier,
+  );
+
+  const tokens = toStoredTokens(tokenResponse, auth);
+  await saveTokens(baseUrl, tokens);
+
+  return { accessToken: tokens.accessToken, fromCache: false };
+}
+
+/**
+ * Exchange an authorization code for tokens.
+ */
+async function exchangeCode(
+  oidcConfig: OidcConfiguration,
+  clientId: string,
+  code: string,
+  codeVerifier: string,
+): Promise<TokenResponse> {
+  const body = new URLSearchParams({
+    grant_type: 'authorization_code',
+    client_id: clientId,
+    code,
+    redirect_uri: REDIRECT_URI,
+    code_verifier: codeVerifier,
+  });
+
+  const response = await fetch(oidcConfig.token_endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new AuthFlowError(
+      `Token exchange failed (HTTP ${response.status}): ${text}`,
+    );
+  }
+
+  return (await response.json()) as TokenResponse;
+}
+
+/**
+ * Use a refresh token to obtain a new access token.
+ */
+async function refreshAccessToken(
+  oidcConfig: OidcConfiguration,
+  clientId: string,
+  refreshToken: string,
+): Promise<TokenResponse> {
+  const body = new URLSearchParams({
+    grant_type: 'refresh_token',
+    client_id: clientId,
+    refresh_token: refreshToken,
+  });
+
+  const response = await fetch(oidcConfig.token_endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+  });
+
+  if (!response.ok) {
+    throw new AuthFlowError(
+      `Token refresh failed (HTTP ${response.status})`,
+    );
+  }
+
+  return (await response.json()) as TokenResponse;
+}
+
+/**
+ * Convert a token response to the stored format.
+ */
+function toStoredTokens(
+  response: TokenResponse,
+  auth: DiscoveryAuth,
+): StoredTokens {
+  const tokens: StoredTokens = {
+    accessToken: response.access_token,
+    oidcDiscoveryUrl: auth.oidcDiscoveryUrl!,
+    clientId: auth.clientId!,
+  };
+
+  if (response.refresh_token) {
+    tokens.refreshToken = response.refresh_token;
+  }
+
+  if (response.expires_in) {
+    tokens.expiresAt = new Date(
+      Date.now() + response.expires_in * 1000,
+    ).toISOString();
+  }
+
+  return tokens;
+}
+
+/**
+ * Open a URL in the user's default browser.
+ */
+export function openInBrowser(url: string): void {
+  const platform = getPlatform();
+  const cmd =
+    platform === 'macos'
+      ? 'open'
+      : platform === 'windows'
+        ? 'start'
+        : 'xdg-open';
+
+  exec(`${cmd} ${JSON.stringify(url)}`);
+}

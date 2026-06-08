@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { Box, Text } from "ink";
 import { APP_VERSION } from "./app-info.js";
 import { AppUpdateManager } from "./components/AppUpdateManager.js";
+import { AuthPrompt } from "./components/AuthPrompt.js";
 import { ChromeExtensionInstall } from "./components/ChromeExtensionInstall.js";
 import { ChromeExtensionServer } from "./components/ChromeExtensionServer.js";
 import { MainMenu } from "./components/MainMenu.js";
@@ -30,9 +31,11 @@ import { checkForStartupUpdates, shouldRunStartupUpdateChecks } from "./lib/star
 import { getBundleSourceTelemetryProperties, trackTelemetryError, trackTelemetryEvent } from "./telemetry.js";
 import { featureFlags } from "./lib/feature-flags.js";
 import { resolveDiscoverySkills } from "./discovery/index.js";
+import { authenticate, openInBrowser } from "./auth/index.js";
 
 export type Screen =
     | "loading"
+    | "auth"
     | "main-menu"
     | "scope-selector"
     | "tool-selector"
@@ -82,18 +85,34 @@ async function acquireBundle(
 }
 
 /**
- * Resolve skills from a discovery document.
+ * Resolve skills from a discovery document, handling authentication if required.
  */
 async function acquireDiscoverySkills(
     source: Extract<BundleSource, { type: 'discovery' }>,
     setLoadingMessage: (message: string) => void,
+    onAuthPrompt: (authorizeUrl: string) => void,
 ): Promise<{ skills: SkillInfo[]; rovoAgents: RovoAgentInfo[]; warnings: string[]; bundleVersion?: string }> {
+    let accessToken: string | undefined;
     const warnings: string[] = [];
+
+    // Handle authentication if required
+    if (source.discovery.auth?.required) {
+        setLoadingMessage("Authenticating...");
+        const authResult = await authenticate(
+            source.baseUrl,
+            source.discovery.auth,
+            onAuthPrompt,
+        );
+        accessToken = authResult.accessToken;
+        if (!authResult.fromCache) {
+            warnings.push("Tokens stored at ~/.agentman/auth/ (filesystem, not keychain)");
+        }
+    }
 
     setLoadingMessage("Resolving skills from discovery document...");
     const result = await resolveDiscoverySkills(
         source.discovery,
-        undefined,
+        accessToken,
         setLoadingMessage,
     );
 
@@ -118,6 +137,7 @@ export function App({ source, forceUpdate }: AppProps) {
     const [startupNotices, setStartupNotices] = useState<StartupUpdateNotice[]>([]);
     const [repoBundleContents, setRepoBundleContents] = useState<BundleContents | null>(null);
     const [repoBundleVersion, setRepoBundleVersion] = useState<string | null>(null);
+    const [authorizeUrl, setAuthorizeUrl] = useState<string | null>(null);
     const [discoverySkills, setDiscoverySkills] = useState<SkillInfo[] | null>(null);
     const [discoveryBundleVersion, setDiscoveryBundleVersion] = useState<string | null>(null);
 
@@ -180,6 +200,17 @@ export function App({ source, forceUpdate }: AppProps) {
         })();
     };
 
+    const handleAuthPrompt = useCallback((url: string) => {
+        setAuthorizeUrl(url);
+        setScreen("auth");
+    }, []);
+
+    const handleAuthOpen = useCallback(() => {
+        if (authorizeUrl) {
+            openInBrowser(authorizeUrl);
+        }
+    }, [authorizeUrl]);
+
     useEffect(() => {
         (async () => {
             try {
@@ -194,6 +225,7 @@ export function App({ source, forceUpdate }: AppProps) {
                     const { skills, rovoAgents, warnings, bundleVersion: discoveredVersion } = await acquireDiscoverySkills(
                         source,
                         setLoadingMessage,
+                        handleAuthPrompt,
                     );
 
                     if (warnings.length > 0) {
@@ -372,6 +404,14 @@ export function App({ source, forceUpdate }: AppProps) {
         return (
             <Box flexDirection="column">
                 <LoadingSpinner message={loadingMessage} />
+            </Box>
+        );
+    }
+
+    if (screen === "auth" && authorizeUrl) {
+        return (
+            <Box flexDirection="column">
+                <AuthPrompt authorizeUrl={authorizeUrl} onOpen={handleAuthOpen} />
             </Box>
         );
     }
