@@ -24,6 +24,7 @@ Then monitor the CI release job to confirm publish succeeds.
 | Secret | Purpose |
 |--------|---------|
 | `NPM_TOKEN` | Automation token with publish access to the `@ai-agent-manager` org on npmjs.org |
+| `AGENTMAN_CRX_KEY` | Base64-encoded PEM private key for signing the Chrome extension `.crx` |
 
 The GitHub Packages beta publish uses the built-in `GITHUB_TOKEN` — no extra secret needed.
 
