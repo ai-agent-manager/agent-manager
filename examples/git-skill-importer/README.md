@@ -13,11 +13,11 @@ layout (`skills/<name>/SKILL.md`).
 
 ### 1. Create a test plugin repo
 
-The `create-test-plugin.sh` script sets up a local git repository with
+The `create-test-repo.sh` script sets up a local git repository with
 two skills in the standard marketplace layout:
 
 ```bash
-./create-test-plugin.sh
+./create-test-repo.sh
 ```
 
 This creates a repo at `/tmp/test-plugin` with the following structure:
@@ -34,7 +34,7 @@ This creates a repo at `/tmp/test-plugin` with the following structure:
 You can pass a different path if you prefer:
 
 ```bash
-./create-test-plugin.sh /tmp/my-plugin
+./create-test-repo.sh /tmp/my-plugin
 ```
 
 ### 2. Run the importer
@@ -42,13 +42,13 @@ You can pass a different path if you prefer:
 From the **project root** (`agent-manager/`):
 
 ```bash
-npx tsx examples/git-skill-importer/run-importer.ts
+npx tsx examples/git-skill-importer/test-git-import.ts
 ```
 
 You can also point it at a different repo URL:
 
 ```bash
-npx tsx examples/git-skill-importer/run-importer.ts file:///tmp/my-plugin
+npx tsx examples/git-skill-importer/test-git-import.ts file:///tmp/my-plugin
 ```
 
 Expected output:
