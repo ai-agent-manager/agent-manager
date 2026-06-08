@@ -44,7 +44,7 @@ jobs:
           engine-type: 'native'
 
       - name: Install skills from mock
-        run: node dist/index.js ${{ steps.mocks.outputs.base-url }} --config mocks/test-config.yml
+        run: node dist/index.js ${{ steps.mocks.outputs.base-url }} --config .github/test-skills.yml
 
       - name: Verify installed skills
         run: |
