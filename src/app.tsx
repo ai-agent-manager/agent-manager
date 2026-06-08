@@ -29,6 +29,8 @@ import type { StartupUpdateNotice } from "./lib/startup-update-checks.js";
 import { checkForStartupUpdates, shouldRunStartupUpdateChecks } from "./lib/startup-update-checks.js";
 import { getBundleSourceTelemetryProperties, trackTelemetryError, trackTelemetryEvent } from "./telemetry.js";
 import { featureFlags } from "./lib/feature-flags.js";
+// SHIM: git source support — to be superseded by discovery mechanism (PR #16, PR #14)
+import { acquireGitBundle } from "./discovery/git-source-shim.js";
 
 export type Screen =
   | "loading"
@@ -66,6 +68,10 @@ async function acquireBundle(
     }
   }
 
+  if (source.type !== "directory") {
+    throw new Error(`Unsupported source type for bundle acquisition: ${source.type}`);
+  }
+
   setLoadingMessage("Importing local bundle...");
   try {
     return await importLocalBundle(source.dirPath);
@@ -93,6 +99,9 @@ export function App({ source, forceUpdate }: AppProps) {
   const bundleTelemetryProps = getBundleSourceTelemetryProperties(source);
 
   const startBundleUpdateCheck = () => {
+    // SHIM: no update checks for git sources — to be superseded by discovery mechanism (PR #16, PR #14)
+    if (source.type === "git") return;
+
     setScreen("loading");
     setLoadingMessage("Checking for updates...");
     trackTelemetryEvent({
@@ -152,6 +161,20 @@ export function App({ source, forceUpdate }: AppProps) {
   useEffect(() => {
     (async () => {
       try {
+        // SHIM: git source handling — to be superseded by discovery mechanism (PR #16, PR #14)
+        if (source.type === "git") {
+          setLoadingMessage("Cloning git repository...");
+          const gitResult = await acquireGitBundle(source.repoUrl);
+          setManifest(gitResult.manifest);
+          setBundleContents(gitResult.bundleContents);
+          setBundleDir(gitResult.bundleDir);
+          if (gitResult.warning) {
+            setWarning(gitResult.warning);
+          }
+          setScreen("main-menu");
+          return;
+        }
+
         const config = await readConfig();
         if (source.type === "url") {
           config.baseUrl = source.baseUrl;

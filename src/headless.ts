@@ -96,11 +96,14 @@ export async function runHeadless(sourceInput: string, configPath: string, force
     if (result.isNew) {
       await setCurrentBundle(bundleVersion);
     }
-  } else {
+  } else if (source.type === 'directory') {
     console.log('[agentman] Importing local bundle...');
     const result = await importLocalBundle(source.dirPath);
     bundleDir = result.bundleDir;
     bundleVersion = result.manifest.version;
+  } else {
+    // SHIM: git sources not supported in headless mode — to be superseded by discovery mechanism (PR #16, PR #14)
+    throw new Error('Git source is not supported in headless mode. Use a URL or directory path.');
   }
 
   console.log(`[agentman] Bundle version: ${bundleVersion}`);

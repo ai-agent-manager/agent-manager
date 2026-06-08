@@ -38,6 +38,7 @@ export function parseCli() {
   ${chalk.bold("Options")}
     --update    Force re-download / re-import of the latest bundle
     --config    Path to ai-skills.yml for headless (non-interactive) install
+    --type, -t  Source type hint: "git" or "http" (auto-detected if omitted)
     --version   Show version
     --help      Show this help
 
@@ -46,6 +47,8 @@ export function parseCli() {
     $ agentman https://bootstrap.example.com --update
     $ agentman ./my-agents
     $ agentman /absolute/path/to/agents --update
+    $ agentman https://github.com/org/skills-repo.git
+    $ agentman file:///tmp/test-plugin --type=git
 `,
         {
             importMeta: import.meta,
@@ -58,6 +61,10 @@ export function parseCli() {
                     type: "string",
                     shortFlag: "c",
                 },
+                type: {
+                    type: "string",
+                    shortFlag: "t",
+                },
             },
         },
     );
@@ -68,6 +75,7 @@ export function parseCli() {
         source,
         forceUpdate: cli.flags.update,
         configPath: cli.flags.config,
+        sourceType: cli.flags.type,
         showHelp: () => cli.showHelp(),
     };
 }
