@@ -2,3 +2,9 @@ dist/
 node_modules/
 
 *.tsbuildinfo
+
+# Chrome extension signing key — keep out of git; store as CI secret AGENTMAN_CRX_KEY (base64)
+chrome-extension/agentman.pem
+
+# Pre-built .crx asset — generated at publish time via `npm run build:chrome-extension`
+assets/agentman.crx
