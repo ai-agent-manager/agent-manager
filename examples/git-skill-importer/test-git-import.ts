@@ -2,7 +2,7 @@
  * Smoke test: run the git skill importer against a local test plugin repo.
  *
  * Usage (from the project root):
- *   npx tsx examples/git-skill-importer/run-importer.ts [repo-url]
+ *   npx tsx examples/git-skill-importer/test-git-import.ts [repo-url]
  *
  * Default repo URL: file:///tmp/test-plugin
  */
