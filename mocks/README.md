@@ -32,7 +32,7 @@ mocks/
 
 ## Starting and stopping
 
-Requires the [Imposter CLI](https://docs.imposter.sh/install_imposter/) to be installed.
+Requires the [Imposter CLI](https://docs.imposter.sh/run_imposter_cli/) to be installed.
 
 ```bash
 cd mocks
