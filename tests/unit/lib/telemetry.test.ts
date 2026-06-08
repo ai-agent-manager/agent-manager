@@ -106,6 +106,74 @@ describe("resolveTelemetrySettings", () => {
             timeoutMs: 2500,
         });
     });
+
+    it("enables telemetry from discovery config when no env vars are set", () => {
+        expect(
+            resolveTelemetrySettings(
+                {},
+                { stdinIsTTY: true, stdoutIsTTY: true },
+                { url: "https://telemetry.example.com", siteId: "discovery-site" },
+            ),
+        ).toMatchObject({
+            enabled: true,
+            endpoint: "https://telemetry.example.com/matomo.php",
+            siteId: "discovery-site",
+        });
+    });
+
+    it("prefers env vars over discovery config for URL", () => {
+        expect(
+            resolveTelemetrySettings(
+                {
+                    AGENTMAN_TELEMETRY_URL: "https://override.example.com",
+                    AGENTMAN_TELEMETRY_SITE_ID: "env-site",
+                },
+                { stdinIsTTY: true, stdoutIsTTY: true },
+                { url: "https://telemetry.example.com", siteId: "discovery-site" },
+            ),
+        ).toMatchObject({
+            enabled: true,
+            endpoint: "https://override.example.com/matomo.php",
+            siteId: "env-site",
+        });
+    });
+
+    it("prefers env var site ID over discovery config", () => {
+        expect(
+            resolveTelemetrySettings(
+                { AGENTMAN_TELEMETRY_SITE_ID: "env-site" },
+                { stdinIsTTY: true, stdoutIsTTY: true },
+                { url: "https://telemetry.example.com", siteId: "discovery-site" },
+            ),
+        ).toMatchObject({
+            enabled: true,
+            siteId: "env-site",
+        });
+    });
+
+    it("prefers env var URL over discovery config URL", () => {
+        expect(
+            resolveTelemetrySettings(
+                { AGENTMAN_TELEMETRY_URL: "https://override.example.com" },
+                { stdinIsTTY: true, stdoutIsTTY: true },
+                { url: "https://telemetry.example.com", siteId: "discovery-site" },
+            ),
+        ).toMatchObject({
+            enabled: true,
+            endpoint: "https://override.example.com/matomo.php",
+            siteId: "discovery-site",
+        });
+    });
+
+    it("still disables telemetry from discovery config when opt-out env var is set", () => {
+        expect(
+            resolveTelemetrySettings(
+                { AGENTMAN_TELEMETRY_DISABLED: "1" },
+                { stdinIsTTY: true, stdoutIsTTY: true },
+                { url: "https://telemetry.example.com", siteId: "discovery-site" },
+            ),
+        ).toMatchObject({ enabled: false });
+    });
 });
 
 describe("categoriseError", () => {
