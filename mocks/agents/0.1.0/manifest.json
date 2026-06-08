@@ -1,0 +1,56 @@
+{
+  "published": "2026-03-26T12:00:00",
+  "version": "0.1.0",
+  "agents": [
+    {
+      "id": "agent-epic-elaboration-v1",
+      "name": "Epic Elaboration Agent",
+      "description": "Rovo agent that breaks down epics into well-structured stories with acceptance criteria, dependencies, and WSJF prioritisation.",
+      "tags": ["rovo-agent", "ticketing"],
+      "phases": ["discovery", "elaboration"]
+    },
+    {
+      "id": "agent-story-build-ready-v1",
+      "name": "Story Build Ready Agent",
+      "description": "Rovo agent that validates user stories against Definition of Ready criteria and suggests improvements before sprint commitment.",
+      "tags": ["rovo-agent", "ticketing"],
+      "phases": ["elaboration"]
+    },
+    {
+      "id": "hld-architecture-generator-v1",
+      "name": "High Level Design Architecture Generator Skill",
+      "description": "Agent skill that generates enterprise-grade High Level Design documents from project requirements and technical context.",
+      "tags": ["agent-skill", "architecture"],
+      "phases": ["discovery", "elaboration"],
+      "videos": [{ "title": "See It in Action", "src": "/media/skills/hld-architecture-generator-v1/hld-demo.mp4" }]
+    },
+    {
+      "id": "mock-apis",
+      "name": "Mock APIs Skill",
+      "description": "Agent skill that generates mock API configurations for service virtualisation during development and testing.",
+      "tags": ["agent-skill", "backend", "testing"],
+      "phases": ["build_and_release"]
+    },
+    {
+      "id": "rest-api-generator-v1",
+      "name": "REST API Generator Skill",
+      "description": "Agent skill that generates production-ready REST API scaffolding from requirements, including OpenAPI specs, controllers, and tests.",
+      "tags": ["agent-skill", "backend", "api"],
+      "phases": ["build_and_release"]
+    },
+    {
+      "id": "code-review-backend-v1",
+      "name": "Backend Code Review Skill",
+      "description": "Agent skill that performs structured backend code reviews with severity-graded findings and cross-team decision detection.",
+      "tags": ["agent-skill", "backend", "code-quality"],
+      "phases": ["build_and_release"]
+    },
+    {
+      "id": "tdd-frontend-generator-v1",
+      "name": "TDD Frontend Generator Skill",
+      "description": "Agent skill that scaffolds frontend components using test-driven development, generating tests first then implementation.",
+      "tags": ["agent-skill", "frontend", "tdd"],
+      "phases": ["build_and_release"]
+    }
+  ]
+}

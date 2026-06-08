@@ -187,6 +187,22 @@ npm run test:watch   # watch mode
 npm run typecheck    # type check without emitting
 ```
 
+### Mock HTTP skills server
+
+Integration tests and local dev can run against a local mock of the agent CDN using [Imposter](https://docs.imposter.sh):
+
+```bash
+cd mocks
+imposter up             # starts on http://localhost:8080
+imposter down -a        # stop when done
+```
+
+Then run against the mock for a local integration test:
+
+```bash
+npm run dev -- http://localhost:8080
+```
+
 ---
 
 ## Publishing
