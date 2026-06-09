@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { getHomeDir } from '../lib/platform.js';
+import { getHomeDir, getCursorSkillsDir } from '../lib/platform.js';
 
 export interface ToolDefinition {
   id: string;
@@ -36,9 +36,8 @@ export const SKILL_TOOLS: ToolDefinition[] = [
   {
     id: 'cursor',
     name: 'Cursor',
-    getSkillsDir: () => path.join(getHomeDir(), '.agents', 'skills'),
+    getSkillsDir: () => getCursorSkillsDir(),
     getRepoSkillsDir: (repoRoot: string) => path.join(repoRoot, '.cursor', 'skills'),
-    note: 'Cursor has no global skills path. Skills are installed to ~/.agents/skills/ (cross-client convention). You may need to configure Cursor to discover this location.',
   },
 ];
 
