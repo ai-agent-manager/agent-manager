@@ -82,10 +82,8 @@ Skills are installed as symlinks into each tool's native skills directory:
 | Claude Code | `~/.claude/skills/<skill-name>/` |
 | Windsurf | `~/.codeium/windsurf/skills/<skill-name>/` |
 | GitHub Copilot | `~/.copilot/skills/<skill-name>/` |
-| Cursor | `~/.agents/skills/<skill-name>/` |
+| Cursor | `~/.cursor/skills/<skill-name>/` |
 | Kiro | `~/.kiro/skills/<skill-name>/` |
-
-Cursor does not have a global filesystem skills path. Skills are installed to `~/.agents/skills/` using the cross-client convention. You may need to configure Cursor to discover this location.
 
 On Windows, if symlink creation fails (requires admin or developer mode), the tool falls back to copying the skill directory.
 

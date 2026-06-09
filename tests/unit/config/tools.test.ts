@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import path from 'node:path';
 import { SKILL_TOOLS, getToolById } from '../../../src/config/tools.js';
-import { getHomeDir } from '../../../src/lib/platform.js';
+import { getHomeDir, getCursorSkillsDir } from '../../../src/lib/platform.js';
 
 describe('SKILL_TOOLS', () => {
   it('contains exactly 5 tools', () => {
@@ -48,7 +48,7 @@ describe('SKILL_TOOLS', () => {
   it('returns correct skills directory for cursor', () => {
     const tool = SKILL_TOOLS.find((t) => t.id === 'cursor')!;
     const dir = tool.getSkillsDir();
-    expect(dir).toContain('.agents');
+    expect(dir).toBe(getCursorSkillsDir());
     expect(dir).toContain('skills');
   });
 
@@ -57,12 +57,6 @@ describe('SKILL_TOOLS', () => {
     const dir = tool.getSkillsDir();
     expect(dir).toContain('.kiro');
     expect(dir).toContain('skills');
-  });
-
-  it('cursor tool has a note about cross-client convention', () => {
-    const tool = SKILL_TOOLS.find((t) => t.id === 'cursor')!;
-    expect(tool.note).toBeTruthy();
-    expect(tool.note).toContain('cross-client');
   });
 });
 
