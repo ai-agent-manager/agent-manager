@@ -1,0 +1,19 @@
+# Imposter mock for the agent content CDN.
+#
+# Serves /agents/index.json, per-version manifests and agent README.md files
+# with permissive CORS so the local SPA can fetch without cross-origin errors.
+#
+# Start:  imposter up -t native        (from mocks/)
+# Stop:   imposter down -a
+
+plugin: rest
+
+cors:
+  allowOrigins: all
+
+resources:
+  # --- Serve all files under /agents/ from the agents/ directory ------------
+  - path: /agents/*
+    method: GET
+    response:
+      dir: agents

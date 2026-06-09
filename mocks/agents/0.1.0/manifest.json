@@ -1,0 +1,34 @@
+{
+  "published": "2026-03-26T12:00:00",
+  "version": "0.1.0",
+  "agents": [
+    {
+      "id": "react-component-generator",
+      "name": "React Component Generator",
+      "description": "Agent skill that scaffolds React components with co-located tests, stories, and TypeScript types from a plain-language description.",
+      "tags": ["agent-skill", "frontend", "react"],
+      "phases": ["build_and_release"]
+    },
+    {
+      "id": "api-endpoint-generator",
+      "name": "API Endpoint Generator",
+      "description": "Agent skill that generates REST API endpoint scaffolding including route handlers, request validation, and integration tests.",
+      "tags": ["agent-skill", "backend", "api"],
+      "phases": ["build_and_release"]
+    },
+    {
+      "id": "agent-sprint-planner",
+      "name": "Sprint Planner Agent",
+      "description": "Rovo agent that breaks down epics into sprint-ready user stories with acceptance criteria, estimates, and dependency mapping.",
+      "tags": ["rovo-agent", "planning"],
+      "phases": ["discovery", "elaboration"]
+    },
+    {
+      "id": "agent-release-notes",
+      "name": "Release Notes Agent",
+      "description": "Rovo agent that generates structured release notes from merged pull requests and commit history.",
+      "tags": ["rovo-agent", "documentation"],
+      "phases": ["build_and_release"]
+    }
+  ]
+}
