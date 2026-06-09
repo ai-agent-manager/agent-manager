@@ -16,14 +16,5 @@ export function getHomeDir(): string {
 }
 
 export function getCursorSkillsDir(): string {
-  switch (getPlatform()) {
-    case 'macos':
-      return path.join(getHomeDir(), 'Library', 'Application Support', 'Cursor', 'User', 'skills');
-    case 'windows':
-      return path.join(process.env['APPDATA'] ?? path.join(getHomeDir(), 'AppData', 'Roaming'), 'Cursor', 'User', 'skills');
-    default: {
-      const xdgConfig = process.env['XDG_CONFIG_HOME'] ?? path.join(getHomeDir(), '.config');
-      return path.join(xdgConfig, 'cursor', 'User', 'skills');
-    }
-  }
+  return path.join(getHomeDir(), '.cursor', 'skills');
 }

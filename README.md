@@ -126,7 +126,7 @@ Skills are installed as symlinks into each tool's native skills directory:
 | Claude Code | `~/.claude/skills/<skill>/` | `<repo>/.claude/skills/<skill>/` |
 | Windsurf | `~/.codeium/windsurf/skills/<skill>/` | `<repo>/.windsurf/skills/<skill>/` |
 | GitHub Copilot | `~/.copilot/skills/<skill>/` | `<repo>/.github/copilot/skills/<skill>/` |
-| Cursor | macOS: `~/Library/Application Support/Cursor/User/skills/<skill>/`<br>Linux: `~/.config/cursor/User/skills/<skill>/`<br>Windows: `%APPDATA%\Cursor\User\skills\<skill>\` | `<repo>/.cursor/skills/<skill>/` |
+| Cursor | `~/.cursor/skills/<skill>/` | `<repo>/.cursor/skills/<skill>/` |
 
 > **Windows note:** If symlink creation fails (requires admin rights or Developer Mode), the tool falls back to copying the skill directory instead.
 
