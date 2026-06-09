@@ -1,5 +1,6 @@
 import type { SkillInfo, RovoAgentInfo } from '../bundle/scanner.js';
 import type { InstallScope } from '../config/scopes.js';
+import type { SkillSourcePin } from '../bundle/skill-source.js';
 
 export type ProvisionerType = 'skill' | 'rovo-agent';
 
@@ -39,8 +40,8 @@ export interface Provisioner {
   /** List currently installed items with their bundle versions */
   getInstalled(): Promise<InstalledSkill[]>;
 
-  /** Install skills from the specified bundle */
-  install(items: SkillInfo[], bundleVersion: string): Promise<InstallResult>;
+  /** Install skills from the specified source */
+  install(items: SkillInfo[], bundleVersion: string, sourcePin?: SkillSourcePin): Promise<InstallResult>;
 
   /** Uninstall previously installed skills */
   uninstall(names: string[]): Promise<UninstallResult>;

@@ -5,12 +5,22 @@ import { extractBundle } from './bundle/extractor.js';
 import { importLocalBundle } from './bundle/importer.js';
 import { scanBundle } from './bundle/scanner.js';
 import { setCurrentBundle } from './bundle/cache.js';
-import { resolveSource } from './bundle/source.js';
+import {
+  resolveSkillSource,
+  buildSourcePin,
+  describeSkillSource,
+  isRepoSource,
+  isBundleSource,
+  type SkillSourcePin,
+} from './bundle/skill-source.js';
+import { downloadRepoArchive } from './bundle/repo-downloader.js';
+import { scanRepoForSkills } from './bundle/repo-scanner.js';
 import { ClaudeCodeProvisioner } from './provisioners/ClaudeCodeProvisioner.js';
 import { WindsurfProvisioner } from './provisioners/WindsurfProvisioner.js';
 import { CopilotProvisioner } from './provisioners/CopilotProvisioner.js';
 import { CursorProvisioner } from './provisioners/CursorProvisioner.js';
 import type { SkillProvisioner } from './provisioners/SkillProvisioner.js';
+import type { SkillInfo } from './bundle/scanner.js';
 import type { InstallScope } from './config/scopes.js';
 
 export interface HeadlessConfig {
@@ -71,6 +81,15 @@ function createProvisioner(toolId: string, scope: InstallScope, repoRoot: string
 }
 
 export async function runHeadless(sourceInput: string, configPath: string, forceUpdate: boolean): Promise<void> {
+  try {
+    await _runHeadless(sourceInput, configPath, forceUpdate);
+  } catch (err) {
+    console.error(`\n[agentman] ERROR: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
+}
+
+async function _runHeadless(sourceInput: string, configPath: string, forceUpdate: boolean): Promise<void> {
   const config = await parseHeadlessConfig(configPath);
   const repoRoot = process.cwd();
 
@@ -79,39 +98,68 @@ export async function runHeadless(sourceInput: string, configPath: string, force
   console.log(`  Tools:   ${config.tools.join(', ')}`);
   console.log(`  Scope:   ${config.scope}`);
   console.log(`  Skills:  ${config.skills.join(', ')}\n`);
-  console.log(`  Bundle version: ${config.bundleVersion ?? 'latest'}\n`);
 
-  // Acquire bundle
-  // TODO: migrate to resolveSkillSource() once repo/artefact install flows
-  // handle the SkillSource union. Using legacy resolveSource() (bundle-only) until then.
-  const source = await resolveSource(sourceInput);
-  let bundleDir: string;
+  // Resolve source using the multi-source resolver
+  const source = await resolveSkillSource(sourceInput);
+  console.log(`  Source:  ${describeSkillSource(source)}\n`);
+
+  let skills: SkillInfo[];
   let bundleVersion: string;
+  let sourcePin: SkillSourcePin | undefined;
 
-  if (source.type === 'url') {
-    console.log('[agentman] Downloading bundle...');
-    const { zipPath } = await downloadBundle(source.baseUrl, config.bundleVersion);
-    console.log('[agentman] Extracting bundle...');
-    const result = await extractBundle(zipPath);
-    bundleDir = result.bundleDir;
-    bundleVersion = result.manifest.version;
-    if (result.isNew) {
-      await setCurrentBundle(bundleVersion);
+  if (isRepoSource(source)) {
+    // ── Repo source path ──────────────────────────────────────────────────────
+    console.log('[agentman] Downloading repository archive...');
+    const token = process.env.GITHUB_TOKEN;
+    const { extractDir, isNew } = await downloadRepoArchive(source, { forceUpdate, token });
+
+    if (!isNew) {
+      console.log('[agentman] Using cached repository archive.');
     }
+
+    console.log('[agentman] Scanning repository for skills...');
+    const scanResult = await scanRepoForSkills(extractDir, source);
+    skills = scanResult.skills;
+    bundleVersion = '';
+    sourcePin = buildSourcePin(source);
+
+  } else if (isBundleSource(source)) {
+    // ── Bundle source path (existing flow) ────────────────────────────────────
+    if (source.baseUrl) {
+      console.log(`  Bundle version: ${config.bundleVersion ?? 'latest'}\n`);
+      console.log('[agentman] Downloading bundle...');
+      const { zipPath } = await downloadBundle(source.baseUrl, config.bundleVersion);
+      console.log('[agentman] Extracting bundle...');
+      const result = await extractBundle(zipPath);
+      bundleVersion = result.manifest.version;
+      if (result.isNew) {
+        await setCurrentBundle(bundleVersion);
+      }
+      console.log(`[agentman] Bundle version: ${bundleVersion}`);
+      const contents = await scanBundle(result.bundleDir);
+      skills = contents.skills;
+      sourcePin = buildSourcePin(source, bundleVersion);
+    } else {
+      console.log('[agentman] Importing local bundle...');
+      const result = await importLocalBundle(source.dirPath!);
+      bundleVersion = result.manifest.version;
+      console.log(`[agentman] Bundle version: ${bundleVersion}`);
+      const contents = await scanBundle(result.bundleDir);
+      skills = contents.skills;
+      sourcePin = buildSourcePin(source, bundleVersion);
+    }
+
   } else {
-    console.log('[agentman] Importing local bundle...');
-    const result = await importLocalBundle(source.dirPath);
-    bundleDir = result.bundleDir;
-    bundleVersion = result.manifest.version;
+    // ── Artefact source (not yet implemented) ─────────────────────────────────
+    throw new Error(
+      'Artefact source installation is not yet supported. ' +
+      'Use a GitHub repository URL or a bundle URL instead.'
+    );
   }
 
-  console.log(`[agentman] Bundle version: ${bundleVersion}`);
+  // ── Shared install logic ──────────────────────────────────────────────────
+  const availableSkills = new Map(skills.map(s => [s.dirName, s]));
 
-  // Scan bundle once — shared across all tools
-  const contents = await scanBundle(bundleDir);
-  const availableSkills = new Map(contents.skills.map(s => [s.dirName, s]));
-
-  // Match requested skills
   const toInstall = [];
   const notFound = [];
 
@@ -125,7 +173,7 @@ export async function runHeadless(sourceInput: string, configPath: string, force
   }
 
   if (notFound.length > 0) {
-    console.warn(`\n[agentman] WARNING: The following skills were not found in the bundle:`);
+    console.warn(`\n[agentman] WARNING: The following skills were not found:`);
     for (const name of notFound) {
       console.warn(`  - ${name}`);
     }
@@ -143,7 +191,7 @@ export async function runHeadless(sourceInput: string, configPath: string, force
   for (const toolId of config.tools) {
     console.log(`\n[agentman] Installing ${toInstall.length} skill(s) for ${toolId}...`);
     const provisioner = createProvisioner(toolId, config.scope, repoRoot);
-    const result = await provisioner.install(toInstall, bundleVersion);
+    const result = await provisioner.install(toInstall, bundleVersion, sourcePin);
 
     if (result.installed.length > 0) {
       console.log(`[agentman] Installed (${toolId}):`);

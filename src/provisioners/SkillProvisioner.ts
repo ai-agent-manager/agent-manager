@@ -7,6 +7,7 @@ import { createLink, removeLink, resolveSkillVersion } from '../lib/symlink.js';
 import { ensureDir, pathExists } from '../lib/fs.js';
 import { recordInstall, removeInstallRecord, readConfig } from '../bundle/cache.js';
 import { recordRepoInstall, removeRepoInstallRecord, readRepoConfig } from '../bundle/repo-config.js';
+import type { SkillSourcePin } from '../bundle/skill-source.js';
 
 export abstract class SkillProvisioner implements Provisioner {
   abstract readonly id: string;
@@ -85,7 +86,7 @@ export abstract class SkillProvisioner implements Provisioner {
     return installed;
   }
 
-  async install(items: SkillInfo[], bundleVersion: string): Promise<InstallResult> {
+  async install(items: SkillInfo[], bundleVersion: string, sourcePin?: SkillSourcePin): Promise<InstallResult> {
     const skillsDir = this.getEffectiveSkillsDir();
     await ensureDir(skillsDir);
 
@@ -106,12 +107,14 @@ export abstract class SkillProvisioner implements Provisioner {
           await recordRepoInstall(this.repoRoot, this.id, item.dirName, {
             installedAt: new Date().toISOString(),
             method: linkResult.method,
-          }, bundleVersion);
+            sourcePin,
+          }, bundleVersion || undefined);
         } else {
           await recordInstall(this.id, item.dirName, {
-            bundleVersion,
+            bundleVersion: bundleVersion || undefined,
             installedAt: new Date().toISOString(),
             method: linkResult.method,
+            sourcePin,
           });
         }
       } catch (error) {

@@ -27,13 +27,10 @@ export function parseCli() {
     $ agentman <source>
 
   ${chalk.bold("Arguments")}
-    source      URL of the agent bundle server, or path to a local
-                bundle directory.
-                URL:       index.json is fetched from <url>/agents/index.json
-                           and the latest versioned zip is downloaded.
-                Directory: contents are copied into the local cache.
-                           manifest.json is used if present; otherwise a
-                           dev version is generated.
+    source      Source to install skills from. Accepted formats:
+                GitHub repo:  https://github.com/org/repo[/tree/<ref>]
+                Bundle URL:   https://bundles.example.com
+                Local dir:    ./path/to/local-bundle
 
   ${chalk.bold("Options")}
     --update    Force re-download / re-import of the latest bundle
@@ -42,10 +39,11 @@ export function parseCli() {
     --help      Show this help
 
   ${chalk.bold("Examples")}
-    $ agentman https://bootstrap.example.com
-    $ agentman https://bootstrap.example.com --update
-    $ agentman ./my-agents
-    $ agentman /absolute/path/to/agents --update
+    $ agentman https://github.com/org/my-skills-repo --config ai-skills.yml
+    $ agentman https://github.com/org/my-skills-repo/tree/v2.0 --config ai-skills.yml
+    $ agentman https://bundles.example.com --config ai-skills.yml
+    $ agentman https://bundles.example.com --update
+    $ agentman ./my-local-bundle
 `,
         {
             importMeta: import.meta,

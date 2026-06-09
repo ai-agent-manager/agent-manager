@@ -48,44 +48,86 @@ Fetches `/agents/index.json` from your bundle server, downloads the latest versi
 Skip the menu entirely with a config file:
 
 ```bash
-npx -y @ai-agent-manager/cli@latest <base-url> --config .github/ai-skills.yml
+npx -y @ai-agent-manager/cli@latest <source> --config .github/ai-skills.yml
 ```
+
+The `<source>` can be a **bundle URL**, a **GitHub repository URL**, or a **local directory** — agentman detects the type automatically.
 
 **Config format:**
 
 ```yaml
 tools: claude-code        # one or more: claude-code | windsurf | github-copilot | cursor
 scope: repo              # repo (default) | system
-bundle-version: 1.2.0   # optional — omit to always use latest
 skills:
-  - code-review-backend-v1
-  - pr-description-generator-v1
+  - my-skill-name
+bundle-version: 1.2.0   # optional — bundle sources only, omit to use latest
 ```
 
 | Field | Required | Description |
 |-------|----------|-------------|
 | `tools` | Yes | AI coding tool(s) to install skills for |
 | `scope` | No | `repo` installs into the current directory; `system` installs to the home directory |
-| `bundle-version` | No | Pin to a specific bundle version, or omit to track latest |
-| `skills` | Yes | Skills to install from the bundle |
+| `skills` | Yes | Names of skills to install (matched by directory name) |
+| `bundle-version` | No | Bundle sources only — pin to a specific version, or omit to track latest |
 
 Unknown skill names log a warning and are skipped. If no valid skills are found, the tool exits non-zero.
+
+#### Install from a GitHub repository
+
+Point agentman at any GitHub repository that contains skills under a `skills/` directory:
+
+```
+my-skills-repo/
+  skills/
+    my-skill/
+      SKILL.md
+    another-skill/
+      SKILL.md
+```
+
+```bash
+npx -y @ai-agent-manager/cli@latest https://github.com/org/my-skills-repo \
+  --config .github/ai-skills.yml
+```
+
+For private repositories, set `GITHUB_TOKEN` to a personal access token with repo read access:
+
+```bash
+GITHUB_TOKEN=ghp_... npx -y @ai-agent-manager/cli@latest https://github.com/org/my-skills-repo \
+  --config .github/ai-skills.yml
+```
+
+To pin to a specific branch or tag, use the `/tree/<ref>` GitHub URL format:
+
+```bash
+npx -y @ai-agent-manager/cli@latest https://github.com/org/my-skills-repo/tree/v2.0 \
+  --config .github/ai-skills.yml
+```
 
 **GitHub Actions example:**
 
 ```yaml
 - name: Install AI skills
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   run: |
-    npx -y @ai-agent-manager/cli@latest https://bundles.example.com \
+    npx -y @ai-agent-manager/cli@latest https://github.com/org/my-skills-repo \
       --config .github/ai-skills.yml
+```
+
+#### Install from a bundle server
+
+```bash
+npx -y @ai-agent-manager/cli@latest https://bundles.example.com \
+  --config .github/ai-skills.yml
 ```
 
 ### Force re-download
 
-Bypass the local cache and pull the latest bundle:
+Bypass the local cache and pull fresh content:
 
 ```bash
-npx -y @ai-agent-manager/cli@latest <base-url> --update
+npx -y @ai-agent-manager/cli@latest <source> --update
 ```
 
 ### Help
