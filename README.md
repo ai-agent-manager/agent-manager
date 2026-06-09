@@ -139,6 +139,16 @@ A `.agentman.json` file is written at the repo root tracking the pinned bundle v
 
 ---
 
+## How It Works
+
+1. On first run, the bundle is downloaded and extracted to `~/.agentman/bundles/<version>/`.
+2. `~/.agentman/current` symlinks to the active version.
+3. Multiple bundle versions coexist on disk. Switch between them from the **Manage Versions** menu.
+4. Installing a skill symlinks the entire skill directory from the cache into the target tool's skills path.
+5. Installation state is tracked in `~/.agentman/config.json` (system-wide) or `.agentman.json` (repo-scoped).
+
+---
+
 ## Bundle Format
 
 The tool expects a version index at `<base-url>/agents/index.json` and versioned zips at `<base-url>/agents/<version>/bundle.zip`. See [docs/bundle-format.md](docs/bundle-format.md) for the full spec.
