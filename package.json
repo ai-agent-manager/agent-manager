@@ -1,6 +1,6 @@
 {
   "name": "@ai-agent-manager/cli",
-  "version": "0.14.0",
+  "version": "0.16.0",
   "description": "Agent Manager - install and manage AI agent skills and Rovo agents",
   "type": "module",
   "bin": {
@@ -9,12 +9,14 @@
   "main": "./dist/index.js",
   "files": [
     "dist/**/*",
+    "assets/**/*",
     "schemas/**/*",
     "LICENSE"
   ],
   "scripts": {
     "dev": "tsx src/index.tsx",
     "build": "tsc",
+    "build:chrome-extension": "npm run build:crx --prefix chrome-extension && mkdir -p assets && cp chrome-extension/dist/agentman.crx assets/agentman.crx",
     "prepack": "node scripts/prepack.mjs",
     "postpack": "node scripts/postpack.mjs",
     "prepublishOnly": "npm run typecheck && npm test && npm run build",

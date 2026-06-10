@@ -142,10 +142,10 @@ npx -y @ai-agent-manager/cli@latest --help
 
 The TUI has four options:
 
-- **Install Skills** — Pick system-wide or repo-scoped, choose your coding tool, then select which skills to install or uninstall via symlink.
-- **Rovo Agents** — Provision Atlassian Rovo agents using Playwright-driven browser automation. Set `AGENTMAN_CHROME_EXTENSION=1` to also expose the Chrome Extension provisioning path.
-- **Manage Bundle Versions** — View cached versions, switch the active bundle, or clean up old ones.
-- **Update Agent Manager** — Update the CLI itself via npm. Separate from bundle and skill versioning.
+- **Install Skills** -- Choose system-wide or repository-scoped installation, select a coding tool, then choose which skills to install or uninstall via symlink.
+- **Rovo Agents** -- Provision Atlassian Rovo agents. By default this runs Playwright-driven browser automation from the command line. Set `AGENTMAN_CHROME_EXTENSION=1` to also offer the Chrome Extension options, including direct extension installation (see [Feature Flags](#feature-flags)).
+- **Manage Bundle Versions** -- View cached bundle versions, switch the active bundle, or remove old cached bundles.
+- **Update Agent Manager App** -- Update the Agent Manager CLI application itself via npm. This is separate from bundle, skill, and Rovo agent version management.
 
 On startup, if a newer app version or bundle is available, a bordered update panel appears above the menu. Press `U` to update the app, or `B` to pull the latest bundle immediately.
 
@@ -227,6 +227,22 @@ npm run build        # compile to dist/
 npm test             # run tests once
 npm run test:watch   # watch mode
 npm run typecheck    # type check without emitting
+```
+
+### Mock HTTP skills server
+
+Integration tests and local dev can run against a local mock of the agent CDN using [Imposter](https://docs.imposter.sh):
+
+```bash
+cd mocks
+imposter up             # starts on http://localhost:8080
+imposter down -a        # stop when done
+```
+
+Then run against the mock for a local integration test:
+
+```bash
+npm run dev -- http://localhost:8080
 ```
 
 ---

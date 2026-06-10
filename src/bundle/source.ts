@@ -1,9 +1,12 @@
 import path from 'node:path';
 import { stat } from 'node:fs/promises';
+// SHIM: git source support — to be superseded by discovery mechanism (PR #16, PR #14)
+import { isGitSource, resolveGitSource } from '../discovery/git-source-shim.js';
 
 export type BundleSource =
   | { type: 'url'; baseUrl: string }
-  | { type: 'directory'; dirPath: string };
+  | { type: 'directory'; dirPath: string }
+  | { type: 'git'; repoUrl: string };
 
 /**
  * Determine whether the user-supplied input is a URL or a local directory path.
@@ -21,7 +24,12 @@ export type BundleSource =
  * Retained for backward compatibility until existing callers are migrated to
  * the multi-source model. Do not add new callers.
  */
-export async function resolveSource(input: string): Promise<BundleSource> {
+export async function resolveSource(input: string, typeHint?: string): Promise<BundleSource> {
+  // SHIM: git source detection — to be superseded by discovery mechanism (PR #16, PR #14)
+  if (isGitSource(input, typeHint)) {
+    return resolveGitSource(input);
+  }
+
   if (/^https?:\/\//i.test(input)) {
     // Validate it parses as a URL
     new URL(input);

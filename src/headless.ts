@@ -117,6 +117,7 @@ async function _runHeadless(sourceInput: string, configPath: string, forceUpdate
       console.log('[agentman] Using cached repository archive.');
     }
 
+
     console.log('[agentman] Scanning repository for skills...');
     const scanResult = await scanRepoForSkills(extractDir, source);
     skills = scanResult.skills;

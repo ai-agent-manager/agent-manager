@@ -51,6 +51,10 @@ export function getBundleSourceTelemetryProperties(source: BundleSource): Record
         };
     }
 
+    if (source.type === "git") {
+        return { source: "git", bundleEndpoint: "git-repo" };
+    }
+
     return {
         source: source.type,
         bundleEndpoint: LOCAL_DIRECTORY_BUNDLE_ENDPOINT,

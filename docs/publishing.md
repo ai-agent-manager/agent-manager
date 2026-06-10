@@ -1,36 +1,32 @@
 # Publishing
 
-CI handles publishing automatically when a version tag is pushed. The version in `package.json` is derived from the tag — no manual bumps needed.
+CI handles publishing automatically when a version tag is pushed.
 
 | Tag pattern | Registry | Dist-tag |
 |-------------|----------|----------|
 | `v*.*.*` | npmjs.org | `latest` |
 | `v*.*.*-*` | GitHub Packages | `beta` |
 
+Published to: [npmjs.com/package/@ai-agent-manager/cli](https://www.npmjs.com/package/@ai-agent-manager/cli)
+
+## Release process
+
 ```bash
-git tag v1.3.0 && git push origin v1.3.0         # stable
-git tag v1.3.0-beta.0 && git push origin v1.3.0-beta.0  # beta
+npm test
+npm version minor   # or patch
+git push origin main --tags
 ```
 
-Published to: [npmjs.com/package/@ai-agent-manager/cli](https://www.npmjs.com/package/@ai-agent-manager/cli)
+Then monitor the CI release job to confirm publish succeeds.
 
 ## Required secrets
 
 | Secret | Purpose |
 |--------|---------|
 | `NPM_TOKEN` | Automation token with publish access to the `@ai-agent-manager` org on npmjs.org |
+| `AGENTMAN_CRX_KEY` | Base64-encoded PEM private key for signing the Chrome extension `.crx` |
 
 The GitHub Packages beta publish uses the built-in `GITHUB_TOKEN` — no extra secret needed.
-
-## Manual publish
-
-```bash
-npm login
-npm version 1.3.0 --no-git-tag-version
-npm publish
-```
-
-`prepublishOnly` runs typecheck, tests, and a clean build automatically.
 
 ## Beta / Prerelease Builds
 

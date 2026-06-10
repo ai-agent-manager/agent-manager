@@ -1,9 +1,9 @@
-import React from 'react';
-import { Box, Text } from 'ink';
-import SelectInput from 'ink-select-input';
-import { featureFlags } from '../lib/feature-flags.js';
+import React from "react";
+import { Box, Text } from "ink";
+import SelectInput from "ink-select-input";
+import { featureFlags } from "../lib/feature-flags.js";
 
-export type RovoMethod = 'chrome-extension' | 'command-line';
+export type RovoMethod = "chrome-extension" | "install-chrome-extension" | "command-line";
 
 interface RovoMethodMenuProps {
   onSelect: (method: RovoMethod) => void;
@@ -15,16 +15,20 @@ export function RovoMethodMenu({ onSelect, onBack }: RovoMethodMenuProps) {
     ...(featureFlags.chromeExtension
       ? [
           {
-            label: 'Use the Chrome Extension     Provision agents from your browser',
-            value: 'chrome-extension' as const,
+            label: "Use the Chrome Extension     Provision agents from your browser",
+            value: "chrome-extension" as const,
+          },
+          {
+            label: "Install Chrome Extension    Install the Agentman extension into Google Chrome",
+            value: "install-chrome-extension" as const,
           },
         ]
       : []),
     {
-      label: 'Install from the command line Automate via Playwright',
-      value: 'command-line' as const,
+      label: "Install from the command line Automate via Playwright",
+      value: "command-line" as const,
     },
-    { label: '\u2190 Back', value: '__back__' as const },
+    { label: "\u2190 Back", value: "__back__" as const },
   ];
 
   return (
@@ -34,7 +38,7 @@ export function RovoMethodMenu({ onSelect, onBack }: RovoMethodMenuProps) {
       <SelectInput
         items={items}
         onSelect={(item) => {
-          if (item.value === '__back__') {
+          if (item.value === "__back__") {
             onBack();
           } else {
             onSelect(item.value);
