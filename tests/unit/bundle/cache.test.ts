@@ -87,12 +87,11 @@ describe('readConfig', () => {
     expect(config.installations['claude-code']['my-skill'].bundleVersion).toBe('abc123');
   });
 
-  it('returns default config when config file has invalid JSON', async () => {
+  it('throws when config file has invalid JSON instead of wiping install records', async () => {
     await mkdir(tempDir, { recursive: true });
     await writeFile(path.join(tempDir, 'config.json'), 'not valid json{{{');
 
-    const config = await readConfig();
-    expect(config).toEqual({ installations: {} });
+    await expect(readConfig()).rejects.toThrow('Config file is corrupted');
   });
 });
 
@@ -119,6 +118,14 @@ describe('writeConfig', () => {
 
     const raw = await readFile(path.join(tempDir, 'config.json'), 'utf-8');
     expect(JSON.parse(raw)).toEqual({ installations: {} });
+  });
+
+  it('leaves no temp files behind after writing', async () => {
+    await writeConfig({ installations: {} });
+
+    const { readdir } = await import('node:fs/promises');
+    const entries = await readdir(tempDir);
+    expect(entries.filter((e) => e.endsWith('.tmp'))).toEqual([]);
   });
 });
 

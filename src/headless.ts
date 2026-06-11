@@ -15,6 +15,8 @@ import {
 } from './bundle/skill-source.js';
 import { downloadRepoArchive } from './bundle/repo-downloader.js';
 import { scanRepoForSkills } from './bundle/repo-scanner.js';
+import { downloadArtefact } from './bundle/artefact-downloader.js';
+import { scanArtefactForSkills } from './bundle/artefact-scanner.js';
 import { ClaudeCodeProvisioner } from './provisioners/ClaudeCodeProvisioner.js';
 import { WindsurfProvisioner } from './provisioners/WindsurfProvisioner.js';
 import { CopilotProvisioner } from './provisioners/CopilotProvisioner.js';
@@ -28,6 +30,8 @@ export interface HeadlessConfig {
   scope: InstallScope;
   skills: string[];
   bundleVersion?: string;
+  /** Expected SHA-256 of the artefact zip — artefact sources only. */
+  artefactSha256?: string;
 }
 
 export async function parseHeadlessConfig(configPath: string): Promise<HeadlessConfig> {
@@ -61,11 +65,23 @@ export async function parseHeadlessConfig(configPath: string): Promise<HeadlessC
       ? parsed['bundle-version']
       : undefined;
 
+  let artefactSha256: string | undefined;
+  if (parsed['artefact-sha256'] !== undefined) {
+    const value = parsed['artefact-sha256'];
+    if (typeof value !== 'string' || !/^[0-9a-f]{64}$/i.test(value)) {
+      throw new Error(
+        'ai-skills.yml: "artefact-sha256" must be a 64-character hex SHA-256 string'
+      );
+    }
+    artefactSha256 = value.toLowerCase();
+  }
+
   return {
     tools,
     scope,
     skills: parsed.skills as string[],
     bundleVersion,
+    artefactSha256,
   };
 }
 
@@ -102,6 +118,12 @@ async function _runHeadless(sourceInput: string, configPath: string, forceUpdate
   // Resolve source using the multi-source resolver
   const source = await resolveSkillSource(sourceInput);
   console.log(`  Source:  ${describeSkillSource(source)}\n`);
+
+  if (config.artefactSha256 && source.type !== 'artefact') {
+    console.warn(
+      '[agentman] WARNING: "artefact-sha256" is set but the source is not an artefact — ignoring.'
+    );
+  }
 
   let skills: SkillInfo[];
   let bundleVersion: string;
@@ -151,11 +173,32 @@ async function _runHeadless(sourceInput: string, configPath: string, forceUpdate
     }
 
   } else {
-    // ── Artefact source (not yet implemented) ─────────────────────────────────
-    throw new Error(
-      'Artefact source installation is not yet supported. ' +
-      'Use a GitHub repository URL or a bundle URL instead.'
-    );
+    // ── Artefact source path ──────────────────────────────────────────────────
+    // An explicit hash from ai-skills.yml takes precedence over the published
+    // .sha256 sidecar, giving an out-of-band integrity pin.
+    const artefactSource = config.artefactSha256
+      ? { ...source, sha256: config.artefactSha256 }
+      : source;
+
+    console.log('[agentman] Downloading skill artefact...');
+    const download = await downloadArtefact(artefactSource, { forceUpdate });
+
+    if (!download.isNew) {
+      console.log('[agentman] Using cached artefact.');
+    }
+    console.log(`[agentman] Artefact version: ${download.version}`);
+
+    console.log('[agentman] Validating artefact contents...');
+    const scanResult = await scanArtefactForSkills(download.extractDir, artefactSource);
+    skills = scanResult.skills;
+    bundleVersion = '';
+    // Pin the resolved hash and version so the install record preserves
+    // exactly what was acquired.
+    sourcePin = buildSourcePin({
+      ...artefactSource,
+      sha256: download.sha256 ?? artefactSource.sha256,
+      version: download.version,
+    });
   }
 
   // ── Shared install logic ──────────────────────────────────────────────────

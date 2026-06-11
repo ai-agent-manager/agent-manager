@@ -1,0 +1,501 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import path from 'node:path';
+import os from 'node:os';
+import {
+  ARTEFACT_META_FILE,
+  buildArtefactHashUrl,
+  checkArtefactUpdate,
+  downloadArtefact,
+  fetchArtefactHash,
+  parseArtefactUrl,
+} from '../../../src/bundle/artefact-downloader.js';
+import type { ArtefactSkillSource, SkillSourcePin } from '../../../src/bundle/skill-source.js';
+
+// ── Hoisted mocks (must be before vi.mock calls) ──────────────────────────────
+
+const { trackTelemetryEvent, trackTelemetryError, mockExtractZip } = vi.hoisted(() => ({
+  trackTelemetryEvent: vi.fn(),
+  trackTelemetryError: vi.fn(),
+  mockExtractZip: vi.fn(),
+}));
+
+vi.mock('../../../src/telemetry.js', async () => {
+  const actual = await vi.importActual<typeof import('../../../src/telemetry.js')>(
+    '../../../src/telemetry.js',
+  );
+  return { ...actual, trackTelemetryEvent, trackTelemetryError };
+});
+
+// ── Path mocks ────────────────────────────────────────────────────────────────
+
+let mockTempDir = '';
+let mockArtefactsDir = '';
+
+vi.mock('../../../src/config/paths.js', () => ({
+  getTempDir: () => mockTempDir,
+  getArtefactCacheDir: (name: string, version: string) =>
+    path.join(mockArtefactsDir, name, version),
+}));
+
+// ── extract-zip mock ──────────────────────────────────────────────────────────
+
+vi.mock('extract-zip', () => ({ default: mockExtractZip }));
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+const ZIP_BYTES = new TextEncoder().encode('fake-zip-content');
+const ZIP_SHA256 = createHash('sha256').update(ZIP_BYTES).digest('hex');
+
+function makeSource(overrides: Partial<ArtefactSkillSource> = {}): ArtefactSkillSource {
+  return {
+    type: 'artefact',
+    artefactUrl: 'https://cdn.example.com/skills/my-skill-1.2.0.zip',
+    installLayout: 'namespaced',
+    ...overrides,
+  };
+}
+
+function okZipResponse(): Response {
+  return {
+    ok: true,
+    arrayBuffer: async () => ZIP_BYTES.buffer.slice(0),
+  } as unknown as Response;
+}
+
+function sidecarResponse(hash: string): Response {
+  return {
+    ok: true,
+    status: 200,
+    text: async () => `${hash}  my-skill-1.2.0.zip\n`,
+  } as unknown as Response;
+}
+
+function notFoundResponse(): Response {
+  return { ok: false, status: 404, statusText: 'Not Found' } as Response;
+}
+
+/** Mock fetch: zip URL returns the fake zip, sidecar URL returns the given response. */
+function mockFetchFor(zipResponse: Response, hashResponse: Response): void {
+  vi.mocked(fetch).mockImplementation(async (input) => {
+    const url = String(input);
+    return url.endsWith('.sha256') ? hashResponse : zipResponse;
+  });
+}
+
+// ── parseArtefactUrl ──────────────────────────────────────────────────────────
+
+describe('parseArtefactUrl', () => {
+  it('derives name and version from a versioned filename', () => {
+    expect(parseArtefactUrl('https://cdn.example.com/skills/my-skill-1.2.0.zip')).toEqual({
+      name: 'my-skill',
+      version: '1.2.0',
+    });
+  });
+
+  it('strips a leading v from the filename version', () => {
+    expect(parseArtefactUrl('https://cdn.example.com/my-skill-v2.0.1.zip')).toEqual({
+      name: 'my-skill',
+      version: '2.0.1',
+    });
+  });
+
+  it('handles prerelease suffixes in the filename version', () => {
+    expect(parseArtefactUrl('https://cdn.example.com/my-skill-1.0.0-beta.1.zip')).toEqual({
+      name: 'my-skill',
+      version: '1.0.0-beta.1',
+    });
+  });
+
+  it('derives the version from the parent path segment', () => {
+    expect(
+      parseArtefactUrl('https://cdn.example.com/skills/my-skill/1.2.0/my-skill.zip'),
+    ).toEqual({ name: 'my-skill', version: '1.2.0' });
+  });
+
+  it('returns null version when none is derivable', () => {
+    expect(parseArtefactUrl('https://cdn.example.com/skills/my-skill.zip')).toEqual({
+      name: 'my-skill',
+      version: null,
+    });
+  });
+
+  it('ignores query strings', () => {
+    expect(
+      parseArtefactUrl('https://cdn.example.com/my-skill-1.2.0.zip?token=abc'),
+    ).toEqual({ name: 'my-skill', version: '1.2.0' });
+  });
+
+  it('sanitises unsafe characters in the name', () => {
+    const { name } = parseArtefactUrl('https://cdn.example.com/my%20skill.zip');
+    expect(name).not.toMatch(/[^a-zA-Z0-9._-]/);
+  });
+});
+
+// ── buildArtefactHashUrl ──────────────────────────────────────────────────────
+
+describe('buildArtefactHashUrl', () => {
+  it('appends .sha256 to the artefact URL', () => {
+    expect(buildArtefactHashUrl('https://cdn.example.com/my-skill-1.2.0.zip')).toBe(
+      'https://cdn.example.com/my-skill-1.2.0.zip.sha256',
+    );
+  });
+});
+
+// ── fetchArtefactHash ─────────────────────────────────────────────────────────
+
+describe('fetchArtefactHash', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('parses a sha256sum-format sidecar', async () => {
+    vi.mocked(fetch).mockResolvedValue(sidecarResponse(ZIP_SHA256));
+    await expect(fetchArtefactHash('https://cdn.example.com/x.zip')).resolves.toBe(ZIP_SHA256);
+  });
+
+  it('returns null on 404', async () => {
+    vi.mocked(fetch).mockResolvedValue(notFoundResponse());
+    await expect(fetchArtefactHash('https://cdn.example.com/x.zip')).resolves.toBeNull();
+  });
+
+  it('returns null on 403', async () => {
+    vi.mocked(fetch).mockResolvedValue({ ok: false, status: 403, statusText: 'Forbidden' } as Response);
+    await expect(fetchArtefactHash('https://cdn.example.com/x.zip')).resolves.toBeNull();
+  });
+
+  it('throws on 500', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: false,
+      status: 500,
+      statusText: 'Internal Server Error',
+    } as Response);
+    await expect(fetchArtefactHash('https://cdn.example.com/x.zip')).rejects.toThrow(
+      'Failed to fetch hash sidecar',
+    );
+  });
+
+  it('throws on malformed sidecar content', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => 'not-a-hash',
+    } as unknown as Response);
+    await expect(fetchArtefactHash('https://cdn.example.com/x.zip')).rejects.toThrow(
+      'Invalid hash sidecar content',
+    );
+  });
+});
+
+// ── downloadArtefact ──────────────────────────────────────────────────────────
+
+describe('downloadArtefact', () => {
+  beforeEach(async () => {
+    mockTempDir = path.join(os.tmpdir(), `agentman-artefact-tmp-${Date.now()}`);
+    mockArtefactsDir = path.join(os.tmpdir(), `agentman-artefacts-${Date.now()}`);
+    await mkdir(mockTempDir, { recursive: true });
+    await mkdir(mockArtefactsDir, { recursive: true });
+
+    mockExtractZip.mockReset();
+    mockExtractZip.mockImplementation(async (_zipPath: string, { dir }: { dir: string }) => {
+      await writeFile(path.join(dir, 'SKILL.md'), '# skill');
+    });
+    trackTelemetryEvent.mockReset();
+    trackTelemetryError.mockReset();
+    vi.stubGlobal('fetch', vi.fn());
+  });
+
+  afterEach(async () => {
+    vi.unstubAllGlobals();
+    await rm(mockTempDir, { recursive: true, force: true });
+    await rm(mockArtefactsDir, { recursive: true, force: true });
+  });
+
+  it('downloads, verifies against the sidecar, and caches the artefact', async () => {
+    mockFetchFor(okZipResponse(), sidecarResponse(ZIP_SHA256));
+
+    const result = await downloadArtefact(makeSource());
+
+    expect(result.isNew).toBe(true);
+    expect(result.name).toBe('my-skill');
+    expect(result.version).toBe('1.2.0');
+    expect(result.sha256).toBe(ZIP_SHA256);
+    expect(result.extractDir).toBe(path.join(mockArtefactsDir, 'my-skill', '1.2.0'));
+
+    const meta = JSON.parse(
+      await readFile(path.join(result.extractDir, ARTEFACT_META_FILE), 'utf-8'),
+    );
+    expect(meta.version).toBe('1.2.0');
+    expect(meta.sha256).toBe(ZIP_SHA256);
+    expect(meta.artefactUrl).toBe('https://cdn.example.com/skills/my-skill-1.2.0.zip');
+  });
+
+  it('returns the cached artefact without fetching when the version is cached', async () => {
+    const cacheDir = path.join(mockArtefactsDir, 'my-skill', '1.2.0');
+    await mkdir(cacheDir, { recursive: true });
+    await writeFile(
+      path.join(cacheDir, ARTEFACT_META_FILE),
+      JSON.stringify({
+        artefactUrl: 'https://cdn.example.com/skills/my-skill-1.2.0.zip',
+        version: '1.2.0',
+        sha256: ZIP_SHA256,
+        downloadedAt: 'x',
+      }),
+    );
+
+    const result = await downloadArtefact(makeSource());
+
+    expect(result.isNew).toBe(false);
+    expect(result.version).toBe('1.2.0');
+    expect(result.sha256).toBe(ZIP_SHA256);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('re-downloads when the cache entry came from a different URL (no cross-source reuse)', async () => {
+    // Same <name>/<version> cache key, but downloaded from another host
+    const cacheDir = path.join(mockArtefactsDir, 'my-skill', '1.2.0');
+    await mkdir(cacheDir, { recursive: true });
+    await writeFile(
+      path.join(cacheDir, ARTEFACT_META_FILE),
+      JSON.stringify({
+        artefactUrl: 'https://other-cdn.example.com/skills/my-skill-1.2.0.zip',
+        version: '1.2.0',
+        sha256: 'f'.repeat(64),
+        downloadedAt: 'x',
+      }),
+    );
+
+    mockFetchFor(okZipResponse(), notFoundResponse());
+
+    const result = await downloadArtefact(makeSource());
+
+    expect(result.isNew).toBe(true);
+    expect(result.sha256).toBe(ZIP_SHA256);
+    expect(fetch).toHaveBeenCalled();
+  });
+
+  it('re-downloads when forceUpdate is true even if cached', async () => {
+    const cacheDir = path.join(mockArtefactsDir, 'my-skill', '1.2.0');
+    await mkdir(cacheDir, { recursive: true });
+    await writeFile(
+      path.join(cacheDir, ARTEFACT_META_FILE),
+      JSON.stringify({
+        artefactUrl: 'https://cdn.example.com/skills/my-skill-1.2.0.zip',
+        version: '1.2.0',
+        sha256: ZIP_SHA256,
+        downloadedAt: 'x',
+      }),
+    );
+
+    mockFetchFor(okZipResponse(), sidecarResponse(ZIP_SHA256));
+
+    const result = await downloadArtefact(makeSource(), { forceUpdate: true });
+
+    expect(result.isNew).toBe(true);
+    expect(fetch).toHaveBeenCalled();
+  });
+
+  it('re-downloads when the cached hash does not match an explicitly pinned sha256', async () => {
+    const cacheDir = path.join(mockArtefactsDir, 'my-skill', '1.2.0');
+    await mkdir(cacheDir, { recursive: true });
+    await writeFile(
+      path.join(cacheDir, ARTEFACT_META_FILE),
+      JSON.stringify({
+        artefactUrl: 'https://cdn.example.com/skills/my-skill-1.2.0.zip',
+        version: '1.2.0',
+        sha256: 'f'.repeat(64),
+        downloadedAt: 'x',
+      }),
+    );
+
+    mockFetchFor(okZipResponse(), notFoundResponse());
+
+    const result = await downloadArtefact(makeSource({ sha256: ZIP_SHA256 }));
+
+    expect(result.isNew).toBe(true);
+    expect(result.sha256).toBe(ZIP_SHA256);
+  });
+
+  it('verifies against an explicitly pinned sha256 instead of the sidecar', async () => {
+    mockFetchFor(okZipResponse(), sidecarResponse('f'.repeat(64)));
+
+    // Sidecar hash is wrong, but the explicit pin matches — must succeed
+    const result = await downloadArtefact(makeSource({ sha256: ZIP_SHA256 }));
+    expect(result.isNew).toBe(true);
+
+    // Sidecar URL must not even be fetched when an explicit pin exists
+    const sidecarCalls = vi
+      .mocked(fetch)
+      .mock.calls.filter(([input]) => String(input).endsWith('.sha256'));
+    expect(sidecarCalls).toHaveLength(0);
+  });
+
+  it('throws IntegrityError and reports failure when the hash does not match', async () => {
+    mockFetchFor(okZipResponse(), sidecarResponse('f'.repeat(64)));
+
+    await expect(downloadArtefact(makeSource())).rejects.toThrow('integrity check failed');
+    expect(trackTelemetryError).toHaveBeenCalledWith(
+      'artefact_download_failed',
+      expect.any(Error),
+      expect.objectContaining({ name: 'my-skill' }),
+    );
+  });
+
+  it('proceeds with a warning when no sidecar exists and no sha256 is pinned', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mockFetchFor(okZipResponse(), notFoundResponse());
+
+    const result = await downloadArtefact(makeSource());
+
+    expect(result.isNew).toBe(true);
+    expect(result.sha256).toBe(ZIP_SHA256);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('Skipping integrity check'));
+    warn.mockRestore();
+  });
+
+  it('resolves the version from an embedded manifest.json when the URL has none', async () => {
+    mockExtractZip.mockImplementation(async (_zipPath: string, { dir }: { dir: string }) => {
+      await writeFile(path.join(dir, 'SKILL.md'), '# skill');
+      await writeFile(path.join(dir, 'manifest.json'), JSON.stringify({ version: '3.4.5' }));
+    });
+    mockFetchFor(okZipResponse(), notFoundResponse());
+
+    const result = await downloadArtefact(
+      makeSource({ artefactUrl: 'https://cdn.example.com/my-skill.zip' }),
+    );
+
+    expect(result.version).toBe('3.4.5');
+    expect(result.extractDir).toBe(path.join(mockArtefactsDir, 'my-skill', '3.4.5'));
+  });
+
+  it('falls back to a content-hash version when nothing else is available', async () => {
+    mockFetchFor(okZipResponse(), notFoundResponse());
+
+    const result = await downloadArtefact(
+      makeSource({ artefactUrl: 'https://cdn.example.com/my-skill.zip' }),
+    );
+
+    expect(result.version).toBe(`sha-${ZIP_SHA256.slice(0, 12)}`);
+  });
+
+  it('throws a descriptive error on 404', async () => {
+    vi.mocked(fetch).mockResolvedValue(notFoundResponse());
+
+    await expect(downloadArtefact(makeSource())).rejects.toThrow('Artefact not found');
+  });
+
+  it('throws an access error on 403', async () => {
+    vi.mocked(fetch).mockResolvedValue({ ok: false, status: 403, statusText: 'Forbidden' } as Response);
+
+    await expect(downloadArtefact(makeSource())).rejects.toThrow('Access denied');
+  });
+
+  it('throws a generic error on 500', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: false,
+      status: 500,
+      statusText: 'Internal Server Error',
+    } as Response);
+
+    await expect(downloadArtefact(makeSource())).rejects.toThrow(
+      'Failed to download artefact: 500',
+    );
+  });
+
+  it('fires started and succeeded telemetry on success', async () => {
+    mockFetchFor(okZipResponse(), sidecarResponse(ZIP_SHA256));
+
+    await downloadArtefact(makeSource());
+
+    expect(trackTelemetryEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'artefact_download_started' }),
+    );
+    expect(trackTelemetryEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'artefact_download_succeeded' }),
+    );
+  });
+});
+
+// ── checkArtefactUpdate ───────────────────────────────────────────────────────
+
+describe('checkArtefactUpdate', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function makePin(overrides: Partial<SkillSourcePin> = {}): SkillSourcePin {
+    return {
+      sourceType: 'artefact',
+      installLayout: 'namespaced',
+      artefactUrl: 'https://cdn.example.com/my-skill-1.2.0.zip',
+      sha256: ZIP_SHA256,
+      artefactVersion: '1.2.0',
+      ...overrides,
+    };
+  }
+
+  it('reports an update when the remote hash differs from the pin', async () => {
+    vi.mocked(fetch).mockResolvedValue(sidecarResponse('f'.repeat(64)));
+
+    const result = await checkArtefactUpdate(makePin());
+
+    expect(result.updateAvailable).toBe(true);
+    expect(result.pinnedSha256).toBe(ZIP_SHA256);
+    expect(result.remoteSha256).toBe('f'.repeat(64));
+  });
+
+  it('reports no update when the remote hash matches the pin', async () => {
+    vi.mocked(fetch).mockResolvedValue(sidecarResponse(ZIP_SHA256));
+
+    const result = await checkArtefactUpdate(makePin());
+
+    expect(result.updateAvailable).toBe(false);
+  });
+
+  it('reports no update when the remote sidecar is unavailable', async () => {
+    vi.mocked(fetch).mockResolvedValue(notFoundResponse());
+
+    const result = await checkArtefactUpdate(makePin());
+
+    expect(result.updateAvailable).toBe(false);
+    expect(result.remoteSha256).toBeNull();
+  });
+
+  it('reports no update when the pin has no sha256 to compare', async () => {
+    vi.mocked(fetch).mockResolvedValue(sidecarResponse('f'.repeat(64)));
+
+    const result = await checkArtefactUpdate(makePin({ sha256: undefined }));
+
+    expect(result.updateAvailable).toBe(false);
+  });
+
+  it('never mutates the pin — version pinning stays stable across checks', async () => {
+    vi.mocked(fetch).mockResolvedValue(sidecarResponse('f'.repeat(64)));
+
+    const pin = makePin();
+    const snapshot = structuredClone(pin);
+
+    await checkArtefactUpdate(pin);
+
+    expect(pin).toEqual(snapshot);
+  });
+
+  it('throws for a non-artefact pin', async () => {
+    const pin: SkillSourcePin = {
+      sourceType: 'repo',
+      installLayout: 'namespaced',
+      repoUrl: 'https://github.com/org/repo',
+    };
+
+    await expect(checkArtefactUpdate(pin)).rejects.toThrow('artefact source pin');
+  });
+});

@@ -133,6 +133,39 @@ describe('SkillProvisioner (repo scope)', () => {
       expect(installed).toHaveLength(1);
       expect(installed[0].name).toBe('test-skill');
     });
+
+    it('surfaces the pinned artefact version for artefact-sourced installs', async () => {
+      const prov = new ClaudeCodeProvisioner({ scope: 'repo', repoRoot });
+      const skill = getSkillInfo();
+
+      await prov.install([skill], '', {
+        sourceType: 'artefact',
+        installLayout: 'namespaced',
+        artefactUrl: 'https://cdn.example.com/test-skill-1.2.0.zip',
+        sha256: 'a'.repeat(64),
+        artefactVersion: '1.2.0',
+      });
+      const installed = await prov.getInstalled();
+
+      expect(installed).toHaveLength(1);
+      expect(installed[0].bundleVersion).toBe('1.2.0');
+    });
+
+    it('surfaces the pinned git ref for repo-sourced installs', async () => {
+      const prov = new ClaudeCodeProvisioner({ scope: 'repo', repoRoot });
+      const skill = getSkillInfo();
+
+      await prov.install([skill], '', {
+        sourceType: 'repo',
+        installLayout: 'namespaced',
+        repoUrl: 'https://github.com/org/skills',
+        ref: 'v2.0',
+      });
+      const installed = await prov.getInstalled();
+
+      expect(installed).toHaveLength(1);
+      expect(installed[0].bundleVersion).toBe('v2.0');
+    });
   });
 
   describe('uninstall (repo scope)', () => {

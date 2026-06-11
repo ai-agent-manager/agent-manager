@@ -227,6 +227,22 @@ describe('resolveSkillSource — artefact URLs', () => {
     const result = await resolveSkillSource('https://cdn.example.com/skill.zip', { installLayout: 'flat' });
     expect((result as ArtefactSkillSource).installLayout).toBe('flat');
   });
+
+  it('rejects plain http artefact URLs', async () => {
+    await expect(resolveSkillSource('http://cdn.example.com/skill.zip')).rejects.toThrow(
+      'Artefact sources must use https',
+    );
+  });
+
+  it('allows http artefact URLs on localhost for development', async () => {
+    const result = await resolveSkillSource('http://localhost:8080/agents/my-skill-1.0.0.zip');
+    expect(result.type).toBe('artefact');
+  });
+
+  it('allows http artefact URLs on 127.0.0.1 for development', async () => {
+    const result = await resolveSkillSource('http://127.0.0.1:8080/my-skill.zip');
+    expect(result.type).toBe('artefact');
+  });
 });
 
 describe('resolveSkillSource — bundle (legacy) URLs', () => {
@@ -314,6 +330,20 @@ describe('buildSourcePin', () => {
     expect(pin.artefactUrl).toBe('https://cdn.example.com/skill.zip');
     expect(pin.repoUrl).toBeUndefined();
     expect(pin.bundleVersion).toBeUndefined();
+  });
+
+  it('preserves sha256 and version in an artefact pin', () => {
+    const source: ArtefactSkillSource = {
+      type: 'artefact',
+      artefactUrl: 'https://cdn.example.com/skills/my-skill/1.2.0/my-skill.zip',
+      sha256: 'a'.repeat(64),
+      version: '1.2.0',
+      installLayout: 'namespaced',
+    };
+    const pin = buildSourcePin(source);
+    expect(pin.sourceType).toBe('artefact');
+    expect(pin.sha256).toBe('a'.repeat(64));
+    expect(pin.artefactVersion).toBe('1.2.0');
   });
 
   it('builds a pin for a bundle URL source with bundleVersion', async () => {

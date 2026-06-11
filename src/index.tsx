@@ -67,7 +67,8 @@ try {
         }
 
         if (source.type === 'artefact') {
-            console.log('  Artefact sources are not yet supported in interactive mode.\n');
+            console.log('  Artefact sources require headless mode. Use the --config flag:');
+            console.log(`    agentman ${sourceInput} --config ai-skills.yml\n`);
             process.exit(1);
         }
 

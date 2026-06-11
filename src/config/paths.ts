@@ -41,6 +41,16 @@ export function getRepoCacheDir(owner: string, repo: string, ref: string): strin
   return path.join(getReposDir(), owner, repo, ref);
 }
 
+/** Directory containing cached skill artefact downloads */
+export function getArtefactsDir(): string {
+    return path.join(getAgentmanDir(), 'artefacts');
+}
+
+/** Cache directory for a specific artefact at a given version */
+export function getArtefactCacheDir(name: string, version: string): string {
+    return path.join(getArtefactsDir(), name, version);
+}
+
 /** Directory for saved auth state (restricted permissions) */
 export function getAuthDir(): string {
   return path.join(getAgentmanDir(), 'auth');

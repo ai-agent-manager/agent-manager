@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { SkillSourcePin } from "./skill-source.js";
 
@@ -67,9 +67,20 @@ export async function readRepoConfig(repoRoot: string): Promise<RepoAgentmanConf
 
 /**
  * Write the per-repo `.agentman.json` config.
+ *
+ * Writes to a temp file and renames into place so an interrupted write can
+ * never leave a truncated .agentman.json behind.
  */
 export async function writeRepoConfig(repoRoot: string, config: RepoAgentmanConfig): Promise<void> {
-    await writeFile(getRepoConfigPath(repoRoot), JSON.stringify(config, null, 2) + "\n");
+    const configPath = getRepoConfigPath(repoRoot);
+    const tempPath = `${configPath}.${process.pid}.tmp`;
+    await writeFile(tempPath, JSON.stringify(config, null, 2) + "\n");
+    try {
+        await rename(tempPath, configPath);
+    } catch (error) {
+        await rm(tempPath, { force: true }).catch(() => {});
+        throw error;
+    }
 }
 
 /**

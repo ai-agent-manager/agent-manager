@@ -1,4 +1,4 @@
-import { readdir, readFile, readlink, rm, symlink, unlink, mkdir, writeFile, lstat } from "node:fs/promises";
+import { readdir, readFile, readlink, rename, rm, symlink, unlink, mkdir, writeFile, lstat } from "node:fs/promises";
 import path from "node:path";
 import {
     getAgentmanDir,
@@ -260,22 +260,50 @@ export async function removeCachedBundle(version: string): Promise<void> {
 
 /**
  * Read the agentman config file.
+ *
+ * A missing file yields an empty config (first run). A file that exists but
+ * cannot be parsed throws: silently falling back to an empty config would
+ * cause the next write to wipe every install record.
  */
 export async function readConfig(): Promise<AgentmanConfig> {
+    let raw: string;
     try {
-        const raw = await readFile(getConfigPath(), "utf-8");
+        raw = await readFile(getConfigPath(), "utf-8");
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+            return { installations: {} };
+        }
+        throw error;
+    }
+
+    try {
         return JSON.parse(raw) as AgentmanConfig;
-    } catch {
-        return { installations: {} };
+    } catch (error) {
+        throw new Error(
+            `Config file is corrupted: ${getConfigPath()}\n` +
+                `  ${error instanceof Error ? error.message : String(error)}\n` +
+                `  Fix or remove the file and retry.`,
+        );
     }
 }
 
 /**
  * Write the agentman config file.
+ *
+ * Writes to a temp file and renames into place so an interrupted write can
+ * never leave a truncated config.json behind.
  */
 export async function writeConfig(config: AgentmanConfig): Promise<void> {
     await mkdir(getAgentmanDir(), { recursive: true });
-    await writeFile(getConfigPath(), JSON.stringify(config, null, 2));
+    const configPath = getConfigPath();
+    const tempPath = `${configPath}.${process.pid}.tmp`;
+    await writeFile(tempPath, JSON.stringify(config, null, 2));
+    try {
+        await rename(tempPath, configPath);
+    } catch (error) {
+        await rm(tempPath, { force: true }).catch(() => {});
+        throw error;
+    }
 }
 
 /**

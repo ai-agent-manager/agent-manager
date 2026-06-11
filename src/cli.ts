@@ -29,6 +29,7 @@ export function parseCli() {
   ${chalk.bold("Arguments")}
     source      Source to install skills from. Accepted formats:
                 GitHub repo:  https://github.com/org/repo[/tree/<ref>]
+                Artefact zip: https://cdn.example.com/my-skill-1.2.0.zip
                 Bundle URL:   https://bundles.example.com
                 Local dir:    ./path/to/local-bundle
 
@@ -48,6 +49,7 @@ export function parseCli() {
     $ agentman file:///tmp/test-plugin --type=git
     $ agentman https://github.com/org/my-skills-repo --config ai-skills.yml
     $ agentman https://github.com/org/my-skills-repo/tree/v2.0 --config ai-skills.yml
+    $ agentman https://cdn.example.com/my-skill-1.2.0.zip --config ai-skills.yml
     $ agentman https://bundles.example.com --config ai-skills.yml
     $ agentman https://bundles.example.com --update
     $ agentman ./my-local-bundle

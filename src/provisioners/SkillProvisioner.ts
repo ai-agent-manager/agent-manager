@@ -55,7 +55,10 @@ export abstract class SkillProvisioner implements Provisioner {
     if (!(await pathExists(skillsDir))) return [];
 
     // Read install records from the appropriate config
-    let toolInstalls: Record<string, { bundleVersion?: string; installedAt?: string; method?: string }> = {};
+    let toolInstalls: Record<
+      string,
+      { bundleVersion?: string; installedAt?: string; method?: string; sourcePin?: SkillSourcePin }
+    > = {};
     if (this.scope === 'repo' && this.repoRoot) {
       const repoConfig = await readRepoConfig(this.repoRoot);
       toolInstalls = repoConfig?.installations[this.id] ?? {};
@@ -73,10 +76,13 @@ export abstract class SkillProvisioner implements Provisioner {
       const skillPath = path.join(skillsDir, entry.name);
       const version = await resolveSkillVersion(skillPath);
       const record = toolInstalls[entry.name];
+      // Repo/artefact installs have no bundle version — surface the version
+      // coordinate pinned at install time instead (artefact version or git ref).
+      const pinnedVersion = record?.sourcePin?.artefactVersion ?? record?.sourcePin?.ref;
 
       installed.push({
         name: entry.name,
-        bundleVersion: version ?? record?.bundleVersion ?? 'unknown',
+        bundleVersion: version ?? record?.bundleVersion ?? pinnedVersion ?? 'unknown',
         installedAt: record?.installedAt ?? 'unknown',
         method: (record?.method as 'symlink' | 'copy') ?? (version ? 'symlink' : 'copy'),
         path: skillPath,
