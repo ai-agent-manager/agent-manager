@@ -51,7 +51,7 @@ Skip the menu entirely with a config file:
 npx -y @ai-agent-manager/cli@latest <source> --config .github/ai-skills.yml
 ```
 
-The `<source>` can be a **bundle URL**, a **GitHub repository URL**, or a **local directory** — agentman detects the type automatically.
+The `<source>` can be a **bundle URL**, a **GitHub repository URL**, a **published artefact** (a `.zip` URL), or a **local directory** — agentman detects the type automatically.
 
 **Config format:**
 
@@ -61,6 +61,7 @@ scope: repo              # repo (default) | system
 skills:
   - my-skill-name
 bundle-version: 1.2.0   # optional — bundle sources only, omit to use latest
+artefact-sha256: <hex>  # optional — artefact sources only, pins the expected zip hash
 ```
 
 | Field | Required | Description |
@@ -69,6 +70,7 @@ bundle-version: 1.2.0   # optional — bundle sources only, omit to use latest
 | `scope` | No | `repo` installs into the current directory; `system` installs to the home directory |
 | `skills` | Yes | Names of skills to install (matched by directory name) |
 | `bundle-version` | No | Bundle sources only — pin to a specific version, or omit to track latest |
+| `artefact-sha256` | No | Artefact sources only — expected SHA-256 of the zip; the install fails if the download doesn't match |
 
 Unknown skill names log a warning and are skipped. If no valid skills are found, the tool exits non-zero.
 
@@ -114,6 +116,21 @@ npx -y @ai-agent-manager/cli@latest https://github.com/org/my-skills-repo/tree/v
     npx -y @ai-agent-manager/cli@latest https://github.com/org/my-skills-repo \
       --config .github/ai-skills.yml
 ```
+
+#### Install from a published artefact
+
+Point agentman at a published, versioned skill `.zip` (an artefact). Unlike a bundle, an artefact is a single packaged skill (or small set of skills) addressed by a direct URL:
+
+```bash
+npx -y @ai-agent-manager/cli@latest https://cdn.example.com/skills/my-skill-1.2.0.zip \
+  --config .github/ai-skills.yml
+```
+
+The version is resolved from the filename (`my-skill-1.2.0.zip`), the URL path, an embedded `manifest.json`, or — as a last resort — the content hash. The resolved version and source URL are pinned in the install record so the exact artefact can be reproduced and tracked later.
+
+Integrity is verified against a `.sha256` sidecar published next to the zip (e.g. `my-skill-1.2.0.zip.sha256`). If no sidecar is found the download proceeds with a warning; if the hash doesn't match, the download is rejected. For an out-of-band pin that doesn't trust the artefact server, set `artefact-sha256` in `ai-skills.yml` — it takes precedence over the sidecar.
+
+Artefact URLs must use `https://`. Plain `http://` is only accepted for localhost (local development against a mock server).
 
 #### Install from a bundle server
 
