@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   mock-install:
-    name: Install skills from mock server
+    name: Install skills via discovery document
     runs-on: ubuntu-latest
 
     steps:

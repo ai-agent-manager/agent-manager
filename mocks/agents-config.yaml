@@ -12,6 +12,12 @@ cors:
   allowOrigins: all
 
 resources:
+  # --- Discovery document at well-known path --------------------------------
+  - path: /.well-known/agents/discovery.json
+    method: GET
+    response:
+      file: .well-known/agents/discovery.json
+
   # --- Serve all files under /agents/ from the agents/ directory ------------
   - path: /agents/*
     method: GET
