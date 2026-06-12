@@ -4,6 +4,7 @@ import { render } from "ink";
 import { parseCli, BANNER } from "./cli.js";
 import { App } from "./app.js";
 import { resolveSource } from "./bundle/source.js";
+import { startConsoleSpinner } from "./lib/console-spinner.js";
 import {
     getBundleEndpointTelemetryValue,
     getBundleSourceTelemetryProperties,
@@ -22,8 +23,11 @@ if (!sourceInput) {
 
 console.log(BANNER);
 
+const spinner = startConsoleSpinner("Resolving source...");
+
 try {
     const source = await resolveSource(sourceInput);
+    spinner.stop();
     trackTelemetryEvent({
         action: "agentman_started",
         properties: {
@@ -40,6 +44,7 @@ try {
 
     render(<App source={source} forceUpdate={forceUpdate} />);
 } catch (err) {
+    spinner.stop();
     const sourceTelemetry = /^https?:\/\//i.test(sourceInput)
         ? {
               source: "url",
