@@ -54,7 +54,7 @@ npx -y @ai-agent-manager/cli@latest <base-url> --config .github/ai-skills.yml
 **Config format:**
 
 ```yaml
-tools: claude-code        # one or more: claude-code | windsurf | github-copilot | cursor
+tools: claude-code        # one or more: claude-code | windsurf | github-copilot | cursor | kiro
 scope: repo              # repo (default) | system
 bundle-version: 1.2.0   # optional — omit to always use latest
 skills:
@@ -127,6 +127,7 @@ Skills are installed as symlinks into each tool's native skills directory:
 | Windsurf | `~/.codeium/windsurf/skills/<skill>/` | `<repo>/.windsurf/skills/<skill>/` |
 | GitHub Copilot | `~/.copilot/skills/<skill>/` | `<repo>/.github/copilot/skills/<skill>/` |
 | Cursor | `~/.agents/skills/<skill>/` | `<repo>/.cursor/skills/<skill>/` |
+| Kiro | `~/.kiro/skills/<skill>/` | `<repo>/.kiro/skills/<skill>/` |
 
 > **Cursor note:** There is no official global filesystem skills path for Cursor. Skills install to `~/.agents/skills/` using the cross-client convention. You may need to configure Cursor to discover this location.
 

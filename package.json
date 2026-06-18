@@ -35,9 +35,10 @@
     "agentman",
     "rovo",
     "claude-code",
-    "windsurf",
     "copilot",
-    "cursor"
+    "cursor",
+    "kiro",
+    "windsurf"
   ],
   "license": "Apache-2.0",
   "repository": {

@@ -6,6 +6,7 @@ import { ClaudeCodeProvisioner } from '../../../src/provisioners/ClaudeCodeProvi
 import { WindsurfProvisioner } from '../../../src/provisioners/WindsurfProvisioner.js';
 import { CopilotProvisioner } from '../../../src/provisioners/CopilotProvisioner.js';
 import { CursorProvisioner } from '../../../src/provisioners/CursorProvisioner.js';
+import { KiroProvisioner } from '../../../src/provisioners/KiroProvisioner.js';
 import type { SkillInfo } from '../../../src/bundle/scanner.js';
 import { REPO_CONFIG_FILENAME } from '../../../src/bundle/repo-config.js';
 
@@ -82,6 +83,11 @@ describe('SkillProvisioner (repo scope)', () => {
     it('Cursor installs to <repo>/.cursor/skills/', () => {
       const prov = new CursorProvisioner({ scope: 'repo', repoRoot });
       expect(prov.getRepoSkillsDir(repoRoot)).toBe(path.join(repoRoot, '.cursor', 'skills'));
+    });
+
+    it('Kiro installs to <repo>/.kiro/skills/', () => {
+      const prov = new KiroProvisioner({ scope: 'repo', repoRoot });
+      expect(prov.getRepoSkillsDir(repoRoot)).toBe(path.join(repoRoot, '.kiro', 'skills'));
     });
   });
 

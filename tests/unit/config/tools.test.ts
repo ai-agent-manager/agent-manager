@@ -4,13 +4,13 @@ import { SKILL_TOOLS, getToolById } from '../../../src/config/tools.js';
 import { getHomeDir } from '../../../src/lib/platform.js';
 
 describe('SKILL_TOOLS', () => {
-  it('contains exactly 4 tools', () => {
-    expect(SKILL_TOOLS).toHaveLength(4);
+  it('contains exactly 5 tools', () => {
+    expect(SKILL_TOOLS).toHaveLength(5);
   });
 
   it('has the expected tool IDs', () => {
     const ids = SKILL_TOOLS.map((t) => t.id);
-    expect(ids).toEqual(['claude-code', 'windsurf', 'github-copilot', 'cursor']);
+    expect(ids).toEqual(['claude-code', 'windsurf', 'github-copilot', 'cursor', 'kiro']);
   });
 
   it('each tool has a name, id, getSkillsDir, and getRepoSkillsDir function', () => {
@@ -52,6 +52,13 @@ describe('SKILL_TOOLS', () => {
     expect(dir).toContain('skills');
   });
 
+  it('returns correct skills directory for kiro', () => {
+    const tool = SKILL_TOOLS.find((t) => t.id === 'kiro')!;
+    const dir = tool.getSkillsDir();
+    expect(dir).toContain('.kiro');
+    expect(dir).toContain('skills');
+  });
+
   it('cursor tool has a note about cross-client convention', () => {
     const tool = SKILL_TOOLS.find((t) => t.id === 'cursor')!;
     expect(tool.note).toBeTruthy();
@@ -80,6 +87,11 @@ describe('getRepoSkillsDir', () => {
   it('cursor returns <repo>/.cursor/skills/', () => {
     const tool = SKILL_TOOLS.find((t) => t.id === 'cursor')!;
     expect(tool.getRepoSkillsDir(repoRoot)).toBe(path.join(repoRoot, '.cursor', 'skills'));
+  });
+
+  it('kiro returns <repo>/.kiro/skills/', () => {
+    const tool = SKILL_TOOLS.find((t) => t.id === 'kiro')!;
+    expect(tool.getRepoSkillsDir(repoRoot)).toBe(path.join(repoRoot, '.kiro', 'skills'));
   });
 
   it('repo paths are different from system paths', () => {
