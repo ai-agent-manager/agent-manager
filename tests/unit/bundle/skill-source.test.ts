@@ -11,6 +11,11 @@ import {
   resolveSkillSource,
   buildSourcePin,
   describeSkillSource,
+  sanitiseNamespaceSegment,
+  deriveRepoNamespace,
+  deriveArtefactNamespace,
+  deriveInstallNamespace,
+  buildInstallKey,
   GITHUB_HOSTS_DEFAULT,
   type SkillSource,
   type RepoSkillSource,
@@ -428,5 +433,170 @@ describe('describeSkillSource', () => {
   it('describes a bundle source with neither baseUrl nor dirPath as (local)', () => {
     const source: BundleSkillSource = { type: 'bundle', installLayout: 'flat' };
     expect(describeSkillSource(source)).toBe('bundle: (local)');
+  });
+});
+
+// ── sanitiseNamespaceSegment ──────────────────────────────────────────────────
+
+describe('sanitiseNamespaceSegment', () => {
+  it('returns the input unchanged when it is already clean', () => {
+    expect(sanitiseNamespaceSegment('my-org')).toBe('my-org');
+  });
+
+  it('lowercases uppercase characters', () => {
+    expect(sanitiseNamespaceSegment('MyOrg')).toBe('myorg');
+  });
+
+  it('replaces spaces with hyphens', () => {
+    expect(sanitiseNamespaceSegment('my org')).toBe('my-org');
+  });
+
+  it('replaces disallowed special characters with hyphens', () => {
+    expect(sanitiseNamespaceSegment('my!org@name')).toBe('my-org-name');
+  });
+
+  it('strips leading hyphens', () => {
+    expect(sanitiseNamespaceSegment('---my-org')).toBe('my-org');
+  });
+
+  it('strips trailing hyphens', () => {
+    expect(sanitiseNamespaceSegment('my-org---')).toBe('my-org');
+  });
+
+  it('returns "unknown" for an empty string', () => {
+    expect(sanitiseNamespaceSegment('')).toBe('unknown');
+  });
+
+  it('returns "unknown" for a string that is all special characters', () => {
+    expect(sanitiseNamespaceSegment('!!!')).toBe('unknown');
+  });
+
+  it('preserves dots and underscores', () => {
+    expect(sanitiseNamespaceSegment('my.org_name')).toBe('my.org_name');
+  });
+});
+
+// ── deriveRepoNamespace ───────────────────────────────────────────────────────
+
+describe('deriveRepoNamespace', () => {
+  it('produces host/org/repo for a simple github.com URL', () => {
+    expect(deriveRepoNamespace('https://github.com/my-org/my-repo')).toBe('github.com/my-org/my-repo');
+  });
+
+  it('strips a .git suffix from the repo segment', () => {
+    expect(deriveRepoNamespace('https://github.com/my-org/my-repo.git')).toBe('github.com/my-org/my-repo');
+  });
+
+  it('ignores /tree/<ref> path segments beyond org/repo', () => {
+    expect(deriveRepoNamespace('https://github.com/my-org/my-repo/tree/main')).toBe('github.com/my-org/my-repo');
+  });
+
+  it('includes the GHES hostname for a GitHub Enterprise URL', () => {
+    expect(deriveRepoNamespace('https://github.acme-corp.com/my-org/my-repo')).toBe(
+      'github.acme-corp.com/my-org/my-repo',
+    );
+  });
+
+  it('lowercases uppercase org and repo names', () => {
+    expect(deriveRepoNamespace('https://github.com/MyOrg/MyRepo')).toBe('github.com/myorg/myrepo');
+  });
+
+  it('sanitises special characters in org and repo names', () => {
+    expect(deriveRepoNamespace('https://github.com/my org/my!repo')).toBe('github.com/my-org/my-repo');
+  });
+});
+
+// ── deriveArtefactNamespace ───────────────────────────────────────────────────
+
+describe('deriveArtefactNamespace', () => {
+  it('produces host/artefact-name for a versioned URL', () => {
+    expect(deriveArtefactNamespace('https://cdn.example.com/skills/my-skill/1.2.0/my-skill-1.2.0.zip')).toBe(
+      'cdn.example.com/my-skill',
+    );
+  });
+
+  it('produces host/artefact-name for a URL with version in parent segment', () => {
+    expect(deriveArtefactNamespace('https://cdn.example.com/skills/my-skill/1.2.0/skill.zip')).toBe(
+      'cdn.example.com/skill',
+    );
+  });
+
+  it('lowercases the hostname', () => {
+    expect(deriveArtefactNamespace('https://CDN.EXAMPLE.COM/my-skill-1.0.0.zip')).toBe(
+      'cdn.example.com/my-skill',
+    );
+  });
+
+  it('produces host/filename-without-extension for a zip at the URL root', () => {
+    expect(deriveArtefactNamespace('https://cdn.example.com/my-skill.zip')).toBe('cdn.example.com/my-skill');
+  });
+
+  it('two different versions of the same skill share the same namespace', () => {
+    const ns1 = deriveArtefactNamespace('https://cdn.example.com/my-skill-1.0.0.zip');
+    const ns2 = deriveArtefactNamespace('https://cdn.example.com/my-skill-2.0.0.zip');
+    expect(ns1).toBe(ns2);
+  });
+});
+
+// ── deriveInstallNamespace ────────────────────────────────────────────────────
+
+describe('deriveInstallNamespace', () => {
+  it('returns namespace for a repo source pin with namespaced layout', () => {
+    const ns = deriveInstallNamespace({
+      sourceType: 'repo',
+      installLayout: 'namespaced',
+      repoUrl: 'https://github.com/my-org/my-repo',
+      ref: 'main',
+    });
+    expect(ns).toBe('github.com/my-org/my-repo');
+  });
+
+  it('returns namespace for an artefact source pin with namespaced layout', () => {
+    const ns = deriveInstallNamespace({
+      sourceType: 'artefact',
+      installLayout: 'namespaced',
+      artefactUrl: 'https://cdn.example.com/my-skill-1.0.0.zip',
+    });
+    expect(ns).toBe('cdn.example.com/my-skill');
+  });
+
+  it('returns null for a bundle source pin', () => {
+    const ns = deriveInstallNamespace({
+      sourceType: 'bundle',
+      installLayout: 'flat',
+      bundleVersion: '2026.05.01',
+    });
+    expect(ns).toBeNull();
+  });
+
+  it('returns null when installLayout is flat regardless of source type', () => {
+    const ns = deriveInstallNamespace({
+      sourceType: 'repo',
+      installLayout: 'flat',
+      repoUrl: 'https://github.com/my-org/my-repo',
+    });
+    expect(ns).toBeNull();
+  });
+
+  it('returns null for a repo pin missing repoUrl', () => {
+    const ns = deriveInstallNamespace({
+      sourceType: 'repo',
+      installLayout: 'namespaced',
+    });
+    expect(ns).toBeNull();
+  });
+});
+
+// ── buildInstallKey ───────────────────────────────────────────────────────────
+
+describe('buildInstallKey', () => {
+  it('returns namespace/skillDirName when namespace is provided', () => {
+    expect(buildInstallKey('github.com/my-org/my-repo', 'my-skill')).toBe(
+      'github.com/my-org/my-repo/my-skill',
+    );
+  });
+
+  it('returns bare skillDirName when namespace is null', () => {
+    expect(buildInstallKey(null, 'my-skill')).toBe('my-skill');
   });
 });

@@ -375,3 +375,101 @@ export function describeSkillSource(source: SkillSource): string {
     ? `bundle: ${source.baseUrl}`
     : `bundle: ${source.dirPath ?? '(local)'}`;
 }
+
+// ── Namespace derivation ──────────────────────────────────────────────────────
+
+/**
+ * Sanitise a single namespace path segment for safe use as a filesystem directory name.
+ * Lowercases, replaces any character outside [a-z0-9._-] with '-', and strips
+ * leading/trailing hyphens. Returns 'unknown' for empty inputs.
+ */
+export function sanitiseNamespaceSegment(s: string): string {
+  const cleaned = s
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^[-]+|[-]+$/g, '');
+  return cleaned || 'unknown';
+}
+
+/**
+ * Derive the install namespace for a GitHub repository URL.
+ * Format: "<sanitised-host>/<sanitised-org>/<sanitised-repo>"
+ *
+ * The host is included so installs from GitHub Enterprise Server instances
+ * never collide with github.com installs that share the same org/repo name.
+ */
+export function deriveRepoNamespace(repoUrl: string): string {
+  const parsed = new URL(repoUrl);
+  const segments = parsed.pathname.split('/').filter(Boolean).map((s) => {
+    try { return decodeURIComponent(s); } catch { return s; }
+  });
+  const org = segments[0] ?? 'unknown';
+  const repo = segments[1]?.replace(/\.git$/i, '') ?? 'unknown';
+  return [
+    sanitiseNamespaceSegment(parsed.hostname),
+    sanitiseNamespaceSegment(org),
+    sanitiseNamespaceSegment(repo),
+  ].join('/');
+}
+
+/**
+ * Derive the install namespace for an artefact URL.
+ * Format: "<sanitised-host>/<artefact-name>"
+ *
+ * The artefact name is taken from the filename (without version suffix or .zip
+ * extension) using the same extraction logic as parseArtefactUrl, so
+ * "https://cdn.example.com/skills/my-skill/1.2.0/my-skill.zip" → "cdn.example.com/my-skill".
+ *
+ * Same-named artefacts on the same host intentionally share a namespace — they
+ * represent the same logical skill package across versions. The source pin's
+ * artefactVersion / sha256 fields provide version-level disambiguation.
+ */
+export function deriveArtefactNamespace(artefactUrl: string): string {
+  // Inline the name extraction from parseArtefactUrl to avoid a runtime
+  // circular-import risk (artefact-downloader imports from skill-source).
+  const parsed = new URL(artefactUrl);
+  const segments = parsed.pathname.split('/').filter(Boolean);
+  const fileName = segments[segments.length - 1] ?? '';
+  const base = fileName.replace(/\.zip$/i, '');
+
+  // Strip version suffix if present (mirrors parseArtefactUrl's sanitiseName)
+  const suffixMatch = base.match(/^(.+?)[-_](v?\d+\.\d+\.\d+(?:[-+][\w.]+)?)$/);
+  const rawName = suffixMatch ? suffixMatch[1] : base;
+  const name = rawName.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^[-.]+|[-.]+$/g, '') || 'artefact';
+
+  return `${sanitiseNamespaceSegment(parsed.hostname)}/${name}`;
+}
+
+/**
+ * Derive the install namespace from a persisted SkillSourcePin.
+ * Returns null for flat layouts (bundle sources and any source where
+ * installLayout is explicitly set to 'flat').
+ */
+export function deriveInstallNamespace(pin: SkillSourcePin): string | null {
+  if (pin.installLayout !== 'namespaced') return null;
+  if (pin.sourceType === 'repo' && pin.repoUrl) {
+    return deriveRepoNamespace(pin.repoUrl);
+  }
+  if (pin.sourceType === 'artefact' && pin.artefactUrl) {
+    return deriveArtefactNamespace(pin.artefactUrl);
+  }
+  return null;
+}
+
+/**
+ * Build the install config key (and filesystem sub-path) for a skill.
+ * When namespace is non-null: "<namespace>/<skillDirName>"  (namespaced layout)
+ * When namespace is null:      "<skillDirName>"             (flat layout)
+ */
+export function buildInstallKey(namespace: string | null, skillDirName: string): string {
+  return namespace ? `${namespace}/${skillDirName}` : skillDirName;
+}
+
+/**
+ * Flatten a namespace string into a safe single-segment filesystem token.
+ * Replaces "/" with "-" so "github.com/org/repo" becomes "github.com-org-repo".
+ * Used to build the qualified link name when two skills share the same bare skillId.
+ */
+export function flattenNamespace(namespace: string): string {
+  return namespace.replace(/\//g, '-');
+}

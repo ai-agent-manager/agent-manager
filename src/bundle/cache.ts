@@ -47,6 +47,8 @@ export interface InstallRecord {
     method: "symlink" | "copy";
     /** Source pin persisted at install time for multi-source tracking. */
     sourcePin?: SkillSourcePin;
+    /** Flat link name under the tool's skills dir (one level only). Absent for legacy flat installs — use bare skillId. */
+    linkName?: string;
 }
 
 /**

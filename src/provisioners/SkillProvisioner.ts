@@ -7,7 +7,37 @@ import { createLink, removeLink, resolveSkillVersion } from '../lib/symlink.js';
 import { ensureDir, pathExists } from '../lib/fs.js';
 import { recordInstall, removeInstallRecord, readConfig } from '../bundle/cache.js';
 import { recordRepoInstall, removeRepoInstallRecord, readRepoConfig } from '../bundle/repo-config.js';
+import { deriveInstallNamespace, buildInstallKey, flattenNamespace } from '../bundle/skill-source.js';
 import type { SkillSourcePin } from '../bundle/skill-source.js';
+
+type InstallRecordMap = Record<
+  string,
+  { bundleVersion?: string; installedAt?: string; method?: string; sourcePin?: SkillSourcePin; linkName?: string }
+>;
+
+type ResolveResult =
+  | { type: 'found'; key: string }
+  | { type: 'ambiguous'; keys: string[] }
+  | { type: 'not-found' };
+
+/**
+ * Resolve a caller-supplied name to a config key.
+ * If `name` is an exact key, return it directly.
+ * If it matches as a bare skillId (last segment) across one or more keys,
+ * return the single match or signal ambiguity when more than one key matches.
+ */
+function resolveInstallKey(name: string, records: InstallRecordMap): ResolveResult {
+  if (name in records) return { type: 'found', key: name };
+
+  const matches = Object.keys(records).filter((k) => {
+    const segments = k.split('/');
+    return segments[segments.length - 1] === name;
+  });
+
+  if (matches.length === 1) return { type: 'found', key: matches[0] };
+  if (matches.length > 1) return { type: 'ambiguous', keys: matches };
+  return { type: 'not-found' };
+}
 
 export abstract class SkillProvisioner implements Provisioner {
   abstract readonly id: string;
@@ -26,18 +56,13 @@ export abstract class SkillProvisioner implements Provisioner {
     }
   }
 
-  /** Subclasses return the tool's system-wide skills directory */
   abstract getSkillsDir(): string;
-
-  /** Subclasses return the tool's repo-level skills directory */
   abstract getRepoSkillsDir(repoRoot: string): string;
 
-  /** Optional note displayed in the TUI */
   getNote(): string | undefined {
     return undefined;
   }
 
-  /** Resolve the effective skills directory based on scope */
   getEffectiveSkillsDir(): string {
     if (this.scope === 'repo' && this.repoRoot) {
       return this.getRepoSkillsDir(this.repoRoot);
@@ -46,7 +71,6 @@ export abstract class SkillProvisioner implements Provisioner {
   }
 
   async detect(): Promise<{ available: boolean; reason?: string }> {
-    // Skill provisioners are always "available" — we create the directory if needed
     return { available: true };
   }
 
@@ -54,11 +78,7 @@ export abstract class SkillProvisioner implements Provisioner {
     const skillsDir = this.getEffectiveSkillsDir();
     if (!(await pathExists(skillsDir))) return [];
 
-    // Read install records from the appropriate config
-    let toolInstalls: Record<
-      string,
-      { bundleVersion?: string; installedAt?: string; method?: string; sourcePin?: SkillSourcePin }
-    > = {};
+    let toolInstalls: InstallRecordMap = {};
     if (this.scope === 'repo' && this.repoRoot) {
       const repoConfig = await readRepoConfig(this.repoRoot);
       toolInstalls = repoConfig?.installations[this.id] ?? {};
@@ -67,24 +87,45 @@ export abstract class SkillProvisioner implements Provisioner {
       toolInstalls = config.installations[this.id] ?? {};
     }
 
-    const entries = await readdir(skillsDir, { withFileTypes: true });
     const installed: InstalledSkill[] = [];
+    const coveredLinkNames = new Set<string>();
 
-    for (const entry of entries) {
-      if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
+    for (const [key, record] of Object.entries(toolInstalls)) {
+      const segments = key.split('/');
+      const bareId = segments[segments.length - 1];
+      // Prefer stored linkName; fall back to bare skill ID for legacy records.
+      const linkName = record.linkName ?? bareId;
+      coveredLinkNames.add(linkName);
 
-      const skillPath = path.join(skillsDir, entry.name);
+      const skillPath = path.join(skillsDir, linkName);
+      if (!(await pathExists(skillPath))) continue;
+
       const version = await resolveSkillVersion(skillPath);
-      const record = toolInstalls[entry.name];
-      // Repo/artefact installs have no bundle version — surface the version
-      // coordinate pinned at install time instead (artefact version or git ref).
       const pinnedVersion = record?.sourcePin?.artefactVersion ?? record?.sourcePin?.ref;
 
       installed.push({
-        name: entry.name,
+        name: key,
         bundleVersion: version ?? record?.bundleVersion ?? pinnedVersion ?? 'unknown',
         installedAt: record?.installedAt ?? 'unknown',
         method: (record?.method as 'symlink' | 'copy') ?? (version ? 'symlink' : 'copy'),
+        path: skillPath,
+      });
+    }
+
+    // Catch orphaned flat installs that have no config record.
+    const entries = await readdir(skillsDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
+      if (coveredLinkNames.has(entry.name)) continue;
+
+      const skillPath = path.join(skillsDir, entry.name);
+      const version = await resolveSkillVersion(skillPath);
+
+      installed.push({
+        name: entry.name,
+        bundleVersion: version ?? 'unknown',
+        installedAt: 'unknown',
+        method: version ? 'symlink' : 'copy',
         path: skillPath,
       });
     }
@@ -96,36 +137,55 @@ export abstract class SkillProvisioner implements Provisioner {
     const skillsDir = this.getEffectiveSkillsDir();
     await ensureDir(skillsDir);
 
+    const namespace = sourcePin ? deriveInstallNamespace(sourcePin) : null;
     const result: InstallResult = { installed: [], errors: [] };
 
+    // Read existing records once to detect linkName collisions across all items.
+    let existingRecords: InstallRecordMap = {};
+    if (this.scope === 'repo' && this.repoRoot) {
+      const repoConfig = await readRepoConfig(this.repoRoot);
+      existingRecords = repoConfig?.installations[this.id] ?? {};
+    } else {
+      const config = await readConfig();
+      existingRecords = config.installations[this.id] ?? {};
+    }
+
     for (const item of items) {
-      const linkPath = path.join(skillsDir, item.dirName);
+      const installKey = buildInstallKey(namespace, item.dirName);
+      const linkName = pickLinkName(item.dirName, namespace, installKey, existingRecords);
+      const linkPath = path.join(skillsDir, linkName);
+
       try {
         const linkResult = await createLink(item.dirPath, linkPath);
+
         result.installed.push({
-          name: item.dirName,
+          name: installKey,
           method: linkResult.method,
           path: linkPath,
         });
 
-        // Record in the appropriate config
         if (this.scope === 'repo' && this.repoRoot) {
-          await recordRepoInstall(this.repoRoot, this.id, item.dirName, {
+          await recordRepoInstall(this.repoRoot, this.id, installKey, {
             installedAt: new Date().toISOString(),
             method: linkResult.method,
             sourcePin,
+            linkName,
           }, bundleVersion || undefined);
         } else {
-          await recordInstall(this.id, item.dirName, {
+          await recordInstall(this.id, installKey, {
             bundleVersion: bundleVersion || undefined,
             installedAt: new Date().toISOString(),
             method: linkResult.method,
             sourcePin,
+            linkName,
           });
         }
+
+        // Keep existingRecords in sync so later items in this batch see the linkName we just chose.
+        existingRecords[installKey] = { linkName };
       } catch (error) {
         result.errors.push({
-          name: item.dirName,
+          name: installKey,
           error: error instanceof Error ? error.message : String(error),
         });
       }
@@ -138,15 +198,55 @@ export abstract class SkillProvisioner implements Provisioner {
     const skillsDir = this.getEffectiveSkillsDir();
     const result: UninstallResult = { removed: [], errors: [] };
 
+    let toolInstalls: InstallRecordMap = {};
+    if (this.scope === 'repo' && this.repoRoot) {
+      const repoConfig = await readRepoConfig(this.repoRoot);
+      toolInstalls = repoConfig?.installations[this.id] ?? {};
+    } else {
+      const config = await readConfig();
+      toolInstalls = config.installations[this.id] ?? {};
+    }
+
     for (const name of names) {
-      const linkPath = path.join(skillsDir, name);
+      const resolved = resolveInstallKey(name, toolInstalls);
+
+      if (resolved.type === 'ambiguous') {
+        result.errors.push({
+          name,
+          error: `Multiple installs match '${name}'. Specify one of: ${resolved.keys.join(', ')}`,
+        });
+        continue;
+      }
+
+      if (resolved.type === 'not-found') {
+        // Fall back to treating the name as a bare linkName for orphaned flat installs.
+        const linkPath = path.join(skillsDir, name);
+        try {
+          await removeLink(linkPath);
+          result.removed.push({ name });
+        } catch (error) {
+          result.errors.push({
+            name,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        continue;
+      }
+
+      const key = resolved.key;
+      const record = toolInstalls[key];
+      const segments = key.split('/');
+      const bareId = segments[segments.length - 1];
+      const linkName = record?.linkName ?? bareId;
+      const linkPath = path.join(skillsDir, linkName);
+
       try {
         await removeLink(linkPath);
 
         if (this.scope === 'repo' && this.repoRoot) {
-          await removeRepoInstallRecord(this.repoRoot, this.id, name);
+          await removeRepoInstallRecord(this.repoRoot, this.id, key);
         } else {
-          await removeInstallRecord(this.id, name);
+          await removeInstallRecord(this.id, key);
         }
 
         result.removed.push({ name });
@@ -160,4 +260,26 @@ export abstract class SkillProvisioner implements Provisioner {
 
     return result;
   }
+}
+
+/**
+ * Pick the flat link name for a skill being installed.
+ * Clean rule: use bare skillId when no existing record already claims it as a linkName.
+ * Collision rule: qualify with the flattened namespace when the bare id is taken by a different key.
+ */
+function pickLinkName(
+  skillDirName: string,
+  namespace: string | null,
+  installKey: string,
+  existingRecords: InstallRecordMap,
+): string {
+  if (!namespace) return skillDirName;
+
+  const claimedBy = Object.entries(existingRecords).find(
+    ([key, rec]) => (rec.linkName ?? key.split('/').pop()) === skillDirName && key !== installKey,
+  );
+
+  if (!claimedBy) return skillDirName;
+
+  return `${skillDirName}__${flattenNamespace(namespace)}`;
 }
