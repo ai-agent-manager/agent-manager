@@ -6,13 +6,13 @@ import type { ExistingKnowledgeBase, KnowledgePage } from "../../../src/services
 import type { CreateAgentResult } from "../../../src/services/studio/types.js";
 
 const { trackTelemetryEvent, trackTelemetryError } = vi.hoisted(() => ({
-    trackTelemetryEvent: vi.fn(),
-    trackTelemetryError: vi.fn(),
+  trackTelemetryEvent: vi.fn(),
+  trackTelemetryError: vi.fn(),
 }));
 
 vi.mock("../../../src/telemetry.js", () => ({
-    trackTelemetryEvent,
-    trackTelemetryError,
+  trackTelemetryEvent,
+  trackTelemetryError,
 }));
 
 // ---------------------------------------------------------------------------
@@ -20,15 +20,17 @@ vi.mock("../../../src/telemetry.js", () => ({
 // ---------------------------------------------------------------------------
 
 const mockProvisioner = {
-    detect: vi.fn<() => Promise<{ available: boolean; reason?: string }>>(),
-    hasValidAuth: vi.fn<() => Promise<boolean>>(),
-    authenticate: vi.fn<(studioUrl: string) => Promise<void>>(),
-    checkExistingKnowledgeBase: vi.fn<(input: object) => Promise<ExistingKnowledgeBase | null>>(),
-    createAgent: vi.fn<(input: object) => Promise<CreateAgentResult>>(),
+  detect: vi.fn<() => Promise<{ available: boolean; reason?: string }>>(),
+  hasValidAuth: vi.fn<() => Promise<boolean>>(),
+  authenticate: vi.fn<(studioUrl: string) => Promise<void>>(),
+  checkExistingKnowledgeBase: vi.fn<(input: object) => Promise<ExistingKnowledgeBase | null>>(),
+  createAgent: vi.fn<(input: object) => Promise<CreateAgentResult>>(),
 };
 
 vi.mock("../../../src/provisioners/RovoProvisioner.js", () => ({
-    RovoProvisioner: vi.fn(() => mockProvisioner),
+  RovoProvisioner: vi.fn(function MockRovoProvisioner() {
+    return mockProvisioner;
+  }),
 }));
 
 // Import AFTER mock declarations
@@ -43,25 +45,25 @@ const { CheckAuth, Authenticate, CheckKbExists, Provision } = testing;
 const STUDIO_URL = "https://studio.atlassian.com/s/test/agents";
 
 const ROVO_CONFIG: RovoAgentConfig = {
-    apiVersion: "rovo.atlassian.com/v1",
-    kind: "StudioAgent",
-    identity: {
-        name: "Test Agent",
-        description: "A test agent",
-        behavior: "Be helpful",
-    },
-    scenarios: {
-        default: { instructions: "Do the thing" },
-    },
+  apiVersion: "rovo.atlassian.com/v1",
+  kind: "StudioAgent",
+  identity: {
+    name: "Test Agent",
+    description: "A test agent",
+    behavior: "Be helpful",
+  },
+  scenarios: {
+    default: { instructions: "Do the thing" },
+  },
 };
 
 const EXISTING_KB: ExistingKnowledgeBase = {
-    parentPage: { title: "Test Agent KB", url: "https://company.atlassian.net/wiki/spaces/TEAM/pages/1" },
-    childPages: [{ title: "Page One", url: "https://company.atlassian.net/wiki/spaces/TEAM/pages/2" }],
+  parentPage: { title: "Test Agent KB", url: "https://company.atlassian.net/wiki/spaces/TEAM/pages/1" },
+  childPages: [{ title: "Page One", url: "https://company.atlassian.net/wiki/spaces/TEAM/pages/2" }],
 };
 
 const CREATE_RESULT: CreateAgentResult = {
-    knowledgePages: [] as KnowledgePage[],
+  knowledgePages: [] as KnowledgePage[],
 };
 
 // ---------------------------------------------------------------------------
@@ -69,89 +71,89 @@ const CREATE_RESULT: CreateAgentResult = {
 // ---------------------------------------------------------------------------
 
 describe("CheckAuth", () => {
-    beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => vi.clearAllMocks());
 
-    const telemetryProps = {
-        source: "url",
-        bundleEndpoint: "https://example.com/skills",
-    };
+  const telemetryProps = {
+    source: "url",
+    bundleEndpoint: "https://example.com/skills",
+  };
 
-    it("renders the checking spinner while detect is pending", () => {
-        mockProvisioner.detect.mockReturnValue(new Promise(() => {}));
-        const { lastFrame } = render(
-            <CheckAuth
-                studioUrl={STUDIO_URL}
-                bundleTelemetryProps={telemetryProps}
-                onHasAuth={vi.fn()}
-                onNeedsAuth={vi.fn()}
-                onError={vi.fn()}
-            />,
-        );
-        expect(lastFrame()).toContain("Checking authentication");
-    });
+  it("renders the checking spinner while detect is pending", () => {
+    mockProvisioner.detect.mockReturnValue(new Promise(() => {}));
+    const { lastFrame } = render(
+      <CheckAuth
+        studioUrl={STUDIO_URL}
+        bundleTelemetryProps={telemetryProps}
+        onHasAuth={vi.fn()}
+        onNeedsAuth={vi.fn()}
+        onError={vi.fn()}
+      />,
+    );
+    expect(lastFrame()).toContain("Checking authentication");
+  });
 
-    it("calls onHasAuth when Playwright is available and auth is valid", async () => {
-        mockProvisioner.detect.mockResolvedValue({ available: true });
-        mockProvisioner.hasValidAuth.mockResolvedValue(true);
-        const onHasAuth = vi.fn();
-        render(
-            <CheckAuth
-                studioUrl={STUDIO_URL}
-                bundleTelemetryProps={telemetryProps}
-                onHasAuth={onHasAuth}
-                onNeedsAuth={vi.fn()}
-                onError={vi.fn()}
-            />,
-        );
-        await vi.waitFor(() => expect(onHasAuth).toHaveBeenCalled());
-    });
+  it("calls onHasAuth when Playwright is available and auth is valid", async () => {
+    mockProvisioner.detect.mockResolvedValue({ available: true });
+    mockProvisioner.hasValidAuth.mockResolvedValue(true);
+    const onHasAuth = vi.fn();
+    render(
+      <CheckAuth
+        studioUrl={STUDIO_URL}
+        bundleTelemetryProps={telemetryProps}
+        onHasAuth={onHasAuth}
+        onNeedsAuth={vi.fn()}
+        onError={vi.fn()}
+      />,
+    );
+    await vi.waitFor(() => expect(onHasAuth).toHaveBeenCalled());
+  });
 
-    it("calls onNeedsAuth when Playwright is available but auth is not valid", async () => {
-        mockProvisioner.detect.mockResolvedValue({ available: true });
-        mockProvisioner.hasValidAuth.mockResolvedValue(false);
-        const onNeedsAuth = vi.fn();
-        render(
-            <CheckAuth
-                studioUrl={STUDIO_URL}
-                bundleTelemetryProps={telemetryProps}
-                onHasAuth={vi.fn()}
-                onNeedsAuth={onNeedsAuth}
-                onError={vi.fn()}
-            />,
-        );
-        await vi.waitFor(() => expect(onNeedsAuth).toHaveBeenCalled());
-    });
+  it("calls onNeedsAuth when Playwright is available but auth is not valid", async () => {
+    mockProvisioner.detect.mockResolvedValue({ available: true });
+    mockProvisioner.hasValidAuth.mockResolvedValue(false);
+    const onNeedsAuth = vi.fn();
+    render(
+      <CheckAuth
+        studioUrl={STUDIO_URL}
+        bundleTelemetryProps={telemetryProps}
+        onHasAuth={vi.fn()}
+        onNeedsAuth={onNeedsAuth}
+        onError={vi.fn()}
+      />,
+    );
+    await vi.waitFor(() => expect(onNeedsAuth).toHaveBeenCalled());
+  });
 
-    it("calls onError with the reason when Playwright is not available", async () => {
-        mockProvisioner.detect.mockResolvedValue({ available: false, reason: "Playwright not installed" });
-        const onError = vi.fn();
-        render(
-            <CheckAuth
-                studioUrl={STUDIO_URL}
-                bundleTelemetryProps={telemetryProps}
-                onHasAuth={vi.fn()}
-                onNeedsAuth={vi.fn()}
-                onError={onError}
-            />,
-        );
-        await vi.waitFor(() => expect(onError).toHaveBeenCalledWith("Playwright not installed"));
-    });
+  it("calls onError with the reason when Playwright is not available", async () => {
+    mockProvisioner.detect.mockResolvedValue({ available: false, reason: "Playwright not installed" });
+    const onError = vi.fn();
+    render(
+      <CheckAuth
+        studioUrl={STUDIO_URL}
+        bundleTelemetryProps={telemetryProps}
+        onHasAuth={vi.fn()}
+        onNeedsAuth={vi.fn()}
+        onError={onError}
+      />,
+    );
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith("Playwright not installed"));
+  });
 
-    it("calls onError when detect throws", async () => {
-        mockProvisioner.detect.mockRejectedValue(new Error("network failure"));
-        const onError = vi.fn();
-        render(
-            <CheckAuth
-                studioUrl={STUDIO_URL}
-                bundleTelemetryProps={telemetryProps}
-                onHasAuth={vi.fn()}
-                onNeedsAuth={vi.fn()}
-                onError={onError}
-            />,
-        );
-        await vi.waitFor(() => expect(onError).toHaveBeenCalledWith("network failure"));
-        expect(trackTelemetryError).toHaveBeenCalledWith("rovo_auth_check_failed", expect.any(Error), telemetryProps);
-    });
+  it("calls onError when detect throws", async () => {
+    mockProvisioner.detect.mockRejectedValue(new Error("network failure"));
+    const onError = vi.fn();
+    render(
+      <CheckAuth
+        studioUrl={STUDIO_URL}
+        bundleTelemetryProps={telemetryProps}
+        onHasAuth={vi.fn()}
+        onNeedsAuth={vi.fn()}
+        onError={onError}
+      />,
+    );
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith("network failure"));
+    expect(trackTelemetryError).toHaveBeenCalledWith("rovo_auth_check_failed", expect.any(Error), telemetryProps);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -159,75 +161,75 @@ describe("CheckAuth", () => {
 // ---------------------------------------------------------------------------
 
 describe("Authenticate", () => {
-    beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => vi.clearAllMocks());
 
-    const telemetryProps = {
-        source: "url",
-        bundleEndpoint: "https://example.com/skills",
-    };
+  const telemetryProps = {
+    source: "url",
+    bundleEndpoint: "https://example.com/skills",
+  };
 
-    it('renders "Launching browser..." when no progress message is set', () => {
-        mockProvisioner.authenticate.mockReturnValue(new Promise(() => {}));
-        const { lastFrame } = render(
-            <Authenticate
-                studioUrl={STUDIO_URL}
-                bundleTelemetryProps={telemetryProps}
-                onProgress={vi.fn()}
-                onSuccess={vi.fn()}
-                onError={vi.fn()}
-                progress=""
-            />,
-        );
-        expect(lastFrame()).toContain("Launching browser");
-    });
+  it('renders "Launching browser..." when no progress message is set', () => {
+    mockProvisioner.authenticate.mockReturnValue(new Promise(() => {}));
+    const { lastFrame } = render(
+      <Authenticate
+        studioUrl={STUDIO_URL}
+        bundleTelemetryProps={telemetryProps}
+        onProgress={vi.fn()}
+        onSuccess={vi.fn()}
+        onError={vi.fn()}
+        progress=""
+      />,
+    );
+    expect(lastFrame()).toContain("Launching browser");
+  });
 
-    it("renders the progress message when one is provided", () => {
-        mockProvisioner.authenticate.mockReturnValue(new Promise(() => {}));
-        const { lastFrame } = render(
-            <Authenticate
-                studioUrl={STUDIO_URL}
-                bundleTelemetryProps={telemetryProps}
-                onProgress={vi.fn()}
-                onSuccess={vi.fn()}
-                onError={vi.fn()}
-                progress="Waiting for login..."
-            />,
-        );
-        expect(lastFrame()).toContain("Waiting for login...");
-    });
+  it("renders the progress message when one is provided", () => {
+    mockProvisioner.authenticate.mockReturnValue(new Promise(() => {}));
+    const { lastFrame } = render(
+      <Authenticate
+        studioUrl={STUDIO_URL}
+        bundleTelemetryProps={telemetryProps}
+        onProgress={vi.fn()}
+        onSuccess={vi.fn()}
+        onError={vi.fn()}
+        progress="Waiting for login..."
+      />,
+    );
+    expect(lastFrame()).toContain("Waiting for login...");
+  });
 
-    it("calls onSuccess when authenticate resolves", async () => {
-        mockProvisioner.authenticate.mockResolvedValue(undefined);
-        const onSuccess = vi.fn();
-        render(
-            <Authenticate
-                studioUrl={STUDIO_URL}
-                bundleTelemetryProps={telemetryProps}
-                onProgress={vi.fn()}
-                onSuccess={onSuccess}
-                onError={vi.fn()}
-                progress=""
-            />,
-        );
-        await vi.waitFor(() => expect(onSuccess).toHaveBeenCalled());
-    });
+  it("calls onSuccess when authenticate resolves", async () => {
+    mockProvisioner.authenticate.mockResolvedValue(undefined);
+    const onSuccess = vi.fn();
+    render(
+      <Authenticate
+        studioUrl={STUDIO_URL}
+        bundleTelemetryProps={telemetryProps}
+        onProgress={vi.fn()}
+        onSuccess={onSuccess}
+        onError={vi.fn()}
+        progress=""
+      />,
+    );
+    await vi.waitFor(() => expect(onSuccess).toHaveBeenCalled());
+  });
 
-    it("calls onError when authenticate throws", async () => {
-        mockProvisioner.authenticate.mockRejectedValue(new Error("browser crashed"));
-        const onError = vi.fn();
-        render(
-            <Authenticate
-                studioUrl={STUDIO_URL}
-                bundleTelemetryProps={telemetryProps}
-                onProgress={vi.fn()}
-                onSuccess={vi.fn()}
-                onError={onError}
-                progress=""
-            />,
-        );
-        await vi.waitFor(() => expect(onError).toHaveBeenCalledWith("browser crashed"));
-        expect(trackTelemetryError).toHaveBeenCalledWith("rovo_authenticate_failed", expect.any(Error), telemetryProps);
-    });
+  it("calls onError when authenticate throws", async () => {
+    mockProvisioner.authenticate.mockRejectedValue(new Error("browser crashed"));
+    const onError = vi.fn();
+    render(
+      <Authenticate
+        studioUrl={STUDIO_URL}
+        bundleTelemetryProps={telemetryProps}
+        onProgress={vi.fn()}
+        onSuccess={vi.fn()}
+        onError={onError}
+        progress=""
+      />,
+    );
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith("browser crashed"));
+    expect(trackTelemetryError).toHaveBeenCalledWith("rovo_authenticate_failed", expect.any(Error), telemetryProps);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -235,51 +237,51 @@ describe("Authenticate", () => {
 // ---------------------------------------------------------------------------
 
 describe("CheckKbExists", () => {
-    beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => vi.clearAllMocks());
 
-    const defaultProps = {
-        confluenceBaseUrl: "https://company.atlassian.net",
-        confluenceSpaceKey: "TEAM",
-        agentName: "Test Agent",
-        bundleTelemetryProps: {
-            source: "url",
-            bundleEndpoint: "https://example.com/skills",
-        },
-        onExists: vi.fn(),
-        onNotExists: vi.fn(),
-        onError: vi.fn(),
-    };
+  const defaultProps = {
+    confluenceBaseUrl: "https://company.atlassian.net",
+    confluenceSpaceKey: "TEAM",
+    agentName: "Test Agent",
+    bundleTelemetryProps: {
+      source: "url",
+      bundleEndpoint: "https://example.com/skills",
+    },
+    onExists: vi.fn(),
+    onNotExists: vi.fn(),
+    onError: vi.fn(),
+  };
 
-    it("renders the checking spinner while the check is pending", () => {
-        mockProvisioner.checkExistingKnowledgeBase.mockReturnValue(new Promise(() => {}));
-        const { lastFrame } = render(<CheckKbExists {...defaultProps} />);
-        expect(lastFrame()).toContain("Checking for existing");
+  it("renders the checking spinner while the check is pending", () => {
+    mockProvisioner.checkExistingKnowledgeBase.mockReturnValue(new Promise(() => {}));
+    const { lastFrame } = render(<CheckKbExists {...defaultProps} />);
+    expect(lastFrame()).toContain("Checking for existing");
+  });
+
+  it("calls onExists with the existing KB when pages are found", async () => {
+    mockProvisioner.checkExistingKnowledgeBase.mockResolvedValue(EXISTING_KB);
+    const onExists = vi.fn();
+    render(<CheckKbExists {...defaultProps} onExists={onExists} />);
+    await vi.waitFor(() => expect(onExists).toHaveBeenCalledWith(EXISTING_KB));
+  });
+
+  it("calls onNotExists when no pages are found", async () => {
+    mockProvisioner.checkExistingKnowledgeBase.mockResolvedValue(null);
+    const onNotExists = vi.fn();
+    render(<CheckKbExists {...defaultProps} onNotExists={onNotExists} />);
+    await vi.waitFor(() => expect(onNotExists).toHaveBeenCalled());
+  });
+
+  it("calls onError when checkExistingKnowledgeBase throws", async () => {
+    mockProvisioner.checkExistingKnowledgeBase.mockRejectedValue(new Error("Confluence unreachable"));
+    const onError = vi.fn();
+    render(<CheckKbExists {...defaultProps} onError={onError} />);
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith("Confluence unreachable"));
+    expect(trackTelemetryError).toHaveBeenCalledWith("rovo_kb_check_failed", expect.any(Error), {
+      source: "url",
+      bundleEndpoint: "https://example.com/skills",
     });
-
-    it("calls onExists with the existing KB when pages are found", async () => {
-        mockProvisioner.checkExistingKnowledgeBase.mockResolvedValue(EXISTING_KB);
-        const onExists = vi.fn();
-        render(<CheckKbExists {...defaultProps} onExists={onExists} />);
-        await vi.waitFor(() => expect(onExists).toHaveBeenCalledWith(EXISTING_KB));
-    });
-
-    it("calls onNotExists when no pages are found", async () => {
-        mockProvisioner.checkExistingKnowledgeBase.mockResolvedValue(null);
-        const onNotExists = vi.fn();
-        render(<CheckKbExists {...defaultProps} onNotExists={onNotExists} />);
-        await vi.waitFor(() => expect(onNotExists).toHaveBeenCalled());
-    });
-
-    it("calls onError when checkExistingKnowledgeBase throws", async () => {
-        mockProvisioner.checkExistingKnowledgeBase.mockRejectedValue(new Error("Confluence unreachable"));
-        const onError = vi.fn();
-        render(<CheckKbExists {...defaultProps} onError={onError} />);
-        await vi.waitFor(() => expect(onError).toHaveBeenCalledWith("Confluence unreachable"));
-        expect(trackTelemetryError).toHaveBeenCalledWith("rovo_kb_check_failed", expect.any(Error), {
-            source: "url",
-            bundleEndpoint: "https://example.com/skills",
-        });
-    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -287,72 +289,72 @@ describe("CheckKbExists", () => {
 // ---------------------------------------------------------------------------
 
 describe("Provision", () => {
-    beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => vi.clearAllMocks());
 
-    const defaultProps = {
-        studioUrl: STUDIO_URL,
-        config: ROVO_CONFIG,
-        headless: true,
-        bundleTelemetryProps: {
-            source: "url",
-            bundleEndpoint: "https://example.com/skills",
-        },
-        onProgress: vi.fn(),
-        onSuccess: vi.fn(),
-        onError: vi.fn(),
-        progress: "",
-    };
+  const defaultProps = {
+    studioUrl: STUDIO_URL,
+    config: ROVO_CONFIG,
+    headless: true,
+    bundleTelemetryProps: {
+      source: "url",
+      bundleEndpoint: "https://example.com/skills",
+    },
+    onProgress: vi.fn(),
+    onSuccess: vi.fn(),
+    onError: vi.fn(),
+    progress: "",
+  };
 
-    it('renders "Starting..." when no progress message is set', () => {
-        mockProvisioner.createAgent.mockReturnValue(new Promise(() => {}));
-        const { lastFrame } = render(<Provision {...defaultProps} />);
-        expect(lastFrame()).toContain("Starting...");
+  it('renders "Starting..." when no progress message is set', () => {
+    mockProvisioner.createAgent.mockReturnValue(new Promise(() => {}));
+    const { lastFrame } = render(<Provision {...defaultProps} />);
+    expect(lastFrame()).toContain("Starting...");
+  });
+
+  it("renders the progress message when one is provided", () => {
+    mockProvisioner.createAgent.mockReturnValue(new Promise(() => {}));
+    const { lastFrame } = render(<Provision {...defaultProps} progress="Filling in form..." />);
+    expect(lastFrame()).toContain("Filling in form...");
+  });
+
+  it("calls onSuccess with the result when createAgent resolves", async () => {
+    mockProvisioner.createAgent.mockResolvedValue(CREATE_RESULT);
+    const onSuccess = vi.fn();
+    render(<Provision {...defaultProps} onSuccess={onSuccess} />);
+    await vi.waitFor(() => expect(onSuccess).toHaveBeenCalledWith(CREATE_RESULT));
+    expect(trackTelemetryEvent).toHaveBeenCalledWith({
+      action: "rovo_provision_started",
+      properties: {
+        source: "url",
+        bundleEndpoint: "https://example.com/skills",
+        mode: "headless",
+        knowledgeBase: "no",
+        knowledgeStrategy: "new",
+      },
     });
-
-    it("renders the progress message when one is provided", () => {
-        mockProvisioner.createAgent.mockReturnValue(new Promise(() => {}));
-        const { lastFrame } = render(<Provision {...defaultProps} progress="Filling in form..." />);
-        expect(lastFrame()).toContain("Filling in form...");
+    expect(trackTelemetryEvent).toHaveBeenCalledWith({
+      action: "rovo_provision_succeeded",
+      properties: {
+        source: "url",
+        bundleEndpoint: "https://example.com/skills",
+        mode: "headless",
+        knowledgeBase: "no",
+        knowledgePages: 0,
+      },
+      value: 0,
     });
+  });
 
-    it("calls onSuccess with the result when createAgent resolves", async () => {
-        mockProvisioner.createAgent.mockResolvedValue(CREATE_RESULT);
-        const onSuccess = vi.fn();
-        render(<Provision {...defaultProps} onSuccess={onSuccess} />);
-        await vi.waitFor(() => expect(onSuccess).toHaveBeenCalledWith(CREATE_RESULT));
-        expect(trackTelemetryEvent).toHaveBeenCalledWith({
-            action: "rovo_provision_started",
-            properties: {
-                source: "url",
-                bundleEndpoint: "https://example.com/skills",
-                mode: "headless",
-                knowledgeBase: "no",
-                knowledgeStrategy: "new",
-            },
-        });
-        expect(trackTelemetryEvent).toHaveBeenCalledWith({
-            action: "rovo_provision_succeeded",
-            properties: {
-                source: "url",
-                bundleEndpoint: "https://example.com/skills",
-                mode: "headless",
-                knowledgeBase: "no",
-                knowledgePages: 0,
-            },
-            value: 0,
-        });
+  it("calls onError when createAgent throws", async () => {
+    mockProvisioner.createAgent.mockRejectedValue(new Error("Studio timeout"));
+    const onError = vi.fn();
+    render(<Provision {...defaultProps} onError={onError} />);
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith("Studio timeout"));
+    expect(trackTelemetryError).toHaveBeenCalledWith("rovo_provision_failed", expect.any(Error), {
+      source: "url",
+      bundleEndpoint: "https://example.com/skills",
+      mode: "headless",
+      knowledgeBase: "no",
     });
-
-    it("calls onError when createAgent throws", async () => {
-        mockProvisioner.createAgent.mockRejectedValue(new Error("Studio timeout"));
-        const onError = vi.fn();
-        render(<Provision {...defaultProps} onError={onError} />);
-        await vi.waitFor(() => expect(onError).toHaveBeenCalledWith("Studio timeout"));
-        expect(trackTelemetryError).toHaveBeenCalledWith("rovo_provision_failed", expect.any(Error), {
-            source: "url",
-            bundleEndpoint: "https://example.com/skills",
-            mode: "headless",
-            knowledgeBase: "no",
-        });
-    });
+  });
 });

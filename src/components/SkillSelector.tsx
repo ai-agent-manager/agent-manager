@@ -5,6 +5,7 @@ import type { InstallScope } from "../config/scopes.js";
 import { ClaudeCodeProvisioner } from "../provisioners/ClaudeCodeProvisioner.js";
 import { CopilotProvisioner } from "../provisioners/CopilotProvisioner.js";
 import { CursorProvisioner } from "../provisioners/CursorProvisioner.js";
+import { KiroProvisioner } from "../provisioners/KiroProvisioner.js";
 import { SkillProvisioner } from "../provisioners/SkillProvisioner.js";
 import type { InstalledSkill, ProvisionerScope, UninstallResult } from "../provisioners/types.js";
 import { WindsurfProvisioner } from "../provisioners/WindsurfProvisioner.js";
@@ -45,6 +46,8 @@ function getProvisioner(toolId: string, scope: InstallScope, repoRoot: string | 
             return new CopilotProvisioner(options);
         case "cursor":
             return new CursorProvisioner(options);
+        case "kiro":
+            return new KiroProvisioner(options);
         default:
             throw new Error(`Unknown tool: ${toolId}`);
     }

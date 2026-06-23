@@ -5,32 +5,32 @@ import { SkillVersionManager } from "../../../src/components/SkillVersionManager
 
 // Mock dependencies
 vi.mock("../../../src/bundle/cache.js", () => ({
-    readConfig: vi.fn(),
-    listCachedBundles: vi.fn(),
-    updateSkillVersion: vi.fn(),
+  readConfig: vi.fn(),
+  listCachedBundles: vi.fn(),
+  updateSkillVersion: vi.fn(),
 }));
 
 vi.mock("../../../src/bundle/repo-config.js", () => ({
-    readRepoConfig: vi.fn(),
+  readRepoConfig: vi.fn(),
 }));
 
 vi.mock("../../../src/bundle/scanner.js", () => ({
-    scanBundle: vi.fn(),
+  scanBundle: vi.fn(),
 }));
 
 vi.mock("../../../src/config/paths.js", () => ({
-    getBundleVersionDir: vi.fn((version: string) => `/mock/.agentman/bundles/${version}`),
+  getBundleVersionDir: vi.fn((version: string) => `/mock/.agentman/bundles/${version}`),
 }));
 
 vi.mock("../../../src/config/tools.js", () => ({
-    SKILL_TOOLS: [
-        { id: "claude-code", name: "Claude Code" },
-        { id: "windsurf", name: "Windsurf" },
-    ],
+  SKILL_TOOLS: [
+    { id: "claude-code", name: "Claude Code" },
+    { id: "windsurf", name: "Windsurf" },
+  ],
 }));
 
 vi.mock("../../../src/lib/repo.js", () => ({
-    findRepoRoot: vi.fn(),
+  findRepoRoot: vi.fn(),
 }));
 
 import { readConfig, listCachedBundles, updateSkillVersion } from "../../../src/bundle/cache.js";
@@ -38,392 +38,402 @@ import { readRepoConfig } from "../../../src/bundle/repo-config.js";
 import { scanBundle } from "../../../src/bundle/scanner.js";
 import { findRepoRoot } from "../../../src/lib/repo.js";
 
+async function waitForFrameText(lastFrame: () => string | undefined, text: string): Promise<void> {
+  // Give event loop a chance to process input and re-render
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  await vi.waitFor(
+    () => {
+      expect(lastFrame() ?? "").toContain(text);
+    },
+    { timeout: 5000 },
+  );
+}
+
 describe("SkillVersionManager", () => {
-    let mockOnBack: ReturnType<typeof vi.fn>;
+  let mockOnBack: ReturnType<typeof vi.fn>;
 
-    beforeEach(() => {
-        mockOnBack = vi.fn();
-        vi.clearAllMocks();
-        // Default: not inside a repo
-        vi.mocked(findRepoRoot).mockResolvedValue(null);
-        vi.mocked(readRepoConfig).mockResolvedValue(null);
+  beforeEach(() => {
+    mockOnBack = vi.fn();
+    vi.clearAllMocks();
+    // Default: not inside a repo
+    vi.mocked(findRepoRoot).mockResolvedValue(null);
+    vi.mocked(readRepoConfig).mockResolvedValue(null);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("shows loading state initially", () => {
+    vi.mocked(readConfig).mockImplementation(() => new Promise(() => {})); // Never resolves
+    vi.mocked(listCachedBundles).mockImplementation(() => new Promise(() => {}));
+
+    const { lastFrame } = render(<SkillVersionManager onBack={mockOnBack} />);
+
+    expect(lastFrame()).toContain("Loading installed skills...");
+  });
+
+  it("shows scope selection screen after loading", async () => {
+    vi.mocked(readConfig).mockResolvedValue({ installations: {} });
+    vi.mocked(listCachedBundles).mockResolvedValue([]);
+
+    const { lastFrame } = render(<SkillVersionManager onBack={mockOnBack} />);
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(lastFrame()).toContain("Manage Skill Versions");
+    expect(lastFrame()).toContain("System-wide");
+    expect(lastFrame()).toContain("This repository");
+  });
+
+  it("shows empty state when no system-wide skills installed", async () => {
+    vi.mocked(readConfig).mockResolvedValue({ installations: {} });
+    vi.mocked(listCachedBundles).mockResolvedValue([]);
+
+    const { lastFrame, stdin } = render(<SkillVersionManager onBack={mockOnBack} />);
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // Select "System-wide" (first item)
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(lastFrame()).toContain("No skills installed system-wide");
+    expect(lastFrame()).toContain("Install skills first");
+  });
+
+  it("lists installed skills with versions after selecting scope", async () => {
+    vi.mocked(readConfig).mockResolvedValue({
+      installations: {
+        "claude-code": {
+          "hello-world-skill": {
+            bundleVersion: "1.0.0",
+            installedAt: "2026-04-03T10:00:00Z",
+            method: "symlink",
+          },
+          "goodbye-skill": {
+            bundleVersion: "2.0.0",
+            installedAt: "2026-04-03T12:00:00Z",
+            method: "symlink",
+          },
+        },
+      },
+    });
+    vi.mocked(listCachedBundles).mockResolvedValue([
+      { version: "1.0.0", published: "2026-04-03T10:00:00Z", bundleDir: "/mock/1.0.0", isCurrent: false },
+      { version: "2.0.0", published: "2026-04-03T12:00:00Z", bundleDir: "/mock/2.0.0", isCurrent: true },
+    ]);
+
+    const { lastFrame, stdin } = render(<SkillVersionManager onBack={mockOnBack} />);
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // Select "System-wide"
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(lastFrame()).toContain("Manage Skill Versions");
+    expect(lastFrame()).toContain("hello-world-skill");
+    expect(lastFrame()).toContain("goodbye-skill");
+    expect(lastFrame()).toContain("Claude Code");
+    expect(lastFrame()).toContain("1.0.0");
+    expect(lastFrame()).toContain("2.0.0");
+  });
+
+  it("groups skills installed across multiple tools", async () => {
+    vi.mocked(readConfig).mockResolvedValue({
+      installations: {
+        "claude-code": {
+          "hello-world-skill": {
+            bundleVersion: "1.0.0",
+            installedAt: "2026-04-03T10:00:00Z",
+            method: "symlink",
+          },
+        },
+        windsurf: {
+          "hello-world-skill": {
+            bundleVersion: "1.0.0",
+            installedAt: "2026-04-03T10:00:00Z",
+            method: "symlink",
+          },
+        },
+      },
+    });
+    vi.mocked(listCachedBundles).mockResolvedValue([
+      { version: "1.0.0", published: "2026-04-03T10:00:00Z", bundleDir: "/mock/1.0.0", isCurrent: true },
+    ]);
+
+    const { lastFrame, stdin } = render(<SkillVersionManager onBack={mockOnBack} />);
+
+    await waitForFrameText(lastFrame, "Manage Skill Versions");
+
+    // Select "System-wide"
+    stdin.write("\r");
+    await waitForFrameText(lastFrame, "Select a skill to change its version");
+
+    expect(lastFrame()).toContain("hello-world-skill");
+    expect(lastFrame()).toContain("Claude Code");
+    expect(lastFrame()).toContain("Windsurf");
+  });
+
+  it("shows different versions when skills have mixed versions", async () => {
+    vi.mocked(readConfig).mockResolvedValue({
+      installations: {
+        "claude-code": {
+          "skill-a": {
+            bundleVersion: "1.0.0",
+            installedAt: "2026-04-03T10:00:00Z",
+            method: "symlink",
+          },
+        },
+        windsurf: {
+          "skill-a": {
+            bundleVersion: "2.0.0",
+            installedAt: "2026-04-03T12:00:00Z",
+            method: "symlink",
+          },
+        },
+      },
+    });
+    vi.mocked(listCachedBundles).mockResolvedValue([
+      { version: "1.0.0", published: "2026-04-03T10:00:00Z", bundleDir: "/mock/1.0.0", isCurrent: false },
+      { version: "2.0.0", published: "2026-04-03T12:00:00Z", bundleDir: "/mock/2.0.0", isCurrent: true },
+    ]);
+
+    const { lastFrame, stdin } = render(<SkillVersionManager onBack={mockOnBack} />);
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // Select "System-wide"
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(lastFrame()).toContain("skill-a");
+    expect(lastFrame()).toContain("Claude Code");
+    expect(lastFrame()).toContain("Windsurf");
+    expect(lastFrame()).toContain("1.0.0");
+    expect(lastFrame()).toContain("2.0.0");
+  });
+
+  it("shows scanning spinner while loading available versions for a skill", async () => {
+    vi.mocked(readConfig).mockResolvedValue({
+      installations: {
+        "claude-code": {
+          "hello-world-skill": {
+            bundleVersion: "1.0.0",
+            installedAt: "2026-04-03T10:00:00Z",
+            method: "symlink",
+          },
+        },
+      },
+    });
+    vi.mocked(listCachedBundles).mockResolvedValue([
+      { version: "1.0.0", published: "2026-04-03T10:00:00Z", bundleDir: "/mock/1.0.0", isCurrent: true },
+    ]);
+
+    // Never resolves — keeps the component in scanning state indefinitely
+    vi.mocked(scanBundle).mockImplementation(() => new Promise(() => {}));
+
+    const { lastFrame, stdin } = render(<SkillVersionManager onBack={mockOnBack} />);
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // Select "System-wide"
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(lastFrame()).toContain("Manage Skill Versions");
+
+    // Select "Change hello-world-skill" (first item in skill list)
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(lastFrame()).toContain("Scanning bundle versions...");
+  });
+
+  it("shows error icon when updateSkillVersion fails", async () => {
+    vi.mocked(readConfig).mockResolvedValue({
+      installations: {
+        "claude-code": {
+          "hello-world-skill": {
+            bundleVersion: "1.0.0",
+            installedAt: "2026-04-03T10:00:00Z",
+            method: "symlink",
+          },
+        },
+      },
+    });
+    vi.mocked(listCachedBundles).mockResolvedValue([
+      { version: "2.0.0", published: "2026-04-03T12:00:00Z", bundleDir: "/mock/2.0.0", isCurrent: true },
+    ]);
+    vi.mocked(scanBundle).mockResolvedValue({
+      skills: [{ dirName: "hello-world-skill", dirPath: "/mock/2.0.0/hello-world-skill", meta: null }],
+      rovoAgents: [],
+    } as any);
+    vi.mocked(updateSkillVersion).mockResolvedValue({ success: false, error: "Permission denied" });
+
+    const { lastFrame, stdin } = render(<SkillVersionManager onBack={mockOnBack} />);
+
+    await waitForFrameText(lastFrame, "Manage Skill Versions");
+
+    // Select "System-wide"
+    stdin.write("\r");
+    await waitForFrameText(lastFrame, "Select a skill to change its version");
+
+    // Select "Change hello-world-skill" → scanning → select-version screen
+    stdin.write("\r");
+    await waitForFrameText(lastFrame, "Select a version to install");
+
+    // Select version 2.0.0
+    stdin.write("\r");
+    await waitForFrameText(lastFrame, "Permission denied");
+
+    // Should show error icon (✘ U+2718), not success icon (✔ U+2714)
+    expect(lastFrame()).toContain("\u2718");
+    expect(lastFrame()).not.toContain("\u2714");
+    expect(lastFrame()).toContain("Permission denied");
+  });
+
+  it("shows cached versions that do not contain the selected skill and blocks selecting them", async () => {
+    vi.mocked(readConfig).mockResolvedValue({
+      installations: {
+        "claude-code": {
+          "hello-world-skill": {
+            bundleVersion: "1.3.0",
+            installedAt: "2026-04-03T10:00:00Z",
+            method: "symlink",
+          },
+        },
+      },
+    });
+    vi.mocked(listCachedBundles).mockResolvedValue([
+      { version: "1.3.0", published: "2026-04-03T12:00:00Z", bundleDir: "/mock/1.3.0", isCurrent: true },
+      { version: "1.1.0", published: "2026-04-03T10:00:00Z", bundleDir: "/mock/1.1.0", isCurrent: false },
+    ]);
+    vi.mocked(scanBundle).mockImplementation(async (bundleDir: string) => {
+      if (bundleDir.includes("1.3.0")) {
+        return {
+          skills: [{ dirName: "hello-world-skill", dirPath: "/mock/1.3.0/hello-world-skill", meta: null }],
+          rovoAgents: [],
+        } as any;
+      }
+
+      return {
+        skills: [],
+        rovoAgents: [],
+      } as any;
     });
 
-    afterEach(() => {
-        vi.restoreAllMocks();
+    const { lastFrame, stdin } = render(<SkillVersionManager onBack={mockOnBack} />);
+
+    await waitForFrameText(lastFrame, "Manage Skill Versions");
+
+    stdin.write("\r");
+    await waitForFrameText(lastFrame, "Select a skill to change its version");
+
+    stdin.write("\r");
+    await waitForFrameText(lastFrame, "Select a version to install");
+
+    expect(lastFrame()).toContain("1.3.0");
+    expect(lastFrame()).toContain("1.1.0");
+    expect(lastFrame()).toContain("not in bundle");
+    expect(lastFrame()).toContain("cannot be selected");
+
+    stdin.write("\u001B[B");
+    await waitForFrameText(lastFrame, "1.1.0");
+    stdin.write("\r");
+    await waitForFrameText(lastFrame, "Selected skill not in bundle 1.1.0");
+
+    expect(lastFrame()).toContain("Selected skill not in bundle 1.1.0");
+    expect(updateSkillVersion).not.toHaveBeenCalled();
+  });
+
+  it("calls onBack when back is selected from scope screen", async () => {
+    vi.mocked(readConfig).mockResolvedValue({ installations: {} });
+    vi.mocked(listCachedBundles).mockResolvedValue([]);
+
+    const { lastFrame, stdin } = render(<SkillVersionManager onBack={mockOnBack} />);
+
+    await waitForFrameText(lastFrame, "Which skills do you want to manage?");
+
+    // Navigate to "← Back" (3rd item: System-wide, This repository, ← Back)
+    stdin.write("\u001B[B"); // arrow down
+    await waitForFrameText(lastFrame, "This repository");
+    stdin.write("\u001B[B"); // arrow down
+    await waitForFrameText(lastFrame, "← Back");
+    stdin.write("\r");
+
+    await vi.waitFor(() => {
+      expect(mockOnBack).toHaveBeenCalledOnce();
     });
+  });
 
-    it("shows loading state initially", () => {
-        vi.mocked(readConfig).mockImplementation(() => new Promise(() => {})); // Never resolves
-        vi.mocked(listCachedBundles).mockImplementation(() => new Promise(() => {}));
-
-        const { lastFrame } = render(<SkillVersionManager onBack={mockOnBack} />);
-
-        expect(lastFrame()).toContain("Loading installed skills...");
+  it("shows mixed-version warning and align option when skills differ", async () => {
+    vi.mocked(readConfig).mockResolvedValue({
+      installations: {
+        "claude-code": {
+          "skill-a": {
+            bundleVersion: "1.0.0",
+            installedAt: "2026-04-03T10:00:00Z",
+            method: "symlink",
+          },
+          "skill-b": {
+            bundleVersion: "2.0.0",
+            installedAt: "2026-04-03T12:00:00Z",
+            method: "symlink",
+          },
+        },
+      },
     });
+    vi.mocked(listCachedBundles).mockResolvedValue([
+      { version: "1.0.0", published: "2026-04-03T10:00:00Z", bundleDir: "/mock/1.0.0", isCurrent: false },
+      { version: "2.0.0", published: "2026-04-03T12:00:00Z", bundleDir: "/mock/2.0.0", isCurrent: true },
+    ]);
 
-    it("shows scope selection screen after loading", async () => {
-        vi.mocked(readConfig).mockResolvedValue({ installations: {} });
-        vi.mocked(listCachedBundles).mockResolvedValue([]);
+    const { lastFrame, stdin } = render(<SkillVersionManager onBack={mockOnBack} />);
 
-        const { lastFrame } = render(<SkillVersionManager onBack={mockOnBack} />);
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
-        await new Promise((resolve) => setTimeout(resolve, 100));
+    // Select "System-wide"
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
-        expect(lastFrame()).toContain("Manage Skill Versions");
-        expect(lastFrame()).toContain("System-wide");
-        expect(lastFrame()).toContain("This repository");
+    const frame = lastFrame();
+    expect(frame).toContain("Skills are on different versions");
+    expect(frame).toContain("Align all to same version");
+  });
+
+  it("does not show align option when all skills are on same version", async () => {
+    vi.mocked(readConfig).mockResolvedValue({
+      installations: {
+        "claude-code": {
+          "skill-a": {
+            bundleVersion: "1.0.0",
+            installedAt: "2026-04-03T10:00:00Z",
+            method: "symlink",
+          },
+          "skill-b": {
+            bundleVersion: "1.0.0",
+            installedAt: "2026-04-03T12:00:00Z",
+            method: "symlink",
+          },
+        },
+      },
     });
+    vi.mocked(listCachedBundles).mockResolvedValue([
+      { version: "1.0.0", published: "2026-04-03T10:00:00Z", bundleDir: "/mock/1.0.0", isCurrent: true },
+    ]);
 
-    it("shows empty state when no system-wide skills installed", async () => {
-        vi.mocked(readConfig).mockResolvedValue({ installations: {} });
-        vi.mocked(listCachedBundles).mockResolvedValue([]);
+    const { lastFrame, stdin } = render(<SkillVersionManager onBack={mockOnBack} />);
 
-        const { lastFrame, stdin } = render(<SkillVersionManager onBack={mockOnBack} />);
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
-        await new Promise((resolve) => setTimeout(resolve, 100));
+    // Select "System-wide"
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
-        // Select "System-wide" (first item)
-        stdin.write("\r");
-        await new Promise((resolve) => setTimeout(resolve, 50));
-
-        expect(lastFrame()).toContain("No skills installed system-wide");
-        expect(lastFrame()).toContain("Install skills first");
-    });
-
-    it("lists installed skills with versions after selecting scope", async () => {
-        vi.mocked(readConfig).mockResolvedValue({
-            installations: {
-                "claude-code": {
-                    "hello-world-skill": {
-                        bundleVersion: "1.0.0",
-                        installedAt: "2026-04-03T10:00:00Z",
-                        method: "symlink",
-                    },
-                    "goodbye-skill": {
-                        bundleVersion: "2.0.0",
-                        installedAt: "2026-04-03T12:00:00Z",
-                        method: "symlink",
-                    },
-                },
-            },
-        });
-        vi.mocked(listCachedBundles).mockResolvedValue([
-            { version: "1.0.0", published: "2026-04-03T10:00:00Z", bundleDir: "/mock/1.0.0", isCurrent: false },
-            { version: "2.0.0", published: "2026-04-03T12:00:00Z", bundleDir: "/mock/2.0.0", isCurrent: true },
-        ]);
-
-        const { lastFrame, stdin } = render(<SkillVersionManager onBack={mockOnBack} />);
-
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
-        // Select "System-wide"
-        stdin.write("\r");
-        await new Promise((resolve) => setTimeout(resolve, 50));
-
-        expect(lastFrame()).toContain("Manage Skill Versions");
-        expect(lastFrame()).toContain("hello-world-skill");
-        expect(lastFrame()).toContain("goodbye-skill");
-        expect(lastFrame()).toContain("Claude Code");
-        expect(lastFrame()).toContain("1.0.0");
-        expect(lastFrame()).toContain("2.0.0");
-    });
-
-    it("groups skills installed across multiple tools", async () => {
-        vi.mocked(readConfig).mockResolvedValue({
-            installations: {
-                "claude-code": {
-                    "hello-world-skill": {
-                        bundleVersion: "1.0.0",
-                        installedAt: "2026-04-03T10:00:00Z",
-                        method: "symlink",
-                    },
-                },
-                windsurf: {
-                    "hello-world-skill": {
-                        bundleVersion: "1.0.0",
-                        installedAt: "2026-04-03T10:00:00Z",
-                        method: "symlink",
-                    },
-                },
-            },
-        });
-        vi.mocked(listCachedBundles).mockResolvedValue([
-            { version: "1.0.0", published: "2026-04-03T10:00:00Z", bundleDir: "/mock/1.0.0", isCurrent: true },
-        ]);
-
-        const { lastFrame, stdin } = render(<SkillVersionManager onBack={mockOnBack} />);
-
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
-        // Select "System-wide"
-        stdin.write("\r");
-        await new Promise((resolve) => setTimeout(resolve, 50));
-
-        expect(lastFrame()).toContain("hello-world-skill");
-        expect(lastFrame()).toContain("Claude Code");
-        expect(lastFrame()).toContain("Windsurf");
-    });
-
-    it("shows different versions when skills have mixed versions", async () => {
-        vi.mocked(readConfig).mockResolvedValue({
-            installations: {
-                "claude-code": {
-                    "skill-a": {
-                        bundleVersion: "1.0.0",
-                        installedAt: "2026-04-03T10:00:00Z",
-                        method: "symlink",
-                    },
-                },
-                windsurf: {
-                    "skill-a": {
-                        bundleVersion: "2.0.0",
-                        installedAt: "2026-04-03T12:00:00Z",
-                        method: "symlink",
-                    },
-                },
-            },
-        });
-        vi.mocked(listCachedBundles).mockResolvedValue([
-            { version: "1.0.0", published: "2026-04-03T10:00:00Z", bundleDir: "/mock/1.0.0", isCurrent: false },
-            { version: "2.0.0", published: "2026-04-03T12:00:00Z", bundleDir: "/mock/2.0.0", isCurrent: true },
-        ]);
-
-        const { lastFrame, stdin } = render(<SkillVersionManager onBack={mockOnBack} />);
-
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
-        // Select "System-wide"
-        stdin.write("\r");
-        await new Promise((resolve) => setTimeout(resolve, 50));
-
-        expect(lastFrame()).toContain("skill-a");
-        expect(lastFrame()).toContain("Claude Code");
-        expect(lastFrame()).toContain("Windsurf");
-        expect(lastFrame()).toContain("1.0.0");
-        expect(lastFrame()).toContain("2.0.0");
-    });
-
-    it("shows scanning spinner while loading available versions for a skill", async () => {
-        vi.mocked(readConfig).mockResolvedValue({
-            installations: {
-                "claude-code": {
-                    "hello-world-skill": {
-                        bundleVersion: "1.0.0",
-                        installedAt: "2026-04-03T10:00:00Z",
-                        method: "symlink",
-                    },
-                },
-            },
-        });
-        vi.mocked(listCachedBundles).mockResolvedValue([
-            { version: "1.0.0", published: "2026-04-03T10:00:00Z", bundleDir: "/mock/1.0.0", isCurrent: true },
-        ]);
-
-        // Never resolves — keeps the component in scanning state indefinitely
-        vi.mocked(scanBundle).mockImplementation(() => new Promise(() => {}));
-
-        const { lastFrame, stdin } = render(<SkillVersionManager onBack={mockOnBack} />);
-
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
-        // Select "System-wide"
-        stdin.write("\r");
-        await new Promise((resolve) => setTimeout(resolve, 50));
-
-        expect(lastFrame()).toContain("Manage Skill Versions");
-
-        // Select "Change hello-world-skill" (first item in skill list)
-        stdin.write("\r");
-        await new Promise((resolve) => setTimeout(resolve, 50));
-
-        expect(lastFrame()).toContain("Scanning bundle versions...");
-    });
-
-    it("shows error icon when updateSkillVersion fails", async () => {
-        vi.mocked(readConfig).mockResolvedValue({
-            installations: {
-                "claude-code": {
-                    "hello-world-skill": {
-                        bundleVersion: "1.0.0",
-                        installedAt: "2026-04-03T10:00:00Z",
-                        method: "symlink",
-                    },
-                },
-            },
-        });
-        vi.mocked(listCachedBundles).mockResolvedValue([
-            { version: "2.0.0", published: "2026-04-03T12:00:00Z", bundleDir: "/mock/2.0.0", isCurrent: true },
-        ]);
-        vi.mocked(scanBundle).mockResolvedValue({
-            skills: [{ dirName: "hello-world-skill", dirPath: "/mock/2.0.0/hello-world-skill", meta: null }],
-            rovoAgents: [],
-        } as any);
-        vi.mocked(updateSkillVersion).mockResolvedValue({ success: false, error: "Permission denied" });
-
-        const { lastFrame, stdin } = render(<SkillVersionManager onBack={mockOnBack} />);
-
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
-        // Select "System-wide"
-        stdin.write("\r");
-        await new Promise((resolve) => setTimeout(resolve, 50));
-
-        // Select "Change hello-world-skill" → scanning → select-version screen
-        stdin.write("\r");
-        await new Promise((resolve) => setTimeout(resolve, 100));
-        expect(lastFrame()).toContain("Select a version to install");
-
-        // Select version 2.0.0
-        stdin.write("\r");
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
-        // Should show error icon (✘ U+2718), not success icon (✔ U+2714)
-        expect(lastFrame()).toContain("\u2718");
-        expect(lastFrame()).not.toContain("\u2714");
-        expect(lastFrame()).toContain("Permission denied");
-    });
-
-    it("shows cached versions that do not contain the selected skill and blocks selecting them", async () => {
-        vi.mocked(readConfig).mockResolvedValue({
-            installations: {
-                "claude-code": {
-                    "hello-world-skill": {
-                        bundleVersion: "1.3.0",
-                        installedAt: "2026-04-03T10:00:00Z",
-                        method: "symlink",
-                    },
-                },
-            },
-        });
-        vi.mocked(listCachedBundles).mockResolvedValue([
-            { version: "1.3.0", published: "2026-04-03T12:00:00Z", bundleDir: "/mock/1.3.0", isCurrent: true },
-            { version: "1.1.0", published: "2026-04-03T10:00:00Z", bundleDir: "/mock/1.1.0", isCurrent: false },
-        ]);
-        vi.mocked(scanBundle).mockImplementation(async (bundleDir: string) => {
-            if (bundleDir.includes("1.3.0")) {
-                return {
-                    skills: [{ dirName: "hello-world-skill", dirPath: "/mock/1.3.0/hello-world-skill", meta: null }],
-                    rovoAgents: [],
-                } as any;
-            }
-
-            return {
-                skills: [],
-                rovoAgents: [],
-            } as any;
-        });
-
-        const { lastFrame, stdin } = render(<SkillVersionManager onBack={mockOnBack} />);
-
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
-        stdin.write("\r");
-        await new Promise((resolve) => setTimeout(resolve, 50));
-
-        stdin.write("\r");
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
-        expect(lastFrame()).toContain("1.3.0");
-        expect(lastFrame()).toContain("1.1.0");
-        expect(lastFrame()).toContain("not in bundle");
-        expect(lastFrame()).toContain("cannot be selected");
-
-        stdin.write("\u001B[B");
-        await new Promise((resolve) => setTimeout(resolve, 50));
-        stdin.write("\r");
-        await new Promise((resolve) => setTimeout(resolve, 50));
-
-        expect(lastFrame()).toContain("Selected skill not in bundle 1.1.0");
-        expect(updateSkillVersion).not.toHaveBeenCalled();
-    });
-
-    it("calls onBack when back is selected from scope screen", async () => {
-        vi.mocked(readConfig).mockResolvedValue({ installations: {} });
-        vi.mocked(listCachedBundles).mockResolvedValue([]);
-
-        const { lastFrame, stdin } = render(<SkillVersionManager onBack={mockOnBack} />);
-
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
-        // Navigate to "← Back" (3rd item: System-wide, This repository, ← Back)
-        stdin.write("\u001B[B"); // arrow down
-        await new Promise((resolve) => setTimeout(resolve, 50));
-        stdin.write("\u001B[B"); // arrow down
-        await new Promise((resolve) => setTimeout(resolve, 50));
-        stdin.write("\r");
-
-        await new Promise((resolve) => setTimeout(resolve, 50));
-
-        expect(mockOnBack).toHaveBeenCalledOnce();
-    });
-
-    it("shows mixed-version warning and align option when skills differ", async () => {
-        vi.mocked(readConfig).mockResolvedValue({
-            installations: {
-                "claude-code": {
-                    "skill-a": {
-                        bundleVersion: "1.0.0",
-                        installedAt: "2026-04-03T10:00:00Z",
-                        method: "symlink",
-                    },
-                    "skill-b": {
-                        bundleVersion: "2.0.0",
-                        installedAt: "2026-04-03T12:00:00Z",
-                        method: "symlink",
-                    },
-                },
-            },
-        });
-        vi.mocked(listCachedBundles).mockResolvedValue([
-            { version: "1.0.0", published: "2026-04-03T10:00:00Z", bundleDir: "/mock/1.0.0", isCurrent: false },
-            { version: "2.0.0", published: "2026-04-03T12:00:00Z", bundleDir: "/mock/2.0.0", isCurrent: true },
-        ]);
-
-        const { lastFrame, stdin } = render(<SkillVersionManager onBack={mockOnBack} />);
-
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
-        // Select "System-wide"
-        stdin.write("\r");
-        await new Promise((resolve) => setTimeout(resolve, 50));
-
-        const frame = lastFrame();
-        expect(frame).toContain("Skills are on different versions");
-        expect(frame).toContain("Align all to same version");
-    });
-
-    it("does not show align option when all skills are on same version", async () => {
-        vi.mocked(readConfig).mockResolvedValue({
-            installations: {
-                "claude-code": {
-                    "skill-a": {
-                        bundleVersion: "1.0.0",
-                        installedAt: "2026-04-03T10:00:00Z",
-                        method: "symlink",
-                    },
-                    "skill-b": {
-                        bundleVersion: "1.0.0",
-                        installedAt: "2026-04-03T12:00:00Z",
-                        method: "symlink",
-                    },
-                },
-            },
-        });
-        vi.mocked(listCachedBundles).mockResolvedValue([
-            { version: "1.0.0", published: "2026-04-03T10:00:00Z", bundleDir: "/mock/1.0.0", isCurrent: true },
-        ]);
-
-        const { lastFrame, stdin } = render(<SkillVersionManager onBack={mockOnBack} />);
-
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
-        // Select "System-wide"
-        stdin.write("\r");
-        await new Promise((resolve) => setTimeout(resolve, 50));
-
-        const frame = lastFrame();
-        expect(frame).not.toContain("Skills are on different versions");
-        expect(frame).not.toContain("Align all to same version");
-    });
+    const frame = lastFrame();
+    expect(frame).not.toContain("Skills are on different versions");
+    expect(frame).not.toContain("Align all to same version");
+  });
 });

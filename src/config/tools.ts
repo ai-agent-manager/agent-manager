@@ -40,6 +40,12 @@ export const SKILL_TOOLS: ToolDefinition[] = [
     getRepoSkillsDir: (repoRoot: string) => path.join(repoRoot, '.cursor', 'skills'),
     note: 'Cursor has no global skills path. Skills are installed to ~/.agents/skills/ (cross-client convention). You may need to configure Cursor to discover this location.',
   },
+  {
+    id: 'kiro',
+    name: 'Kiro',
+    getSkillsDir: () => path.join(getHomeDir(), '.kiro', 'skills'),
+    getRepoSkillsDir: (repoRoot: string) => path.join(repoRoot, '.kiro', 'skills'),
+  },
 ];
 
 export function getToolById(id: string): ToolDefinition | undefined {
