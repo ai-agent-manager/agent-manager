@@ -5,7 +5,7 @@
  * token storage into a single high-level API.
  */
 
-import { exec } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { fetchOidcConfiguration, type OidcConfiguration } from './oidc.js';
 import { generateCodeVerifier, generateCodeChallenge, generateState } from './pkce.js';
 import { waitForCallback, REDIRECT_URI } from './callback-server.js';
@@ -236,5 +236,5 @@ export function openInBrowser(url: string): void {
         ? 'start'
         : 'xdg-open';
 
-  exec(`${cmd} ${JSON.stringify(url)}`);
+  execFile(cmd, [url], { shell: false });
 }

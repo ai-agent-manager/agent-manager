@@ -63,6 +63,9 @@ export async function saveTokens(
     encoding: 'utf-8',
     mode: 0o600,
   });
+
+  // TODO: Replace with OS keychain storage (macOS Keychain / Windows Credential Manager / libsecret)
+  // with filesystem as fallback. See issue #11.
 }
 
 /**
