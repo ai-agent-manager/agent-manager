@@ -23,7 +23,7 @@ When a user provides a base URL to agent-manager, it fetches the discovery docum
     "url": "https://telemetry.example.com",
     "siteId": "acme-skills"
   },
-  "skills": [
+  "sources": [
     {
       "name": "quality-review",
       "type": "git",
@@ -53,11 +53,11 @@ When a user provides a base URL to agent-manager, it fetches the discovery docum
 | `telemetry` | object | No | Telemetry configuration (omit to leave unconfigured) |
 | `telemetry.url` | string (URI) | Yes (if telemetry present) | Base URL of the telemetry endpoint |
 | `telemetry.siteId` | string | Yes (if telemetry present) | Site identifier for the telemetry service |
-| `skills` | array | Yes | List of available skills |
-| `skills[].name` | string | Yes | Skill identifier |
-| `skills[].type` | `"http"` \| `"git"` | Yes | How to fetch the skill |
-| `skills[].url` | string (URI) | Yes | Location of the skill |
-| `skills[].status` | `"official"` \| `"community"` | No | Trust level indicator |
+| `sources` | array | Yes | List of available sources |
+| `sources[].name` | string | Yes | Source identifier |
+| `sources[].type` | `"http"` \| `"git"` | Yes | How to fetch the source |
+| `sources[].url` | string (URI) | Yes | Location of the source |
+| `sources[].status` | `"official"` \| `"community"` | No | Trust level indicator |
 
 ### Skill Types
 

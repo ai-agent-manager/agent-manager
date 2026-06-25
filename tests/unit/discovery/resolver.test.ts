@@ -61,7 +61,7 @@ describe('resolveDiscoverySkills', () => {
   it('resolves git skills from a discovery document', async () => {
     const doc: DiscoveryDocument = {
       version: '1',
-      skills: [
+      sources: [
         { name: 'my-repo', type: 'git', url: 'https://github.com/example/repo.git' },
       ],
     };
@@ -75,7 +75,7 @@ describe('resolveDiscoverySkills', () => {
   it('resolves http skills from a discovery document', async () => {
     const doc: DiscoveryDocument = {
       version: '1',
-      skills: [
+      sources: [
         { name: 'bundle', type: 'http', url: 'https://cdn.example.com/bundle' },
       ],
     };
@@ -90,7 +90,7 @@ describe('resolveDiscoverySkills', () => {
   it('resolves mixed http and git skills', async () => {
     const doc: DiscoveryDocument = {
       version: '1',
-      skills: [
+      sources: [
         { name: 'bundle', type: 'http', url: 'https://cdn.example.com/bundle' },
         { name: 'repo', type: 'git', url: 'https://github.com/example/repo.git' },
       ],
@@ -107,7 +107,7 @@ describe('resolveDiscoverySkills', () => {
 
     const doc: DiscoveryDocument = {
       version: '1',
-      skills: [
+      sources: [
         { name: 'bad-repo', type: 'git', url: 'https://github.com/example/bad.git' },
         { name: 'good-repo', type: 'git', url: 'https://github.com/example/good.git' },
       ],
@@ -115,16 +115,16 @@ describe('resolveDiscoverySkills', () => {
 
     const result = await resolveDiscoverySkills(doc);
     expect(result.errors).toHaveLength(1);
-    expect(result.errors[0]!.skill.name).toBe('bad-repo');
+    expect(result.errors[0]!.source.name).toBe('bad-repo');
     expect(result.errors[0]!.error).toBe('Clone failed');
     expect(result.skills).toHaveLength(1);
   });
 
-  it('calls onProgress callback for each skill', async () => {
+  it('calls onProgress callback for each source', async () => {
     const progress: string[] = [];
     const doc: DiscoveryDocument = {
       version: '1',
-      skills: [
+      sources: [
         { name: 'bundle', type: 'http', url: 'https://cdn.example.com/bundle' },
         { name: 'repo', type: 'git', url: 'https://github.com/example/repo.git' },
       ],
@@ -137,7 +137,7 @@ describe('resolveDiscoverySkills', () => {
   });
 
   it('returns empty skills for an empty discovery document', async () => {
-    const doc: DiscoveryDocument = { version: '1', skills: [] };
+    const doc: DiscoveryDocument = { version: '1', sources: [] };
     const result = await resolveDiscoverySkills(doc);
     expect(result.skills).toHaveLength(0);
     expect(result.errors).toHaveLength(0);

@@ -1,6 +1,6 @@
 {
   "version": "1",
-  "skills": [
+  "sources": [
     {
       "name": "mock-bundle",
       "type": "http",

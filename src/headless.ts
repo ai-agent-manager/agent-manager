@@ -92,15 +92,15 @@ export async function runHeadless(sourceInput: string, configPath: string, force
   if (source.type === 'discovery') {
     console.log('[agentman] Discovery document found');
 
-    console.log(`[agentman] Resolving ${source.discovery.skills.length} skill(s) from discovery document...`);
+    console.log(`[agentman] Resolving ${source.discovery.sources.length} source(s) from discovery document...`);
     const result = await resolveDiscoverySkills(
       source.discovery,
       undefined,
       (msg) => console.log(`[agentman] ${msg}`),
     );
 
-    for (const { skill, error } of result.errors) {
-      console.warn(`[agentman] WARNING: Failed to resolve skill '${skill.name}': ${error}`);
+    for (const { source, error } of result.errors) {
+      console.warn(`[agentman] WARNING: Failed to resolve source '${source.name}': ${error}`);
     }
 
     allSkills = result.skills;

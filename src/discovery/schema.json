@@ -4,7 +4,7 @@
   "title": "Agent Manager Discovery Document",
   "description": "Discovery document for agent-manager, served at <base_url>/.well-known/agents/discovery.json",
   "type": "object",
-  "required": ["version", "skills"],
+  "required": ["version", "sources"],
   "properties": {
     "version": {
       "type": "string",
@@ -60,26 +60,26 @@
       },
       "additionalProperties": false
     },
-    "skills": {
+    "sources": {
       "type": "array",
-      "description": "List of available skills",
+      "description": "List of available sources",
       "items": {
         "type": "object",
         "required": ["name", "type", "url"],
         "properties": {
           "name": {
             "type": "string",
-            "description": "Skill identifier (kebab-case recommended)"
+            "description": "Source identifier (kebab-case recommended)"
           },
           "type": {
             "type": "string",
             "enum": ["http", "git"],
-            "description": "How to fetch the skill. 'http' downloads a bundle directly. 'git' clones a repository in Claude Code plugin marketplace format."
+            "description": "How to fetch the source. 'http' downloads a bundle directly. 'git' clones a repository in Claude Code plugin marketplace format."
           },
           "url": {
             "type": "string",
             "format": "uri",
-            "description": "Location of the skill (bundle URL for http, repository URL for git)"
+            "description": "Location of the source (bundle URL for http, repository URL for git)"
           },
           "status": {
             "type": "string",

@@ -5,7 +5,7 @@
     "url": "https://telemetry.example.com",
     "siteId": "acme-skills"
   },
-  "skills": [
+  "sources": [
     {
       "name": "quality-review",
       "type": "git",

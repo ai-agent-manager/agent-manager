@@ -10,13 +10,13 @@ import { extractBundle } from '../bundle/extractor.js';
 import { scanBundle, type SkillInfo } from '../bundle/scanner.js';
 import { setCurrentBundle } from '../bundle/cache.js';
 import { importGitSkills } from './git-importer.js';
-import type { DiscoveryDocument, DiscoverySkill } from './types.js';
+import type { DiscoveryDocument, DiscoverySource } from './types.js';
 
-export interface ResolvedSkills {
+export interface ResolvedSources {
   /** All skills successfully resolved from the discovery document. */
   skills: SkillInfo[];
-  /** Skills that failed to resolve, with error details. */
-  errors: Array<{ skill: DiscoverySkill; error: string }>;
+  /** Sources that failed to resolve, with error details. */
+  errors: Array<{ source: DiscoverySource; error: string }>;
   /** Bundle version if an HTTP bundle was downloaded (for cache management). */
   bundleVersion?: string;
 }
@@ -32,18 +32,18 @@ export async function resolveDiscoverySkills(
   discovery: DiscoveryDocument,
   accessToken?: string,
   onProgress?: (message: string) => void,
-): Promise<ResolvedSkills> {
+): Promise<ResolvedSources> {
   const allSkills: SkillInfo[] = [];
-  const errors: Array<{ skill: DiscoverySkill; error: string }> = [];
+  const errors: Array<{ source: DiscoverySource; error: string }> = [];
   let bundleVersion: string | undefined;
 
-  for (const skill of discovery.skills) {
+  for (const source of discovery.sources) {
     try {
-      switch (skill.type) {
+      switch (source.type) {
         case 'http': {
-          onProgress?.(`Downloading skill bundle: ${skill.name}...`);
-          // For HTTP skills, the URL is the base URL for the bundle index
-          const { zipPath, version } = await downloadBundle(skill.url);
+          onProgress?.(`Downloading source bundle: ${source.name}...`);
+          // For HTTP sources, the URL is the base URL for the bundle index
+          const { zipPath, version } = await downloadBundle(source.url);
           const result = await extractBundle(zipPath);
           if (result.isNew) {
             await setCurrentBundle(result.manifest.version);
@@ -56,15 +56,15 @@ export async function resolveDiscoverySkills(
         }
 
         case 'git': {
-          onProgress?.(`Cloning skill repository: ${skill.name}...`);
-          const { skills: gitSkills } = await importGitSkills(skill.url, skill.name);
+          onProgress?.(`Cloning source repository: ${source.name}...`);
+          const { skills: gitSkills } = await importGitSkills(source.url, source.name);
           allSkills.push(...gitSkills);
           break;
         }
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      errors.push({ skill, error: message });
+      errors.push({ source, error: message });
     }
   }
 

@@ -20,18 +20,18 @@ export interface DiscoveryAuth {
   scopes?: string[];
 }
 
-export type SkillType = 'http' | 'git';
-export type SkillStatus = 'official' | 'community';
+export type SourceType = 'http' | 'git';
+export type SourceStatus = 'official' | 'community';
 
-export interface DiscoverySkill {
-  /** Skill identifier. */
+export interface DiscoverySource {
+  /** Source identifier. */
   name: string;
-  /** How to fetch the skill. */
-  type: SkillType;
-  /** Location of the skill (bundle URL for http, repository URL for git). */
+  /** How to fetch the source. */
+  type: SourceType;
+  /** Location of the source (bundle URL for http, repository URL for git). */
   url: string;
   /** Trust level indicator. */
-  status?: SkillStatus;
+  status?: SourceStatus;
 }
 
 export interface DiscoveryTelemetry {
@@ -48,6 +48,6 @@ export interface DiscoveryDocument {
   auth?: DiscoveryAuth;
   /** Telemetry configuration. Omit to leave telemetry unconfigured. */
   telemetry?: DiscoveryTelemetry;
-  /** List of available skills. */
-  skills: DiscoverySkill[];
+  /** List of available sources. */
+  sources: DiscoverySource[];
 }

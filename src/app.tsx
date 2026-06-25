@@ -97,8 +97,8 @@ async function acquireDiscoverySkills(
         setLoadingMessage,
     );
 
-    for (const { skill, error } of result.errors) {
-        warnings.push(`Failed to resolve skill '${skill.name}': ${error}`);
+    for (const { source, error } of result.errors) {
+        warnings.push(`Failed to resolve source '${source.name}': ${error}`);
     }
 
     return { skills: result.skills, warnings };

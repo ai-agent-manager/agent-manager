@@ -11,7 +11,7 @@ const { fetchDiscoveryDocument, DiscoveryError } = await import(
 
 const validDocument: DiscoveryDocument = {
   version: '1',
-  skills: [
+  sources: [
     {
       name: 'test-skill',
       type: 'git',
@@ -33,7 +33,7 @@ const validDocumentWithAuth: DiscoveryDocument = {
     url: 'https://telemetry.example.com',
     siteId: 'test-site',
   },
-  skills: [
+  sources: [
     {
       name: 'protected-skill',
       type: 'http',
@@ -128,7 +128,7 @@ describe('fetchDiscoveryDocument', () => {
   it('throws DiscoveryError on schema validation failure', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ version: '99', skills: 'not-an-array' }),
+      json: async () => ({ version: '99', sources: 'not-an-array' }),
     });
 
     await expect(
