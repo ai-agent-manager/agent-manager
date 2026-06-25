@@ -81,7 +81,6 @@ Skills are installed as symlinks into each tool's native skills directory:
 |------|-------------|
 | Agents | `~/.agents/skills/<skill-name>/` |
 | Claude Code | `~/.claude/skills/<skill-name>/` |
-| Agents | `~/.agents/skills/<skill-name>/` |
 | Cursor | `~/.cursor/skills/<skill-name>/` |
 | GitHub Copilot | `~/.copilot/skills/<skill-name>/` |
 | Kiro | `~/.kiro/skills/<skill-name>/` |
