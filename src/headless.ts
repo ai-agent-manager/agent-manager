@@ -7,13 +7,7 @@ import { scanBundle, type SkillInfo } from './bundle/scanner.js';
 import { setCurrentBundle } from './bundle/cache.js';
 import { resolveSource } from './bundle/source.js';
 import { resolveDiscoverySkills } from './discovery/index.js';
-import { AgentsProvisioner } from './provisioners/AgentsProvisioner.js';
-import { ClaudeCodeProvisioner } from './provisioners/ClaudeCodeProvisioner.js';
-import { WindsurfProvisioner } from './provisioners/WindsurfProvisioner.js';
-import { CopilotProvisioner } from './provisioners/CopilotProvisioner.js';
-import { CursorProvisioner } from './provisioners/CursorProvisioner.js';
-import { KiroProvisioner } from './provisioners/KiroProvisioner.js';
-import type { SkillProvisioner } from './provisioners/SkillProvisioner.js';
+import { createSkillProvisioner, formatSupportedSkillToolIds } from './provisioners/registry.js';
 import type { InstallScope } from './config/scopes.js';
 
 export interface HeadlessConfig {
@@ -35,7 +29,7 @@ export async function parseHeadlessConfig(configPath: string): Promise<HeadlessC
     tools = [parsed.tools];
   } else {
     throw new Error(
-      `ai-skills.yml: "tools" is required ('agents', 'claude-code', 'windsurf', 'github-copilot', 'cursor', 'kiro')`,
+      `ai-skills.yml: "tools" is required (${formatSupportedSkillToolIds()})`,
     );
   }
 
@@ -60,26 +54,6 @@ export async function parseHeadlessConfig(configPath: string): Promise<HeadlessC
     skills: parsed.skills as string[],
     bundleVersion,
   };
-}
-
-function createProvisioner(toolId: string, scope: InstallScope, repoRoot: string): SkillProvisioner {
-  const options = { scope, repoRoot };
-  switch (toolId) {
-    case 'agents':
-      return new AgentsProvisioner(options);
-    case 'claude-code':
-      return new ClaudeCodeProvisioner(options);
-    case 'windsurf':
-      return new WindsurfProvisioner(options);
-    case 'github-copilot':
-      return new CopilotProvisioner(options);
-    case 'cursor':
-      return new CursorProvisioner(options);
-    case 'kiro':
-      return new KiroProvisioner(options);
-    default:
-      throw new Error(`Unknown tool: ${toolId}`);
-  }
 }
 
 export async function runHeadless(sourceInput: string, configPath: string, forceUpdate: boolean): Promise<void> {
@@ -172,7 +146,7 @@ export async function runHeadless(sourceInput: string, configPath: string, force
 
   for (const toolId of config.tools) {
     console.log(`\n[agentman] Installing ${toInstall.length} skill(s) for ${toolId}...`);
-    const provisioner = createProvisioner(toolId, config.scope, repoRoot);
+    const provisioner = createSkillProvisioner(toolId, config.scope, repoRoot);
     const result = await provisioner.install(toInstall, bundleVersion);
 
     if (result.installed.length > 0) {

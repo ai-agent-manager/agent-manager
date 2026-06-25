@@ -23,9 +23,9 @@ vi.mock("../../../src/config/paths.js", () => ({
 }));
 
 vi.mock("../../../src/config/tools.js", () => ({
-  SKILL_TOOLS: [
-    { id: "claude-code", name: "Claude Code" },
-    { id: "windsurf", name: "Windsurf" },
+  getSkillTools: () => [
+    { id: "claude-code", name: "Claude Code", getSkillsDir: () => "/mock/.claude/skills", getRepoSkillsDir: () => "/mock/.claude/skills" },
+    { id: "windsurf", name: "Windsurf", getSkillsDir: () => "/mock/.windsurf/skills", getRepoSkillsDir: () => "/mock/.windsurf/skills" },
   ],
 }));
 

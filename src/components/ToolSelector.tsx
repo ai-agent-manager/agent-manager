@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import SelectInput from 'ink-select-input';
-import { SKILL_TOOLS } from '../config/tools.js';
+import { getSkillTools } from '../config/tools.js';
 import type { InstallScope } from '../config/scopes.js';
 
 interface ToolSelectorProps {
@@ -13,7 +13,7 @@ interface ToolSelectorProps {
 
 export function ToolSelector({ scope, repoRoot, onSelect, onBack }: ToolSelectorProps) {
   const items = [
-    ...SKILL_TOOLS.map((tool) => {
+    ...getSkillTools().map((tool) => {
       const dir = scope === 'repo' && repoRoot
         ? tool.getRepoSkillsDir(repoRoot)
         : tool.getSkillsDir();
