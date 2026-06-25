@@ -7,8 +7,11 @@ This directory contains an [Imposter](https://docs.imposter.sh) mock that replic
 ```
 mocks/
 ├── .imposter.yaml          # Imposter engine and plugin config
-├── agents-config.yaml      # (unused at runtime, kept for reference)
+├── agents-config.yaml      # REST plugin routes — discovery doc + /agents/* files
 ├── build-bundles.sh        # Script to rebuild bundle.zip after content changes
+├── .well-known/
+│   └── agents/
+│       └── discovery.json  # Discovery document served at /.well-known/agents/discovery.json
 └── agents/
     ├── index.json          # Version index — lists available bundle versions
     └── 0.1.0/
@@ -39,7 +42,7 @@ imposter up             # starts on http://localhost:8080
 imposter down -a        # stop all running Imposter instances
 ```
 
-The mock serves everything under `/agents/` with permissive CORS, so the CLI and any browser-based frontend can reach it without cross-origin errors.
+The mock serves the discovery document at `/.well-known/agents/discovery.json` and all files under `/agents/` with permissive CORS, so the CLI and any browser-based frontend can reach it without cross-origin errors.
 
 Point the CLI at the mock:
 
@@ -51,18 +54,23 @@ npm run dev -- http://localhost:8080
 
 ## How the mock works
 
-`.imposter.yaml` configures Imposter's native engine and a single REST plugin rule:
+`.imposter.yaml` configures Imposter's native engine. `agents-config.yaml` defines two REST plugin rules:
 
 ```yaml
 plugin: rest
 resources:
+  - path: /.well-known/agents/discovery.json
+    method: GET
+    response:
+      file: .well-known/agents/discovery.json
+
   - path: /agents/*
     method: GET
     response:
       dir: agents
 ```
 
-Imposter maps the URL path to a file under `agents/` and returns it verbatim. So `GET /agents/index.json` returns `agents/index.json`, and `GET /agents/0.1.0/bundle.zip` returns the binary zip.
+The discovery rule returns `.well-known/agents/discovery.json` verbatim, so `GET /.well-known/agents/discovery.json` gives the CLI its list of skills. The wildcard rule maps the URL path to a file under `agents/`. So `GET /agents/index.json` returns `agents/index.json`, and `GET /agents/0.1.0/bundle.zip` returns the binary zip.
 
 ## Adding or updating a bundle version
 

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://raw.githubusercontent.com/ai-agent-manager/agent-manager/main/src/discovery/schema.json",
+  "version": "1",
+  "telemetry": {
+    "url": "https://telemetry.example.com",
+    "siteId": "acme-skills"
+  },
+  "sources": [
+    {
+      "name": "quality-review",
+      "type": "git",
+      "url": "https://github.com/acme-corp/quality-review-plugin.git",
+      "status": "official"
+    },
+    {
+      "name": "security-scanner",
+      "type": "git",
+      "url": "https://github.com/acme-corp/security-scanner-plugin.git",
+      "status": "official"
+    },
+    {
+      "name": "deployment-tools",
+      "type": "http",
+      "url": "https://skills.example.com/bundles/deployment-tools",
+      "status": "community"
+    }
+  ]
+}

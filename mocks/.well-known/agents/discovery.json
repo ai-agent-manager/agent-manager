@@ -1,0 +1,11 @@
+{
+  "version": "1",
+  "sources": [
+    {
+      "name": "mock-bundle",
+      "type": "http",
+      "url": "http://localhost:8080",
+      "status": "official"
+    }
+  ]
+}

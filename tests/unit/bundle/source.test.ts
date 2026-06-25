@@ -1,8 +1,19 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { resolveSource } from '../../../src/bundle/source.js';
+import type { DiscoveryDocument } from '../../../src/discovery/types.js';
+
+const mockDiscovery: DiscoveryDocument = {
+  version: '1',
+  skills: [{ name: 'test', type: 'http', url: 'https://example.com/bundle' }],
+};
+
+vi.mock('../../../src/discovery/index.js', () => ({
+  fetchDiscoveryDocument: vi.fn(async () => mockDiscovery),
+}));
+
+const { resolveSource } = await import('../../../src/bundle/source.js');
 
 describe('resolveSource', () => {
   let tempDir: string;
@@ -16,19 +27,29 @@ describe('resolveSource', () => {
     await rm(tempDir, { recursive: true, force: true });
   });
 
-  it('returns url source for https URL', async () => {
+  it('returns discovery source for https URL', async () => {
     const result = await resolveSource('https://example.com');
-    expect(result).toEqual({ type: 'url', baseUrl: 'https://example.com' });
+    expect(result.type).toBe('discovery');
+    if (result.type === 'discovery') {
+      expect(result.baseUrl).toBe('https://example.com');
+      expect(result.discovery).toEqual(mockDiscovery);
+    }
   });
 
-  it('returns url source for http URL', async () => {
+  it('returns discovery source for http URL', async () => {
     const result = await resolveSource('http://localhost:3000');
-    expect(result).toEqual({ type: 'url', baseUrl: 'http://localhost:3000' });
+    expect(result.type).toBe('discovery');
+    if (result.type === 'discovery') {
+      expect(result.baseUrl).toBe('http://localhost:3000');
+    }
   });
 
-  it('returns url source for https URL with trailing path', async () => {
+  it('returns discovery source for https URL with trailing path', async () => {
     const result = await resolveSource('https://cdn.example.com/my-org/');
-    expect(result).toEqual({ type: 'url', baseUrl: 'https://cdn.example.com/my-org/' });
+    expect(result.type).toBe('discovery');
+    if (result.type === 'discovery') {
+      expect(result.baseUrl).toBe('https://cdn.example.com/my-org/');
+    }
   });
 
   it('returns directory source for an existing directory', async () => {
@@ -37,7 +58,6 @@ describe('resolveSource', () => {
   });
 
   it('resolves relative paths to absolute', async () => {
-    // Use the temp dir relative to cwd — create a subdir inside it
     const subDir = path.join(tempDir, 'sub');
     await mkdir(subDir, { recursive: true });
     const result = await resolveSource(subDir);
@@ -46,7 +66,6 @@ describe('resolveSource', () => {
   });
 
   it('accepts directory without manifest.json', async () => {
-    // Directory exists but has no manifest.json — should still resolve
     const result = await resolveSource(tempDir);
     expect(result).toEqual({ type: 'directory', dirPath: tempDir });
   });
