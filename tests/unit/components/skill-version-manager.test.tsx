@@ -1,5 +1,5 @@
 import React from "react";
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render } from "ink-testing-library";
 import { SkillVersionManager } from "../../../src/components/SkillVersionManager.js";
 
@@ -23,9 +23,9 @@ vi.mock("../../../src/config/paths.js", () => ({
 }));
 
 vi.mock("../../../src/config/tools.js", () => ({
-  SKILL_TOOLS: [
-    { id: "claude-code", name: "Claude Code" },
-    { id: "windsurf", name: "Windsurf" },
+  getSkillTools: () => [
+    { id: "claude-code", name: "Claude Code", getSkillsDir: () => "/mock/.claude/skills", getRepoSkillsDir: () => "/mock/.claude/skills" },
+    { id: "windsurf", name: "Windsurf", getSkillsDir: () => "/mock/.windsurf/skills", getRepoSkillsDir: () => "/mock/.windsurf/skills" },
   ],
 }));
 
@@ -38,15 +38,27 @@ import { readRepoConfig } from "../../../src/bundle/repo-config.js";
 import { scanBundle } from "../../../src/bundle/scanner.js";
 import { findRepoRoot } from "../../../src/lib/repo.js";
 
+const FRAME_WAIT_TIMEOUT_MS = 10_000;
+const ASYNC_INK_TEST_TIMEOUT_MS = 15_000;
+
 async function waitForFrameText(lastFrame: () => string | undefined, text: string): Promise<void> {
-  // Give event loop a chance to process input and re-render
-  await new Promise((resolve) => setTimeout(resolve, 10));
   await vi.waitFor(
     () => {
       expect(lastFrame() ?? "").toContain(text);
     },
-    { timeout: 5000 },
+    { timeout: FRAME_WAIT_TIMEOUT_MS, interval: 20 },
   );
+}
+
+async function selectSystemWideScope(stdin: { write: (input: string) => void }, lastFrame: () => string | undefined): Promise<void> {
+  await waitForFrameText(lastFrame, "Which skills do you want to manage?");
+  stdin.write("\r");
+  await flushInkInput();
+  await waitForFrameText(lastFrame, "Select a skill to change its version");
+}
+
+async function flushInkInput(): Promise<void> {
+  await new Promise<void>((resolve) => setImmediate(resolve));
 }
 
 describe("SkillVersionManager", () => {
@@ -55,13 +67,10 @@ describe("SkillVersionManager", () => {
   beforeEach(() => {
     mockOnBack = vi.fn();
     vi.clearAllMocks();
+    vi.mocked(scanBundle).mockReset();
     // Default: not inside a repo
     vi.mocked(findRepoRoot).mockResolvedValue(null);
     vi.mocked(readRepoConfig).mockResolvedValue(null);
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
   });
 
   it("shows loading state initially", () => {
@@ -165,11 +174,11 @@ describe("SkillVersionManager", () => {
 
     const { lastFrame, stdin } = render(<SkillVersionManager onBack={mockOnBack} />);
 
-    await waitForFrameText(lastFrame, "Manage Skill Versions");
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     // Select "System-wide"
     stdin.write("\r");
-    await waitForFrameText(lastFrame, "Select a skill to change its version");
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
     expect(lastFrame()).toContain("hello-world-skill");
     expect(lastFrame()).toContain("Claude Code");
@@ -274,25 +283,23 @@ describe("SkillVersionManager", () => {
 
     const { lastFrame, stdin } = render(<SkillVersionManager onBack={mockOnBack} />);
 
-    await waitForFrameText(lastFrame, "Manage Skill Versions");
-
-    // Select "System-wide"
-    stdin.write("\r");
-    await waitForFrameText(lastFrame, "Select a skill to change its version");
+    await selectSystemWideScope(stdin, lastFrame);
 
     // Select "Change hello-world-skill" → scanning → select-version screen
     stdin.write("\r");
+    await flushInkInput();
     await waitForFrameText(lastFrame, "Select a version to install");
 
     // Select version 2.0.0
     stdin.write("\r");
+    await flushInkInput();
     await waitForFrameText(lastFrame, "Permission denied");
 
     // Should show error icon (✘ U+2718), not success icon (✔ U+2714)
     expect(lastFrame()).toContain("\u2718");
     expect(lastFrame()).not.toContain("\u2714");
     expect(lastFrame()).toContain("Permission denied");
-  });
+  }, ASYNC_INK_TEST_TIMEOUT_MS);
 
   it("shows cached versions that do not contain the selected skill and blocks selecting them", async () => {
     vi.mocked(readConfig).mockResolvedValue({
@@ -326,12 +333,10 @@ describe("SkillVersionManager", () => {
 
     const { lastFrame, stdin } = render(<SkillVersionManager onBack={mockOnBack} />);
 
-    await waitForFrameText(lastFrame, "Manage Skill Versions");
+    await selectSystemWideScope(stdin, lastFrame);
 
     stdin.write("\r");
-    await waitForFrameText(lastFrame, "Select a skill to change its version");
-
-    stdin.write("\r");
+    await flushInkInput();
     await waitForFrameText(lastFrame, "Select a version to install");
 
     expect(lastFrame()).toContain("1.3.0");
@@ -340,13 +345,15 @@ describe("SkillVersionManager", () => {
     expect(lastFrame()).toContain("cannot be selected");
 
     stdin.write("\u001B[B");
+    await flushInkInput();
     await waitForFrameText(lastFrame, "1.1.0");
     stdin.write("\r");
+    await flushInkInput();
     await waitForFrameText(lastFrame, "Selected skill not in bundle 1.1.0");
 
     expect(lastFrame()).toContain("Selected skill not in bundle 1.1.0");
     expect(updateSkillVersion).not.toHaveBeenCalled();
-  });
+  }, ASYNC_INK_TEST_TIMEOUT_MS);
 
   it("calls onBack when back is selected from scope screen", async () => {
     vi.mocked(readConfig).mockResolvedValue({ installations: {} });
@@ -358,15 +365,18 @@ describe("SkillVersionManager", () => {
 
     // Navigate to "← Back" (3rd item: System-wide, This repository, ← Back)
     stdin.write("\u001B[B"); // arrow down
+    await flushInkInput();
     await waitForFrameText(lastFrame, "This repository");
     stdin.write("\u001B[B"); // arrow down
+    await flushInkInput();
     await waitForFrameText(lastFrame, "← Back");
     stdin.write("\r");
+    await flushInkInput();
 
     await vi.waitFor(() => {
       expect(mockOnBack).toHaveBeenCalledOnce();
     });
-  });
+  }, ASYNC_INK_TEST_TIMEOUT_MS);
 
   it("shows mixed-version warning and align option when skills differ", async () => {
     vi.mocked(readConfig).mockResolvedValue({

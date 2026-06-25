@@ -22,6 +22,12 @@ const mockProvisioner = {
   uninstall: vi.fn(),
 };
 
+vi.mock("../../../src/provisioners/registry.js", () => ({
+  createSkillProvisioner: vi.fn(function MockCreateSkillProvisioner() {
+    return mockProvisioner;
+  }),
+}));
+
 vi.mock("../../../src/provisioners/ClaudeCodeProvisioner.js", () => ({
   ClaudeCodeProvisioner: vi.fn(function MockClaudeCodeProvisioner() {
     return mockProvisioner;
@@ -44,6 +50,11 @@ vi.mock("../../../src/provisioners/CursorProvisioner.js", () => ({
 }));
 vi.mock("../../../src/provisioners/KiroProvisioner.js", () => ({
   KiroProvisioner: vi.fn(function MockKiroProvisioner() {
+    return mockProvisioner;
+  }),
+}));
+vi.mock("../../../src/provisioners/AgentsProvisioner.js", () => ({
+  AgentsProvisioner: vi.fn(function MockAgentsProvisioner() {
     return mockProvisioner;
   }),
 }));
