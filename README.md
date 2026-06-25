@@ -126,6 +126,7 @@ Skills are installed as symlinks into each tool's native skills directory:
 | Claude Code | `~/.claude/skills/<skill>/` | `<repo>/.claude/skills/<skill>/` |
 | Windsurf | `~/.codeium/windsurf/skills/<skill>/` | `<repo>/.windsurf/skills/<skill>/` |
 | GitHub Copilot | `~/.copilot/skills/<skill>/` | `<repo>/.github/copilot/skills/<skill>/` |
+| Agents | `~/.agents/skills/<skill>/` | `<repo>/.agents/skills/<skill>/` |
 | Cursor | `~/.cursor/skills/<skill>/` | `<repo>/.cursor/skills/<skill>/` |
 | Kiro | `~/.kiro/skills/<skill>/` | `<repo>/.kiro/skills/<skill>/` |
 

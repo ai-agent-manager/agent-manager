@@ -1,5 +1,5 @@
-import path from 'node:path';
-import { getHomeDir, getCursorSkillsDir } from '../lib/platform.js';
+import path from "node:path";
+import { getHomeDir, getCursorSkillsDir } from "../lib/platform.js";
 
 export interface ToolDefinition {
   id: string;
@@ -16,34 +16,41 @@ export interface ToolDefinition {
 
 export const SKILL_TOOLS: ToolDefinition[] = [
   {
-    id: 'claude-code',
-    name: 'Claude Code',
-    getSkillsDir: () => path.join(getHomeDir(), '.claude', 'skills'),
-    getRepoSkillsDir: (repoRoot: string) => path.join(repoRoot, '.claude', 'skills'),
+    id: "agents",
+    name: "Agents",
+    getSkillsDir: () => path.join(getHomeDir(), ".agents", "skills"),
+    getRepoSkillsDir: (repoRoot: string) => path.join(repoRoot, ".agents", "skills"),
+    note: "Shared Agent Skills layout (~/.agents/skills/). Used by Pi and other cross-client harnesses.",
   },
   {
-    id: 'windsurf',
-    name: 'Windsurf',
-    getSkillsDir: () => path.join(getHomeDir(), '.codeium', 'windsurf', 'skills'),
-    getRepoSkillsDir: (repoRoot: string) => path.join(repoRoot, '.windsurf', 'skills'),
+    id: "claude-code",
+    name: "Claude Code",
+    getSkillsDir: () => path.join(getHomeDir(), ".claude", "skills"),
+    getRepoSkillsDir: (repoRoot: string) => path.join(repoRoot, ".claude", "skills"),
   },
   {
-    id: 'github-copilot',
-    name: 'GitHub Copilot',
-    getSkillsDir: () => path.join(getHomeDir(), '.copilot', 'skills'),
-    getRepoSkillsDir: (repoRoot: string) => path.join(repoRoot, '.github', 'copilot', 'skills'),
-  },
-  {
-    id: 'cursor',
-    name: 'Cursor',
+    id: "cursor",
+    name: "Cursor",
     getSkillsDir: () => getCursorSkillsDir(),
-    getRepoSkillsDir: (repoRoot: string) => path.join(repoRoot, '.cursor', 'skills'),
+    getRepoSkillsDir: (repoRoot: string) => path.join(repoRoot, ".cursor", "skills"),
   },
   {
-    id: 'kiro',
-    name: 'Kiro',
-    getSkillsDir: () => path.join(getHomeDir(), '.kiro', 'skills'),
-    getRepoSkillsDir: (repoRoot: string) => path.join(repoRoot, '.kiro', 'skills'),
+    id: "github-copilot",
+    name: "GitHub Copilot",
+    getSkillsDir: () => path.join(getHomeDir(), ".copilot", "skills"),
+    getRepoSkillsDir: (repoRoot: string) => path.join(repoRoot, ".github", "copilot", "skills"),
+  },
+  {
+    id: "kiro",
+    name: "Kiro",
+    getSkillsDir: () => path.join(getHomeDir(), ".kiro", "skills"),
+    getRepoSkillsDir: (repoRoot: string) => path.join(repoRoot, ".kiro", "skills"),
+  },
+  {
+    id: "windsurf",
+    name: "Windsurf",
+    getSkillsDir: () => path.join(getHomeDir(), ".codeium", "windsurf", "skills"),
+    getRepoSkillsDir: (repoRoot: string) => path.join(repoRoot, ".windsurf", "skills"),
   },
 ];
 
