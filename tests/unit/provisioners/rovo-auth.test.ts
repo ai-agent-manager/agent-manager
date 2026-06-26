@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdir, writeFile, stat, utimes, unlink, rm } from 'node:fs/promises';
+import { mkdir, writeFile, stat, utimes, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { RovoProvisioner } from '../../../src/provisioners/RovoProvisioner.js';

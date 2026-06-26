@@ -7,7 +7,7 @@ import {
     getCurrentBundleLink,
     getConfigPath,
 } from "../config/paths.js";
-import { parseManifest, type BundleManifest } from "./manifest.js";
+import { parseManifest } from "./manifest.js";
 import { readRepoConfig, writeRepoConfig } from "./repo-config.js";
 import { scanBundle } from "./scanner.js";
 import { getPlatform } from "../lib/platform.js";
@@ -157,7 +157,7 @@ export async function updateSkillVersion(
         if (!skillExists) {
             return { success: false, error: `Skill '${skillName}' does not exist in version ${newVersion}` };
         }
-    } catch (error) {
+    } catch {
         return { success: false, error: `Cannot access bundle version ${newVersion}` };
     }
 

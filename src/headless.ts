@@ -56,7 +56,7 @@ export async function parseHeadlessConfig(configPath: string): Promise<HeadlessC
   };
 }
 
-export async function runHeadless(sourceInput: string, configPath: string, forceUpdate: boolean): Promise<void> {
+export async function runHeadless(sourceInput: string, configPath: string, _forceUpdate: boolean): Promise<void> {
   const config = await parseHeadlessConfig(configPath);
   const repoRoot = process.cwd();
 

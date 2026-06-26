@@ -1,0 +1,6 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/crates/oxc_linter/snapshot.js",
+  "rules": {
+    "no-unused-vars": "warn"
+  }
+}
