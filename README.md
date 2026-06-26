@@ -94,14 +94,46 @@ npx -y @ai-agent-manager/cli@latest <base-url> --update
 npx -y @ai-agent-manager/cli@latest --help
 ```
 
+### Submit a skill
+
+Want to contribute a skill to a git repository? The `contribute` subcommand walks you through cloning the repo, creating a branch, copying your skill into `skills/<name>/`, committing, and pushing — with optional draft PR creation for GitHub repos.
+
+```bash
+npx -y @ai-agent-manager/cli@latest contribute ./my-skill https://github.com/org/skills-repo.git
+```
+
+Your skill directory needs a `SKILL.md` with at least `name` and `description` in the frontmatter:
+
+```yaml
+---
+name: code-reviewer
+description: Review pull requests for security and style
+---
+
+# Code Reviewer
+
+Review pull requests...
+```
+
+**How it works:**
+
+1. Clones the target repository shallowly to a temp directory
+2. Creates a branch named `contribute/<skill-name>/<hash>`
+3. Copies your skill into `skills/<name>/`
+4. Commits and pushes the branch
+5. For GitHub repos, offers to create a draft pull request (requires `gh` CLI)
+
+Authentication is handled via your existing git credentials (SSH keys, credential helper, or token).
+
 ---
 
 ## Interactive Menu
 
-The TUI has four options:
+The TUI presents the following options:
 
-- **Install Skills** -- Choose system-wide or repository-scoped installation, select a coding tool, then choose which skills to install or uninstall via symlink.
-- **Rovo Agents** -- Provision Atlassian Rovo agents. By default this runs Playwright-driven browser automation from the command line. Set `AGENTMAN_CHROME_EXTENSION=1` to also offer the Chrome Extension options, including direct extension installation (see [Feature Flags](#feature-flags)).
+- **Install Agent Skills** -- Choose system-wide or repository-scoped installation, select a coding tool, then choose which skills to install or uninstall via symlink.
+- **Manage Skill Versions** -- Change individual skill versions within the active bundle.
+- **Provision Rovo Agents** -- Create agents in Atlassian Studio. By default this runs Playwright-driven browser automation from the command line. Set `AGENTMAN_CHROME_EXTENSION=1` to also offer the Chrome Extension options, including direct extension installation (see [Feature Flags](#feature-flags)).
 - **Manage Bundle Versions** -- View cached bundle versions, switch the active bundle, or remove old cached bundles.
 - **Update Agent Manager App** -- Update the Agent Manager CLI application itself via npm. This is separate from bundle, skill, and Rovo agent version management.
 
