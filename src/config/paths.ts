@@ -31,16 +31,6 @@ export function getTempDir(): string {
   return path.join(getAgentmanDir(), 'tmp');
 }
 
-/** Directory containing cached repository downloads */
-export function getReposDir(): string {
-  return path.join(getAgentmanDir(), 'repos');
-}
-
-/** Cache directory for a specific repository at a given ref */
-export function getRepoCacheDir(owner: string, repo: string, ref: string): string {
-  return path.join(getReposDir(), owner, repo, ref);
-}
-
 /** Directory for saved auth state (restricted permissions) */
 export function getAuthDir(): string {
   return path.join(getAgentmanDir(), 'auth');

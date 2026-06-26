@@ -3,24 +3,12 @@ import { parse as parseYaml } from 'yaml';
 import { downloadBundle } from './bundle/downloader.js';
 import { extractBundle } from './bundle/extractor.js';
 import { importLocalBundle } from './bundle/importer.js';
-import { scanBundle } from './bundle/scanner.js';
+import { scanBundle, type SkillInfo } from './bundle/scanner.js';
 import { setCurrentBundle } from './bundle/cache.js';
-import {
-  resolveSkillSource,
-  buildSourcePin,
-  describeSkillSource,
-  isRepoSource,
-  isBundleSource,
-  type SkillSourcePin,
-} from './bundle/skill-source.js';
-import { downloadRepoArchive } from './bundle/repo-downloader.js';
-import { scanRepoForSkills } from './bundle/repo-scanner.js';
-import { ClaudeCodeProvisioner } from './provisioners/ClaudeCodeProvisioner.js';
-import { WindsurfProvisioner } from './provisioners/WindsurfProvisioner.js';
-import { CopilotProvisioner } from './provisioners/CopilotProvisioner.js';
-import { CursorProvisioner } from './provisioners/CursorProvisioner.js';
-import type { SkillProvisioner } from './provisioners/SkillProvisioner.js';
-import type { SkillInfo } from './bundle/scanner.js';
+import { resolveSource } from './bundle/source.js';
+import { resolveSkillSource, buildSourcePin, type SkillSourcePin } from './bundle/skill-source.js';
+import { resolveDiscoverySkills } from './discovery/index.js';
+import { createSkillProvisioner, formatSupportedSkillToolIds } from './provisioners/registry.js';
 import type { InstallScope } from './config/scopes.js';
 
 export interface HeadlessConfig {
@@ -42,7 +30,7 @@ export async function parseHeadlessConfig(configPath: string): Promise<HeadlessC
     tools = [parsed.tools];
   } else {
     throw new Error(
-      'ai-skills.yml: "tools" is required (claude-code, windsurf, github-copilot, cursor)'
+      `ai-skills.yml: "tools" is required (${formatSupportedSkillToolIds()})`,
     );
   }
 
@@ -69,27 +57,7 @@ export async function parseHeadlessConfig(configPath: string): Promise<HeadlessC
   };
 }
 
-function createProvisioner(toolId: string, scope: InstallScope, repoRoot: string): SkillProvisioner {
-  const options = { scope, repoRoot };
-  switch (toolId) {
-    case 'claude-code': return new ClaudeCodeProvisioner(options);
-    case 'windsurf': return new WindsurfProvisioner(options);
-    case 'github-copilot': return new CopilotProvisioner(options);
-    case 'cursor': return new CursorProvisioner(options);
-    default: throw new Error(`Unknown tool: ${toolId}`);
-  }
-}
-
 export async function runHeadless(sourceInput: string, configPath: string, forceUpdate: boolean): Promise<void> {
-  try {
-    await _runHeadless(sourceInput, configPath, forceUpdate);
-  } catch (err) {
-    console.error(`\n[agentman] ERROR: ${err instanceof Error ? err.message : String(err)}`);
-    process.exit(1);
-  }
-}
-
-async function _runHeadless(sourceInput: string, configPath: string, forceUpdate: boolean): Promise<void> {
   const config = await parseHeadlessConfig(configPath);
   const repoRoot = process.cwd();
 
@@ -98,69 +66,61 @@ async function _runHeadless(sourceInput: string, configPath: string, forceUpdate
   console.log(`  Tools:   ${config.tools.join(', ')}`);
   console.log(`  Scope:   ${config.scope}`);
   console.log(`  Skills:  ${config.skills.join(', ')}\n`);
+  console.log(`  Bundle version: ${config.bundleVersion ?? 'latest'}\n`);
 
-  // Resolve source using the multi-source resolver
-  const source = await resolveSkillSource(sourceInput);
-  console.log(`  Source:  ${describeSkillSource(source)}\n`);
-
-  let skills: SkillInfo[];
+  // Acquire skills
+  const source = await resolveSource(sourceInput);
+  let allSkills: SkillInfo[];
   let bundleVersion: string;
   let sourcePin: SkillSourcePin | undefined;
 
-  if (isRepoSource(source)) {
-    // ── Repo source path ──────────────────────────────────────────────────────
-    console.log('[agentman] Downloading repository archive...');
-    const token = process.env.GITHUB_TOKEN;
-    const { extractDir, isNew } = await downloadRepoArchive(source, { forceUpdate, token });
+  if (source.type === 'discovery') {
+    console.log('[agentman] Discovery document found');
 
-    if (!isNew) {
-      console.log('[agentman] Using cached repository archive.');
+    console.log(`[agentman] Resolving ${source.discovery.sources.length} source(s) from discovery document...`);
+    const result = await resolveDiscoverySkills(
+      source.discovery,
+      undefined,
+      (msg) => console.log(`[agentman] ${msg}`),
+    );
+
+    for (const { source: failedSource, error } of result.errors) {
+      console.warn(`[agentman] WARNING: Failed to resolve source '${failedSource.name}': ${error}`);
     }
 
+    allSkills = result.skills;
+    bundleVersion = result.bundleVersion ?? 'discovery';
+  } else {
+    let bundleDir: string;
 
-    console.log('[agentman] Scanning repository for skills...');
-    const scanResult = await scanRepoForSkills(extractDir, source);
-    skills = scanResult.skills;
-    bundleVersion = '';
-    sourcePin = buildSourcePin(source);
-
-  } else if (isBundleSource(source)) {
-    // ── Bundle source path (existing flow) ────────────────────────────────────
-    if (source.baseUrl) {
-      console.log(`  Bundle version: ${config.bundleVersion ?? 'latest'}\n`);
+    if (source.type === 'url') {
       console.log('[agentman] Downloading bundle...');
       const { zipPath } = await downloadBundle(source.baseUrl, config.bundleVersion);
       console.log('[agentman] Extracting bundle...');
       const result = await extractBundle(zipPath);
+      bundleDir = result.bundleDir;
       bundleVersion = result.manifest.version;
       if (result.isNew) {
         await setCurrentBundle(bundleVersion);
       }
-      console.log(`[agentman] Bundle version: ${bundleVersion}`);
-      const contents = await scanBundle(result.bundleDir);
-      skills = contents.skills;
-      sourcePin = buildSourcePin(source, bundleVersion);
     } else {
       console.log('[agentman] Importing local bundle...');
-      const result = await importLocalBundle(source.dirPath!);
+      const result = await importLocalBundle(source.dirPath);
+      bundleDir = result.bundleDir;
       bundleVersion = result.manifest.version;
-      console.log(`[agentman] Bundle version: ${bundleVersion}`);
-      const contents = await scanBundle(result.bundleDir);
-      skills = contents.skills;
-      sourcePin = buildSourcePin(source, bundleVersion);
     }
 
-  } else {
-    // ── Artefact source (not yet implemented) ─────────────────────────────────
-    throw new Error(
-      'Artefact source installation is not yet supported. ' +
-      'Use a GitHub repository URL or a bundle URL instead.'
-    );
+    console.log(`[agentman] Bundle version: ${bundleVersion}`);
+    const contents = await scanBundle(bundleDir);
+    allSkills = contents.skills;
+
+    const skillSource = await resolveSkillSource(sourceInput);
+    sourcePin = buildSourcePin(skillSource, bundleVersion);
   }
 
-  // ── Shared install logic ──────────────────────────────────────────────────
-  const availableSkills = new Map(skills.map(s => [s.dirName, s]));
+  const availableSkills = new Map(allSkills.map((s) => [s.dirName, s]));
 
+  // Match requested skills
   const toInstall = [];
   const notFound = [];
 
@@ -174,7 +134,7 @@ async function _runHeadless(sourceInput: string, configPath: string, forceUpdate
   }
 
   if (notFound.length > 0) {
-    console.warn(`\n[agentman] WARNING: The following skills were not found:`);
+    console.warn(`\n[agentman] WARNING: The following skills were not found in the bundle:`);
     for (const name of notFound) {
       console.warn(`  - ${name}`);
     }
@@ -191,7 +151,7 @@ async function _runHeadless(sourceInput: string, configPath: string, forceUpdate
 
   for (const toolId of config.tools) {
     console.log(`\n[agentman] Installing ${toInstall.length} skill(s) for ${toolId}...`);
-    const provisioner = createProvisioner(toolId, config.scope, repoRoot);
+    const provisioner = createSkillProvisioner(toolId, config.scope, repoRoot);
     const result = await provisioner.install(toInstall, bundleVersion, sourcePin);
 
     if (result.installed.length > 0) {

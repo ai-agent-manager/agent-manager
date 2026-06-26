@@ -1,21 +1,21 @@
 import path from 'node:path';
 import { SkillProvisioner } from './SkillProvisioner.js';
-import { getCursorSkillsDir } from '../lib/platform.js';
+import { getHomeDir } from '../lib/platform.js';
 import type { ProvisionerScope } from './types.js';
 
-export class CursorProvisioner extends SkillProvisioner {
-  readonly id = 'cursor';
-  readonly name = 'Cursor';
+export class KiroProvisioner extends SkillProvisioner {
+  readonly id = 'kiro';
+  readonly name = 'Kiro';
 
   constructor(options?: ProvisionerScope) {
     super(options);
   }
 
   getSkillsDir(): string {
-    return getCursorSkillsDir();
+    return path.join(getHomeDir(), '.kiro', 'skills');
   }
 
   getRepoSkillsDir(repoRoot: string): string {
-    return path.join(repoRoot, '.cursor', 'skills');
+    return path.join(repoRoot, '.kiro', 'skills');
   }
 }

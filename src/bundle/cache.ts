@@ -10,7 +10,6 @@ import {
 import { parseManifest, type BundleManifest } from "./manifest.js";
 import { readRepoConfig, writeRepoConfig } from "./repo-config.js";
 import { scanBundle } from "./scanner.js";
-import { SKILL_TOOLS } from "../config/tools.js";
 import { getPlatform } from "../lib/platform.js";
 import type { SkillSourcePin } from "./skill-source.js";
 
@@ -109,6 +108,26 @@ async function replaceSymlink(linkPath: string, targetPath: string): Promise<voi
     await symlink(targetPath, linkPath, symlinkType);
 }
 
+async function resolveInstalledSkillPath(
+    toolId: string,
+    scope: 'system' | 'repo',
+    repoRoot: string | undefined,
+    skillName: string,
+): Promise<{ ok: true; skillPath: string } | { ok: false; error: string }> {
+    const { createSkillProvisioner } = await import('../provisioners/registry.js');
+
+    try {
+        const provisioner = createSkillProvisioner(toolId, scope, repoRoot);
+        return { ok: true, skillPath: path.join(provisioner.getEffectiveSkillsDir(), skillName) };
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.startsWith('Unknown tool:')) {
+            return { ok: false, error: message };
+        }
+        return { ok: false, error: `Unknown tool: ${toolId}` };
+    }
+}
+
 /**
  * Set the 'current' symlink to point to a specific bundle version.
  * This only changes which bundle is used for NEW installations.
@@ -169,11 +188,11 @@ export async function updateSkillVersion(
             return { success: false, error: `Skill '${skillName}' is not installed at repo scope for ${toolId}` };
         }
 
-        const tool = SKILL_TOOLS.find((t) => t.id === toolId);
-        if (!tool) {
-            return { success: false, error: `Unknown tool: ${toolId}` };
+        const skillPathResult = await resolveInstalledSkillPath(toolId, 'repo', repoRoot, skillName);
+        if (!skillPathResult.ok) {
+            return { success: false, error: skillPathResult.error };
         }
-        const skillPath = path.join(tool.getRepoSkillsDir(repoRoot), skillName);
+        const skillPath = skillPathResult.skillPath;
         const newTargetPath = path.join(newBundleDir, skillName);
 
         try {
@@ -203,11 +222,11 @@ export async function updateSkillVersion(
         return { success: false, error: `Skill '${skillName}' is not installed for ${toolId}` };
     }
 
-    const tool = SKILL_TOOLS.find((t) => t.id === toolId);
-    if (!tool) {
-        return { success: false, error: `Unknown tool: ${toolId}` };
+    const skillPathResult = await resolveInstalledSkillPath(toolId, 'system', undefined, skillName);
+    if (!skillPathResult.ok) {
+        return { success: false, error: skillPathResult.error };
     }
-    const skillPath = path.join(tool.getSkillsDir(), skillName);
+    const skillPath = skillPathResult.skillPath;
     const newTargetPath = path.join(newBundleDir, skillName);
 
     try {

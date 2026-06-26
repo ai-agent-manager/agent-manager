@@ -51,12 +51,12 @@ Skip the menu entirely with a config file:
 npx -y @ai-agent-manager/cli@latest <source> --config .github/ai-skills.yml
 ```
 
-The `<source>` can be a **bundle URL**, a **GitHub repository URL**, or a **local directory** — agentman detects the type automatically.
+The `<source>` can be a **bundle URL** or a **local directory** — agentman detects the type automatically.
 
 **Config format:**
 
 ```yaml
-tools: claude-code        # one or more: claude-code | windsurf | github-copilot | cursor
+tools: claude-code        # one or more: claude-code | windsurf | github-copilot | cursor | kiro
 scope: repo              # repo (default) | system
 skills:
   - my-skill-name
@@ -71,49 +71,6 @@ bundle-version: 1.2.0   # optional — bundle sources only, omit to use latest
 | `bundle-version` | No | Bundle sources only — pin to a specific version, or omit to track latest |
 
 Unknown skill names log a warning and are skipped. If no valid skills are found, the tool exits non-zero.
-
-#### Install from a GitHub repository
-
-Point agentman at any GitHub repository that contains skills under a `skills/` directory:
-
-```
-my-skills-repo/
-  skills/
-    my-skill/
-      SKILL.md
-    another-skill/
-      SKILL.md
-```
-
-```bash
-npx -y @ai-agent-manager/cli@latest https://github.com/org/my-skills-repo \
-  --config .github/ai-skills.yml
-```
-
-For private repositories, set `GITHUB_TOKEN` to a personal access token with repo read access:
-
-```bash
-GITHUB_TOKEN=ghp_... npx -y @ai-agent-manager/cli@latest https://github.com/org/my-skills-repo \
-  --config .github/ai-skills.yml
-```
-
-To pin to a specific branch or tag, use the `/tree/<ref>` GitHub URL format:
-
-```bash
-npx -y @ai-agent-manager/cli@latest https://github.com/org/my-skills-repo/tree/v2.0 \
-  --config .github/ai-skills.yml
-```
-
-**GitHub Actions example:**
-
-```yaml
-- name: Install AI skills
-  env:
-    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  run: |
-    npx -y @ai-agent-manager/cli@latest https://github.com/org/my-skills-repo \
-      --config .github/ai-skills.yml
-```
 
 #### Install from a bundle server
 
@@ -165,12 +122,12 @@ Skills are installed as symlinks into each tool's native skills directory:
 
 | Tool | System-wide Path | Repo-scoped Path |
 |------|-----------------|-----------------|
+| Agents (Generic) | `~/.agents/skills/<skill>/` | `<repo>/.agents/skills/<skill>/` |
 | Claude Code | `~/.claude/skills/<skill>/` | `<repo>/.claude/skills/<skill>/` |
-| Windsurf | `~/.codeium/windsurf/skills/<skill>/` | `<repo>/.windsurf/skills/<skill>/` |
+| Cursor | `~/.cursor/skills/<skill>/` | `<repo>/.cursor/skills/<skill>/` |
 | GitHub Copilot | `~/.copilot/skills/<skill>/` | `<repo>/.github/copilot/skills/<skill>/` |
-| Cursor | `~/.agents/skills/<skill>/` | `<repo>/.cursor/skills/<skill>/` |
-
-> **Cursor note:** There is no official global filesystem skills path for Cursor. Skills install to `~/.agents/skills/` using the cross-client convention. You may need to configure Cursor to discover this location.
+| Kiro | `~/.kiro/skills/<skill>/` | `<repo>/.kiro/skills/<skill>/` |
+| Windsurf | `~/.codeium/windsurf/skills/<skill>/` | `<repo>/.windsurf/skills/<skill>/` |
 
 > **Windows note:** If symlink creation fails (requires admin rights or Developer Mode), the tool falls back to copying the skill directory instead.
 

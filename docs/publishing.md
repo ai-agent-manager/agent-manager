@@ -2,10 +2,10 @@
 
 CI handles publishing automatically when a version tag is pushed.
 
-| Tag pattern | Registry | Dist-tag |
-|-------------|----------|----------|
-| `v*.*.*` | npmjs.org | `latest` |
-| `v*.*.*-*` | GitHub Packages | `beta` |
+| Tag pattern | Registry | Dist-tag | GitHub Release |
+|-------------|----------|----------|----------------|
+| `v*.*.*` | npmjs.org | `latest` | Yes — created automatically |
+| `v*.*.*-*` | GitHub Packages | `beta` | No |
 
 Published to: [npmjs.com/package/@ai-agent-manager/cli](https://www.npmjs.com/package/@ai-agent-manager/cli)
 
@@ -17,7 +17,9 @@ npm version minor   # or patch
 git push origin main --tags
 ```
 
-Then monitor the CI release job to confirm publish succeeds.
+CI will publish to npmjs.org, then automatically create a GitHub Release with an npm install link and a changelog generated from commits since the previous stable tag.
+
+Monitor the CI jobs to confirm both the npm publish and GitHub Release succeed.
 
 ## Required secrets
 
