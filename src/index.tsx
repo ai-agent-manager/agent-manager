@@ -5,8 +5,6 @@ import { parseCli, BANNER } from "./cli.js";
 import { App } from "./app.js";
 import { ContributeScreen } from "./components/ContributeScreen.js";
 import { resolveSource } from "./bundle/source.js";
-// SHIM: git source detection — to be superseded by discovery mechanism (PR #16, PR #14)
-import { isGitSource } from "./discovery/git-source-shim.js";
 import {
     getBundleEndpointTelemetryValue,
     getBundleSourceTelemetryProperties,
@@ -14,7 +12,7 @@ import {
     trackTelemetryEvent,
 } from "./telemetry.js";
 
-const { command, source: sourceInput, forceUpdate, configPath, sourceType, showHelp, skillDir } = parseCli();
+const { command, source: sourceInput, forceUpdate, configPath, showHelp, skillDir } = parseCli();
 
 if (!sourceInput && command !== "contribute") {
     console.log(BANNER);
@@ -42,7 +40,7 @@ if (!sourceInput) {
 }
 
 try {
-    const source = await resolveSource(sourceInput, sourceType);
+    const source = await resolveSource(sourceInput);
     trackTelemetryEvent({
         action: "agentman_started",
         properties: {
@@ -59,18 +57,15 @@ try {
 
     render(<App source={source} forceUpdate={forceUpdate} />);
 } catch (err) {
-    // SHIM: git source telemetry fallback — to be superseded by discovery mechanism (PR #16, PR #14)
-    const sourceTelemetry = isGitSource(sourceInput!, sourceType)
-        ? { source: "git", bundleEndpoint: "git-repo" }
-        : /^https?:\/\//i.test(sourceInput!)
-          ? {
-                source: "url",
-                bundleEndpoint: getBundleEndpointTelemetryValue(sourceInput!),
-            }
-          : {
-                source: "directory",
-                bundleEndpoint: "local-directory",
-            };
+    const sourceTelemetry = /^https?:\/\//i.test(sourceInput!)
+        ? {
+              source: "url",
+              bundleEndpoint: getBundleEndpointTelemetryValue(sourceInput!),
+          }
+        : {
+              source: "directory",
+              bundleEndpoint: "local-directory",
+          };
     trackTelemetryError("bundle_source_resolve_failed", err, sourceTelemetry);
     trackTelemetryError("agentman_start_failed", err, sourceTelemetry);
     console.log(`  Error: ${err instanceof Error ? err.message : String(err)}\n`);
