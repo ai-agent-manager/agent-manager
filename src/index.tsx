@@ -3,8 +3,8 @@ import React from "react";
 import { render } from "ink";
 import { parseCli, BANNER } from "./cli.js";
 import { App } from "./app.js";
+import { ContributeScreen } from "./components/ContributeScreen.js";
 import { resolveSource } from "./bundle/source.js";
-import { startConsoleSpinner } from "./lib/console-spinner.js";
 import {
     getBundleEndpointTelemetryValue,
     getBundleSourceTelemetryProperties,
@@ -12,9 +12,9 @@ import {
     trackTelemetryEvent,
 } from "./telemetry.js";
 
-const { source: sourceInput, forceUpdate, configPath, showHelp } = parseCli();
+const { command, source: sourceInput, forceUpdate, configPath, showHelp, skillDir } = parseCli();
 
-if (!sourceInput) {
+if (!sourceInput && command !== "contribute") {
     console.log(BANNER);
     console.log("  Error: Please provide a source (URL or directory path).\n");
     showHelp();
@@ -23,11 +23,24 @@ if (!sourceInput) {
 
 console.log(BANNER);
 
-const spinner = startConsoleSpinner("Resolving source...");
+if (command === "contribute") {
+    if (!skillDir) {
+        console.log("  Error: Please provide a skill directory path.\n");
+        showHelp();
+        process.exit(1);
+    }
+    render(<ContributeScreen skillDir={skillDir} />);
+    process.exit(0);
+}
+
+if (!sourceInput) {
+    console.log("  Error: Please provide a source (URL or directory path).\n");
+    showHelp();
+    process.exit(1);
+}
 
 try {
     const source = await resolveSource(sourceInput);
-    spinner.stop();
     trackTelemetryEvent({
         action: "agentman_started",
         properties: {
@@ -38,17 +51,16 @@ try {
 
     if (configPath) {
         const { runHeadless } = await import('./headless.js');
-        await runHeadless(sourceInput, configPath, forceUpdate);
+        await runHeadless(sourceInput!, configPath, forceUpdate);
         process.exit(0);
     }
 
     render(<App source={source} forceUpdate={forceUpdate} />);
 } catch (err) {
-    spinner.stop();
-    const sourceTelemetry = /^https?:\/\//i.test(sourceInput)
+    const sourceTelemetry = /^https?:\/\//i.test(sourceInput!)
         ? {
               source: "url",
-              bundleEndpoint: getBundleEndpointTelemetryValue(sourceInput),
+              bundleEndpoint: getBundleEndpointTelemetryValue(sourceInput!),
           }
         : {
               source: "directory",
