@@ -7,7 +7,7 @@
 
 import { downloadBundle } from '../bundle/downloader.js';
 import { extractBundle } from '../bundle/extractor.js';
-import { scanBundle, type SkillInfo } from '../bundle/scanner.js';
+import { scanBundle, type RovoAgentInfo, type SkillInfo } from '../bundle/scanner.js';
 import { setCurrentBundle } from '../bundle/cache.js';
 import { importGitSkills } from './git-importer.js';
 import type { DiscoveryDocument, DiscoverySource } from './types.js';
@@ -15,6 +15,8 @@ import type { DiscoveryDocument, DiscoverySource } from './types.js';
 export interface ResolvedSources {
   /** All skills successfully resolved from the discovery document. */
   skills: SkillInfo[];
+  /** All Rovo agents successfully resolved from the discovery document. */
+  rovoAgents: RovoAgentInfo[];
   /** Sources that failed to resolve, with error details. */
   errors: Array<{ source: DiscoverySource; error: string }>;
   /** Bundle version if an HTTP bundle was downloaded (for cache management). */
@@ -34,6 +36,7 @@ export async function resolveDiscoverySkills(
   onProgress?: (message: string) => void,
 ): Promise<ResolvedSources> {
   const allSkills: SkillInfo[] = [];
+  const allRovoAgents: RovoAgentInfo[] = [];
   const errors: Array<{ source: DiscoverySource; error: string }> = [];
   let bundleVersion: string | undefined;
 
@@ -52,6 +55,7 @@ export async function resolveDiscoverySkills(
 
           const contents = await scanBundle(result.bundleDir, result.manifest.agents);
           allSkills.push(...contents.skills);
+          allRovoAgents.push(...contents.rovoAgents);
           break;
         }
 
@@ -68,5 +72,5 @@ export async function resolveDiscoverySkills(
     }
   }
 
-  return { skills: allSkills, errors, bundleVersion };
+  return { skills: allSkills, rovoAgents: allRovoAgents, errors, bundleVersion };
 }
