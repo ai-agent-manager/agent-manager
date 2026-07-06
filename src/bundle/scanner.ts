@@ -455,7 +455,7 @@ function manifestEntryToAssetConfig(entry: AgentManifestEntry): AssetConfig | nu
   return config;
 }
 
-async function scanKnowledgeBase(agentDir: string): Promise<KnowledgeBaseFile[]> {
+export async function scanKnowledgeBase(agentDir: string): Promise<KnowledgeBaseFile[]> {
   const kbDir = path.join(agentDir, 'assets', 'knowledge-base');
   try {
     const entries = await readdir(kbDir, { withFileTypes: true });

@@ -61,8 +61,9 @@ export async function resolveDiscoverySkills(
 
         case 'git': {
           onProgress?.(`Cloning source repository: ${source.name}...`);
-          const { skills: gitSkills } = await importGitSkills(source.url, source.name);
+          const { skills: gitSkills, rovoAgents: gitAgents } = await importGitSkills(source.url, source.name);
           allSkills.push(...gitSkills);
+          allRovoAgents.push(...gitAgents);
           break;
         }
       }

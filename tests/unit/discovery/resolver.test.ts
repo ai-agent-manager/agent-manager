@@ -49,6 +49,7 @@ vi.mock('../../../src/bundle/cache.js', () => ({
 vi.mock('../../../src/discovery/git-importer.js', () => ({
   importGitSkills: vi.fn(async () => ({
     skills: mockGitSkills,
+    rovoAgents: [],
     clonePath: '/tmp/git-cache/repo',
   })),
 }));

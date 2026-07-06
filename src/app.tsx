@@ -386,7 +386,7 @@ export function App({ source, forceUpdate }: AppProps) {
                 {manifest && bundleContents
                     ? ` | ${bundleContents.skills.length} skill${bundleContents.skills.length !== 1 ? "s" : ""}, ${bundleContents.rovoAgents.length} rovo agent${bundleContents.rovoAgents.length !== 1 ? "s" : ""}`
                     : discoverySkills
-                        ? ` | ${discoverySkills.length} skill${discoverySkills.length !== 1 ? "s" : ""}${bundleContents && bundleContents.rovoAgents.length > 0 ? `, ${bundleContents.rovoAgents.length} agent${bundleContents.rovoAgents.length !== 1 ? "s" : ""}` : ""}`
+                        ? ` | ${discoverySkills.length} skill${discoverySkills.length !== 1 ? "s" : ""}${bundleContents && bundleContents.rovoAgents.length > 0 ? `, ${bundleContents.rovoAgents.length} rovo agent${bundleContents.rovoAgents.length !== 1 ? "s" : ""}` : ""}`
                         : ""}
             </Text>
 

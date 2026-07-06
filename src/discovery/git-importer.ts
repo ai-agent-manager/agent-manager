@@ -3,13 +3,14 @@ import { readdir, readFile, stat, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { getAgentmanDir } from '../config/paths.js';
-import type { SkillInfo } from '../bundle/scanner.js';
+import { parseRovoAgentYaml, scanKnowledgeBase, lastParseWarnings, type RovoAgentInfo, type SkillInfo } from '../bundle/scanner.js';
 import { parseFrontmatter } from '../lib/frontmatter.js';
 
 const execFileAsync = promisify(execFile);
 
 export interface GitImportResult {
   skills: SkillInfo[];
+  rovoAgents: RovoAgentInfo[];
   clonePath: string;
 }
 
@@ -40,10 +41,10 @@ export async function importGitSkills(
     timeout: 60_000,
   });
 
-  // Scan for skills
   const skills = await scanPluginSkills(clonePath);
+  const rovoAgents = await scanPluginAgents(clonePath);
 
-  return { skills, clonePath };
+  return { skills, rovoAgents, clonePath };
 }
 
 /**
@@ -86,6 +87,55 @@ async function scanPluginSkills(repoDir: string): Promise<SkillInfo[]> {
   }
 
   return skills;
+}
+
+async function scanPluginAgents(repoDir: string): Promise<RovoAgentInfo[]> {
+  const agents: RovoAgentInfo[] = [];
+  const agentsDir = path.join(repoDir, 'agents');
+
+  const dirsToScan: string[] = [];
+  if (await dirExists(agentsDir)) {
+    dirsToScan.push(agentsDir);
+  } else {
+    dirsToScan.push(repoDir);
+  }
+
+  for (const scanDir of dirsToScan) {
+    const entries = await readdir(scanDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+      const dirPath = path.join(scanDir, entry.name);
+      const configPath = path.join(dirPath, 'rovo-agent.yaml');
+      if (!await fileExists(configPath)) continue;
+
+      try {
+        const raw = await readFile(configPath, 'utf-8');
+        const config = await parseRovoAgentYaml(raw, dirPath);
+
+        if (lastParseWarnings.length > 0) {
+          for (const w of lastParseWarnings) {
+            process.stderr.write(`[warn] ${entry.name}/rovo-agent.yaml: ${w}\n`);
+          }
+        }
+
+        const knowledgeBaseFiles = await scanKnowledgeBase(dirPath);
+
+        agents.push({
+          dirName: entry.name,
+          dirPath,
+          configPath,
+          config,
+          meta: null,
+          knowledgeBaseFiles,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`[warn] Skipping ${entry.name}/rovo-agent.yaml: ${msg}\n`);
+      }
+    }
+  }
+
+  return agents;
 }
 
 async function readSkillMeta(skillMdPath: string) {
