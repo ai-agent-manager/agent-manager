@@ -103,12 +103,11 @@ describe('RovoProvisioner - auth state management', () => {
         provisioner.createAgent({
           studioUrl: 'https://studio.atlassian.com/s/test/agents',
           config: {
-            apiVersion: 'rovo.atlassian.com/v1',
+            apiVersion: 'rovo.atlassian.com/v2-beta',
             kind: 'StudioAgent',
             identity: {
               name: 'Test Agent',
               description: 'A test agent',
-              behavior: 'Be helpful',
             },
             scenarios: {
               default: {
@@ -130,12 +129,11 @@ describe('RovoProvisioner - auth state management', () => {
         provisioner.createAgent({
           studioUrl: 'https://studio.atlassian.com/s/test/agents',
           config: {
-            apiVersion: 'rovo.atlassian.com/v1',
+            apiVersion: 'rovo.atlassian.com/v2-beta',
             kind: 'StudioAgent',
             identity: {
               name: 'Test Agent',
               description: 'A test agent',
-              behavior: 'Be helpful',
             },
             scenarios: {
               default: {
