@@ -1,12 +1,9 @@
 import { readFile } from 'node:fs/promises';
 import { parse as parseYaml } from 'yaml';
-import { downloadBundle } from './bundle/downloader.js';
-import { extractBundle } from './bundle/extractor.js';
 import { importLocalBundle } from './bundle/importer.js';
 import { scanBundle, type SkillInfo } from './bundle/scanner.js';
-import { setCurrentBundle } from './bundle/cache.js';
 import { resolveSource } from './bundle/source.js';
-import { resolveSkillSource, buildSourcePin, type SkillSourcePin } from './bundle/skill-source.js';
+import { buildSourcePin, type SkillSourcePin } from './bundle/skill-source.js';
 import { resolveDiscoverySkills } from './discovery/index.js';
 import { createSkillProvisioner, formatSupportedSkillToolIds } from './provisioners/registry.js';
 import type { InstallScope } from './config/scopes.js';
@@ -57,6 +54,10 @@ export async function parseHeadlessConfig(configPath: string): Promise<HeadlessC
   };
 }
 
+export function buildPinForDirectorySource(dirPath: string, bundleVersion: string): SkillSourcePin {
+  return buildSourcePin({ type: 'bundle', dirPath, installLayout: 'flat' }, bundleVersion);
+}
+
 export async function runHeadless(sourceInput: string, configPath: string, forceUpdate: boolean): Promise<void> {
   const config = await parseHeadlessConfig(configPath);
   const repoRoot = process.cwd();
@@ -77,6 +78,10 @@ export async function runHeadless(sourceInput: string, configPath: string, force
   if (source.type === 'discovery') {
     console.log('[agentman] Discovery document found');
 
+    if (config.bundleVersion) {
+      console.warn('[agentman] WARNING: bundle-version is not supported for discovery sources and will be ignored.');
+    }
+
     console.log(`[agentman] Resolving ${source.discovery.sources.length} source(s) from discovery document...`);
     const result = await resolveDiscoverySkills(
       source.discovery,
@@ -90,32 +95,24 @@ export async function runHeadless(sourceInput: string, configPath: string, force
 
     allSkills = result.skills;
     bundleVersion = result.bundleVersion ?? 'discovery';
-  } else {
-    let bundleDir: string;
-
-    if (source.type === 'url') {
-      console.log('[agentman] Downloading bundle...');
-      const { zipPath } = await downloadBundle(source.baseUrl, config.bundleVersion);
-      console.log('[agentman] Extracting bundle...');
-      const result = await extractBundle(zipPath);
-      bundleDir = result.bundleDir;
-      bundleVersion = result.manifest.version;
-      if (result.isNew) {
-        await setCurrentBundle(bundleVersion);
-      }
-    } else {
-      console.log('[agentman] Importing local bundle...');
-      const result = await importLocalBundle(source.dirPath);
-      bundleDir = result.bundleDir;
-      bundleVersion = result.manifest.version;
-    }
+  } else if (source.type === 'directory') {
+    console.log('[agentman] Importing local bundle...');
+    const result = await importLocalBundle(source.dirPath);
+    const bundleDir = result.bundleDir;
+    bundleVersion = result.manifest.version;
 
     console.log(`[agentman] Bundle version: ${bundleVersion}`);
     const contents = await scanBundle(bundleDir);
     allSkills = contents.skills;
 
-    const skillSource = await resolveSkillSource(sourceInput);
-    sourcePin = buildSourcePin(skillSource, bundleVersion);
+    sourcePin = buildPinForDirectorySource(source.dirPath, bundleVersion);
+  } else if (source.type === 'url') {
+    // resolveSource() never returns 'url' — HTTP inputs become 'discovery'.
+    // This branch exists only to keep the exhaustiveness check below honest.
+    throw new Error(`Source type 'url' is not supported in headless mode; use a discovery URL instead.`);
+  } else {
+    const _: never = source;
+    throw new Error(`Unsupported source type`);
   }
 
   const availableSkills = new Map(allSkills.map((s) => [s.dirName, s]));
