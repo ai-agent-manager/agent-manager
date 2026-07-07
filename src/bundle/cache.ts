@@ -48,6 +48,12 @@ export interface InstallRecord {
     sourcePin?: SkillSourcePin;
 }
 
+// Non-bundle source types (repo/artefact) carry no bundleVersion in their pin;
+// they will need their own display value once those install flows are live.
+export function getRecordVersion(record: { sourcePin?: SkillSourcePin; bundleVersion?: string }): string {
+    return record.sourcePin?.bundleVersion ?? record.bundleVersion ?? '';
+}
+
 /**
  * List all cached bundle versions.
  */

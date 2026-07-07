@@ -39,7 +39,7 @@ export interface RepoAgentmanConfig {
      * Tracked for cleanup in a follow-up ticket. Do not introduce new reads of
      * this field — use sourcePin on individual RepoInstallRecords instead.
      */
-    bundleVersion: string;
+    bundleVersion?: string;
     /** Installations keyed by tool ID, then skill name */
     installations: Record<string, Record<string, RepoInstallRecord>>;
 }
@@ -88,7 +88,7 @@ export async function recordRepoInstall(
 ): Promise<void> {
     let config = await readRepoConfig(repoRoot);
     if (!config) {
-        config = { bundleVersion: bundleVersion ?? '', installations: {} };
+        config = { ...(bundleVersion !== undefined && { bundleVersion }), installations: {} };
     }
 
     if (!config.installations[toolId]) {

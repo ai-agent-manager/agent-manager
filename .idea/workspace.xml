@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="BackgroundAgentGlobalSettings">
+    <option name="selectedModelId" value="claude-opus-4.6" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="1681d2ca-becf-4ec1-a26b-63b99e703546" name="Changes" comment="feat: implement artefact source support with integrity verification and caching">
+      <change afterPath="$PROJECT_DIR$/src/commands/info.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/commands/install.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/commands/list.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/commands/remove.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/commands/skill-picker.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/commands/update.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/ArtefactCoordinatesInput.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/InfoView.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/InstallFlow.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/InstallSourceMenu.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/ManageActions.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/ManageFlow.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/ManageList.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/RepoCoordinatesInput.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/RepoSkillPicker.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/TopMenu.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/operations/install.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/operations/manage.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/operations/provisioner-factory.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/unit/commands/cli-routing.test.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/unit/commands/install-command.test.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/unit/commands/manage-commands.test.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/unit/operations/manage.test.ts" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="CopilotPersistence">
+    <persistenceIdMap>
+      <entry key="_/Users/achelu/Documents/Propeller/agent-manager" value="3Ef9W5jCnRDeOHUv3TSbED0OH19" />
+    </persistenceIdMap>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;customColor&quot;: &quot;&quot;,
+  &quot;associatedIndex&quot;: 1
+}</component>
+  <component name="ProjectId" id="3Ef9W5jCnRDeOHUv3TSbED0OH19" />
+  <component name="ProjectSessionTemplates">
+    <option name="panelTemplate">
+      <template>
+        <option name="modeId" value="Agent" />
+        <option name="model">
+          <model>
+            <option name="modelType" value="builtin_family" />
+            <option name="modelValue" value="claude-opus-4.6" />
+          </model>
+        </option>
+        <option name="targetType" value="BACKGROUND" />
+      </template>
+    </option>
+  </component>
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;copilot.chat.legacySessionMetadata.migrated&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;feat/skill-centric-cli-tui&quot;,
+    &quot;kotlin-language-version-configured&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/Users/achelu/Documents/Propeller/agent-manager&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.pluginManager&quot;
+  }
+}</component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$" />
+      <recent name="$PROJECT_DIR$/.github/skills" />
+    </key>
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/scripts" />
+      <recent name="$PROJECT_DIR$/src" />
+      <recent name="$PROJECT_DIR$" />
+    </key>
+  </component>
+  <component name="RunManager">
+    <configuration default="true" type="JetRunConfigurationType">
+      <module name="agent-manager" />
+      <method v="2">
+        <option name="Make" enabled="true" />
+      </method>
+    </configuration>
+    <configuration default="true" type="KotlinStandaloneScriptRunConfigurationType">
+      <module name="agent-manager" />
+      <option name="filePath" />
+      <method v="2" />
+    </configuration>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="1681d2ca-becf-4ec1-a26b-63b99e703546" name="Changes" comment="" />
+      <created>1780558784648</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1780558784648</updated>
+    </task>
+    <servers />
+  </component>
+  <component name="UnknownFeatures">
+    <option featureType="com.intellij.fileTypeFactory" implementationName="*.test" />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+</project>

@@ -16,6 +16,9 @@
  * legacy path that maps to the 'bundle' source type with installLayout 'flat'.
  */
 
+import { stat } from 'node:fs/promises';
+import { resolve } from 'node:path';
+
 // ── Primitive types ───────────────────────────────────────────────────────────
 
 export type SkillSourceType = 'repo' | 'artefact' | 'bundle';
@@ -133,21 +136,9 @@ export function isBundleSource(s: SkillSource): s is BundleSkillSource {
  */
 export const GITHUB_HOSTS_DEFAULT: readonly string[] = ['github.com'];
 
-/**
- * Detect whether a URL points to a GitHub repository.
- * Matches https://<host>/<org>/<repo>[...] for each host in knownHosts.
- *
- * @param url        The URL string to check.
- * @param knownHosts List of GitHub hostnames to recognise. Defaults to GITHUB_HOSTS_DEFAULT.
- */
-export function isGithubRepoUrl(url: string, knownHosts: readonly string[] = GITHUB_HOSTS_DEFAULT): boolean {
-  try {
-    const parsed = new URL(url);
-    const segments = parsed.pathname.split('/').filter(Boolean);
-    return knownHosts.includes(parsed.hostname) && segments.length >= 2;
-  } catch {
-    return false;
-  }
+function isGithubRepoParsed(parsed: URL, knownHosts: readonly string[]): boolean {
+  const segments = parsed.pathname.split('/').filter(Boolean);
+  return knownHosts.includes(parsed.hostname) && segments.length >= 2;
 }
 
 /**
@@ -195,7 +186,7 @@ export interface ResolveSkillSourceOptions {
    * Set this to support GitHub Enterprise Server (GHES) deployments.
    * Example: ['github.com', 'github.acme-corp.com']
    */
-  githubHosts?: string[];
+  githubHosts?: readonly string[];
 }
 
 /**
@@ -218,7 +209,7 @@ export async function resolveSkillSource(
   input: string,
   options: ResolveSkillSourceOptions = {},
 ): Promise<SkillSource> {
-  const knownHosts = options.githubHosts ?? (GITHUB_HOSTS_DEFAULT as string[]);
+  const knownHosts = options.githubHosts ?? GITHUB_HOSTS_DEFAULT;
 
   // ── URL inputs ──────────────────────────────────────────────────────────────
   if (/^https?:\/\//i.test(input)) {
@@ -227,7 +218,7 @@ export async function resolveSkillSource(
 
     // ── Repo source ──
     const segments = parsed.pathname.split('/').filter(Boolean);
-    if (knownHosts.includes(parsed.hostname) && segments.length >= 2) {
+    if (isGithubRepoParsed(parsed, knownHosts)) {
       const [org, repo, treeSegment, refFromPath] = segments;
       const defaultBranch = options.defaultBranch ?? 'main';
       // Only treat the 4th segment as a ref when the 3rd is literally 'tree'.
@@ -263,9 +254,6 @@ export async function resolveSkillSource(
   }
 
   // ── Local path inputs ───────────────────────────────────────────────────────
-  const { stat } = await import('node:fs/promises');
-  const { resolve } = await import('node:path');
-
   const dirPath = resolve(input);
 
   let stats;
@@ -330,20 +318,3 @@ export function buildSourcePin(
 }
 
 // ── Display helpers ───────────────────────────────────────────────────────────
-
-/**
- * Return a human-readable description of a SkillSource for use in CLI output.
- */
-export function describeSkillSource(source: SkillSource): string {
-  if (source.type === 'repo') {
-    const ref = source.ref ?? source.defaultBranch ?? 'main';
-    const skillSegment = source.skillPath ? ` (${source.skillPath})` : '';
-    return `repo: ${source.repoUrl}@${ref}${skillSegment}`;
-  }
-  if (source.type === 'artefact') {
-    return `artefact: ${source.artefactUrl}`;
-  }
-  return source.baseUrl
-    ? `bundle: ${source.baseUrl}`
-    : `bundle: ${source.dirPath ?? '(local)'}`;
-}

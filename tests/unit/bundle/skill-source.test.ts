@@ -1,70 +1,19 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile, mkdtemp } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import {
-  isGithubRepoUrl,
   isArtefactUrl,
   isRepoSource,
   isArtefactSource,
   isBundleSource,
   resolveSkillSource,
   buildSourcePin,
-  describeSkillSource,
-  GITHUB_HOSTS_DEFAULT,
   type SkillSource,
   type RepoSkillSource,
   type ArtefactSkillSource,
   type BundleSkillSource,
 } from '../../../src/bundle/skill-source.js';
-
-// ── isGithubRepoUrl ───────────────────────────────────────────────────────────
-
-describe('isGithubRepoUrl', () => {
-  it('returns true for a simple org/repo URL', () => {
-    expect(isGithubRepoUrl('https://github.com/org/repo')).toBe(true);
-  });
-
-  it('returns true for a URL with a /tree/<ref> path', () => {
-    expect(isGithubRepoUrl('https://github.com/org/repo/tree/main')).toBe(true);
-  });
-
-  it('returns true for a URL with trailing slash', () => {
-    expect(isGithubRepoUrl('https://github.com/org/repo/')).toBe(true);
-  });
-
-  it('returns false for github.com with only one path segment (org only)', () => {
-    expect(isGithubRepoUrl('https://github.com/org')).toBe(false);
-  });
-
-  it('returns false for a non-GitHub URL', () => {
-    expect(isGithubRepoUrl('https://example.com/org/repo')).toBe(false);
-  });
-
-  it('returns false for a CDN URL', () => {
-    expect(isGithubRepoUrl('https://cdn.example.com/skills/my-skill.zip')).toBe(false);
-  });
-
-  it('returns false for an invalid URL string', () => {
-    expect(isGithubRepoUrl('not-a-url')).toBe(false);
-  });
-
-  it('GITHUB_HOSTS_DEFAULT contains only github.com', () => {
-    expect(GITHUB_HOSTS_DEFAULT).toEqual(['github.com']);
-  });
-
-  it('returns false for a GHES hostname when using default hosts', () => {
-    expect(isGithubRepoUrl('https://github.acme-corp.com/org/repo')).toBe(false);
-  });
-
-  it('returns true for a GHES hostname when passed as a custom knownHost', () => {
-    expect(isGithubRepoUrl('https://github.acme-corp.com/org/repo', ['github.com', 'github.acme-corp.com'])).toBe(true);
-  });
-
-  it('returns true for a GHES hostname when it is the only entry in knownHosts', () => {
-    expect(isGithubRepoUrl('https://github.acme-corp.com/org/repo', ['github.acme-corp.com'])).toBe(true);
-  });
-});
 
 // ── isArtefactUrl ─────────────────────────────────────────────────────────────
 
@@ -248,8 +197,7 @@ describe('resolveSkillSource — local directory paths', () => {
   let tempDir: string;
 
   beforeEach(async () => {
-    tempDir = path.join(os.tmpdir(), `skill-source-test-${Date.now()}`);
-    await mkdir(tempDir, { recursive: true });
+    tempDir = await mkdtemp(path.join(os.tmpdir(), 'skill-source-test-'));
   });
 
   afterEach(async () => {
@@ -334,69 +282,3 @@ describe('buildSourcePin', () => {
   });
 });
 
-// ── describeSkillSource ───────────────────────────────────────────────────────
-
-describe('describeSkillSource', () => {
-  it('describes a repo source with ref', () => {
-    const source: RepoSkillSource = {
-      type: 'repo',
-      repoUrl: 'https://github.com/org/repo',
-      ref: 'v1.2.0',
-      installLayout: 'namespaced',
-    };
-    expect(describeSkillSource(source)).toBe('repo: https://github.com/org/repo@v1.2.0');
-  });
-
-  it('describes a repo source with skillPath', () => {
-    const source: RepoSkillSource = {
-      type: 'repo',
-      repoUrl: 'https://github.com/org/repo',
-      ref: 'main',
-      skillPath: 'skills/my-skill',
-      installLayout: 'namespaced',
-    };
-    expect(describeSkillSource(source)).toBe('repo: https://github.com/org/repo@main (skills/my-skill)');
-  });
-
-  it('falls back to defaultBranch when ref is absent', () => {
-    const source: RepoSkillSource = {
-      type: 'repo',
-      repoUrl: 'https://github.com/org/repo',
-      defaultBranch: 'develop',
-      installLayout: 'namespaced',
-    };
-    expect(describeSkillSource(source)).toBe('repo: https://github.com/org/repo@develop');
-  });
-
-  it('describes an artefact source', () => {
-    const source: ArtefactSkillSource = {
-      type: 'artefact',
-      artefactUrl: 'https://cdn.example.com/skills/my-skill/1.0.0/skill.zip',
-      installLayout: 'namespaced',
-    };
-    expect(describeSkillSource(source)).toBe('artefact: https://cdn.example.com/skills/my-skill/1.0.0/skill.zip');
-  });
-
-  it('describes a bundle URL source', () => {
-    const source: BundleSkillSource = {
-      type: 'bundle',
-      baseUrl: 'https://cdn.example.com/agents',
-      installLayout: 'flat',
-    };
-    expect(describeSkillSource(source)).toBe('bundle: https://cdn.example.com/agents');
-  });
-
-  it('describes a bundle directory source', () => {
-    const source: BundleSkillSource = {
-      type: 'bundle',
-      dirPath: '/home/user/.agentman/bundles/2026.05.01',
-      installLayout: 'flat',
-    };
-    expect(describeSkillSource(source)).toBe('bundle: /home/user/.agentman/bundles/2026.05.01');
-  });
-
-  it('describes a bundle source with neither baseUrl nor dirPath as (local)', () => {
-    const source: BundleSkillSource = { type: 'bundle', installLayout: 'flat' };
-    expect(describeSkillSource(source)).toBe('bundle: (local)');
-  });
-});
