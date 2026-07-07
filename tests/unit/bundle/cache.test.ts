@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, rm, readFile, writeFile, mkdir, lstat, readlink, unlink, symlink } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, writeFile, mkdir, lstat, unlink, symlink } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { vi } from 'vitest';
@@ -48,8 +48,7 @@ import {
   type AgentmanConfig,
 } from '../../../src/bundle/cache.js';
 import { scanBundle } from '../../../src/bundle/scanner.js';
-import { getHomeDir, getPlatform } from '../../../src/lib/platform.js';
-import { getAgentmanDir, getBundlesDir, getBundleVersionDir } from '../../../src/config/paths.js';
+import { getPlatform } from '../../../src/lib/platform.js';
 import { readRepoConfig, writeRepoConfig, type RepoAgentmanConfig } from '../../../src/bundle/repo-config.js';
 
 beforeEach(async () => {

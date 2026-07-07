@@ -1,5 +1,4 @@
 import { describe, it, expect, vi } from 'vitest';
-import path from 'node:path';
 
 // Mock node:fs/promises so we can control readlink behavior
 vi.mock('node:fs/promises', async () => {
