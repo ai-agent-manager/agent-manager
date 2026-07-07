@@ -87,7 +87,7 @@ async function acquireBundle(
 async function acquireDiscoverySkills(
     source: Extract<BundleSource, { type: 'discovery' }>,
     setLoadingMessage: (message: string) => void,
-) {
+): Promise<{ skills: SkillInfo[]; warnings: string[] }> {
     const warnings: string[] = [];
 
     setLoadingMessage("Resolving skills from discovery document...");
@@ -101,7 +101,7 @@ async function acquireDiscoverySkills(
         warnings.push(`Failed to resolve source '${source.name}': ${error}`);
     }
 
-    return { skills: result.skills, rovoAgents: result.rovoAgents, warnings };
+    return { skills: result.skills, warnings };
 }
 
 export function App({ source, forceUpdate }: AppProps) {
@@ -190,7 +190,7 @@ export function App({ source, forceUpdate }: AppProps) {
 
                 // --- Discovery source: resolve skills from discovery document ---
                 if (source.type === "discovery") {
-                    const { skills, rovoAgents, warnings } = await acquireDiscoverySkills(
+                    const { skills, warnings } = await acquireDiscoverySkills(
                         source,
                         setLoadingMessage,
                     );
@@ -200,8 +200,8 @@ export function App({ source, forceUpdate }: AppProps) {
                     }
 
                     setDiscoverySkills(skills);
-                    // Wrap discovery skills and agents in a BundleContents-compatible shape
-                    setBundleContents({ skills, rovoAgents });
+                    // Wrap discovery skills in a BundleContents-compatible shape
+                    setBundleContents({ skills, rovoAgents: [] });
                     setScreen("main-menu");
                     return;
                 }
@@ -386,7 +386,7 @@ export function App({ source, forceUpdate }: AppProps) {
                 {manifest && bundleContents
                     ? ` | ${bundleContents.skills.length} skill${bundleContents.skills.length !== 1 ? "s" : ""}, ${bundleContents.rovoAgents.length} rovo agent${bundleContents.rovoAgents.length !== 1 ? "s" : ""}`
                     : discoverySkills
-                        ? ` | ${discoverySkills.length} skill${discoverySkills.length !== 1 ? "s" : ""}${bundleContents && bundleContents.rovoAgents.length > 0 ? `, ${bundleContents.rovoAgents.length} rovo agent${bundleContents.rovoAgents.length !== 1 ? "s" : ""}` : ""}`
+                        ? ` | ${discoverySkills.length} skill${discoverySkills.length !== 1 ? "s" : ""}`
                         : ""}
             </Text>
 

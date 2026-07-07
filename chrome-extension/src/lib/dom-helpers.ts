@@ -181,12 +181,21 @@ export function fill(element: HTMLElement, value: string): void {
 }
 
 /**
- * Click an element. Dispatches mousedown, mouseup, and click events.
+ * Click an element.
+ *
+ * We deliberately call ONLY `element.click()` instead of dispatching a
+ * `mousedown` / `mouseup` / `click` sequence. Atlassian Design System
+ * dropdown triggers (e.g. the "Create an agent" button) toggle on
+ * `mousedown`: dispatching a synthetic `mousedown` opens the menu, and
+ * the subsequent `.click()` is interpreted as a second toggle that
+ * immediately closes it. The menu items then never appear, so the
+ * provisioner times out waiting for `create-rovo-agent-menu-item`.
+ *
+ * `HTMLElement.prototype.click()` synthesises a trusted-like click that
+ * AK Dropdown handles correctly without the toggle race.
  */
 export function click(element: HTMLElement): void {
   element.scrollIntoView({ block: 'center' });
-  element.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-  element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
   element.click();
 }
 

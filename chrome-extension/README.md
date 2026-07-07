@@ -2,75 +2,121 @@
 
 Chrome extension that provisions Atlassian Rovo agents in [Studio](https://studio.atlassian.com) by automating the web UI. Agent configurations come from your local `~/.agentman/` bundles, served by the agent-manager CLI over a local HTTP connection.
 
-## Prerequisites
+> **📘 Complete Guide**: See [HOW-IT-WORKS.md](./HOW-IT-WORKS.md) for end-to-end instructions: install extension → create agent → provision to Studio.
+
+## Quick Start
+
+### Prerequisites
 
 - Node.js 22+
 - The `agentman` CLI installed and configured with at least one agent bundle
 
-## Install in Chrome
+### Development (Local Testing)
 
-### Option A - Via Agent Manager (recommended)
-
-Run agent manager and select **Install Chrome Extension** from the main menu. The CLI copies the pre-built `.crx` to `~/.agentman/chrome-extension/` and registers it with Chrome via the External Extensions mechanism. Restart Chrome, approve the prompt, and you're done.
-
-Full details at [docs/chrome-extension-install.md](../docs/chrome-extension-install.md).
-
-### Option B - Load unpacked (development)
-
-1. Build the extension (see [Build](#build) below)
-2. Open `chrome://extensions`
-3. Enable **Developer mode** (top-right toggle)
-4. Click **Load unpacked**
-5. Select the `agent-manager/chrome-extension/dist/` directory
-
-The extension icon (a robot) should appear in your toolbar.
-
-## Build
+**Step 1: Build the extension**
 
 ```bash
-cd agent-manager/chrome-extension
+cd chrome-extension
 npm install
 npm run build
 ```
 
-This produces a self-contained `dist/` directory with all extension files.
+**Step 2: Load into Chrome/Edge**
 
-To also produce a signed `.crx` for distribution:
+1. Open `chrome://extensions` (Chrome) or `edge://extensions` (Edge)
+2. Enable **Developer mode** (toggle in top-right corner)
+3. Click **Load unpacked**
+4. Navigate to and select `chrome-extension/dist/` directory
+5. Extension icon (🤖) appears in toolbar
+
+**Step 3: Make changes and rebuild**
+
+After code changes:
 
 ```bash
+npm run build
+```
+
+Then click the reload icon (🔄) on the extension card in `chrome://extensions`.
+
+### Production (After Merging)
+
+**Option A: Install via Agent Manager CLI (Recommended)**
+
+1. Run agent manager: `agentman`
+2. Select **Install Chrome Extension** from menu
+3. CLI copies pre-built `.crx` to `~/.agentman/chrome-extension/`
+4. Restart Chrome/Edge
+5. Approve extension installation prompt
+
+**Option B: Build and pack manually**
+
+```bash
+cd chrome-extension
+npm install
 npm run build:crx
 ```
 
-This runs the standard build then packs `dist/` into `dist/agentman.crx` using the private key. The key is read from `agentman.pem` in this directory (local dev) or from the `AGENTMAN_CRX_KEY` environment variable (CI - base64-encoded PEM).
+Produces `dist/agentman.crx` signed with private key. Distribute this file to users.
+
+**Key management:**
+- Local dev: Private key in `agentman.pem` (gitignored)
+- CI: Private key in `AGENTMAN_CRX_KEY` env var (base64-encoded PEM)
+
+## Available Commands
 
 | Command | Description |
 |---|---|
+| `npm install` | Install dependencies |
 | `npm run build` | Clean build into `dist/` |
-| `npm run build:crx` | Build then pack into `dist/agentman.crx` |
-| `npm run typecheck` | Type-check sources with tsc (no emit) |
+| `npm run build:crx` | Build + pack into `dist/agentman.crx` |
+| `npm run typecheck` | Type-check with tsc (no emit) |
 | `npm run clean` | Remove `dist/` |
 
-## Usage
+## How to Use
 
-### 1. Start the server
+### Step 1: Start the Agent Manager Server
 
-Run agent manager in your terminal and select **Provision Rovo Agents -> Chrome Extension**. The CLI starts a local HTTP server and displays an auth token:
+```bash
+agentman
+```
 
+Select **Provision Rovo Agents → Chrome Extension**
+
+Server starts and displays:
 ```
 Server running on http://127.0.0.1:19876
 Auth token: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 ```
 
-### 2. Connect the extension
+### Step 2: Connect Extension to Server
 
-Click the extension icon in Chrome, paste the auth token, and click **Connect**. The extension fetches the list of available Rovo agents from the CLI.
+1. Click extension icon (🤖) in Chrome/Edge toolbar
+2. Paste auth token from terminal
+3. Click **Connect**
+4. Extension fetches available agents from CLI
 
-### 3. Provision an agent
+### Step 3: Provision Agent
 
-1. Open [Atlassian Studio](https://studio.atlassian.com) in a tab and navigate to your workspace's agents page
-2. In the extension popup, click **Provision** next to the agent you want to create
-3. The extension automates the Studio UI to fill in the agent's identity, scenarios, skills, and settings
-4. A progress bar shows each step; when finished you'll see a success or error result
+1. Open [Atlassian Studio](https://studio.atlassian.com)
+2. Navigate to your workspace's agents page
+3. In extension popup, click **Provision** next to desired agent
+4. Extension automates Studio UI:
+   - Fills agent identity (name, description)
+   - Adds main instructions (with markdown formatting)
+   - Creates subagents with names, triggers, and instructions
+   - Enables subagents
+   - Auto-clicks Activate
+5. Progress bar shows each step
+6. Success message appears when complete
+
+**What Gets Provisioned:**
+- ✅ Main agent instructions (markdown preserved)
+- ✅ Subagent names
+- ✅ Subagent triggers (invocationDescription)
+- ✅ Subagent instructions (markdown preserved)
+- ✅ Subagents auto-enabled (isActive: true)
+- ✅ Skills, knowledge sources, web search settings
 
 ## Extension ID
 

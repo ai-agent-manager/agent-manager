@@ -30,11 +30,14 @@ export interface AgentDetail {
 }
 
 // ---------------------------------------------------------------------------
-// Rovo agent config — mirrors scanner.ts types from agent-manager
+// Rovo agent config — mirrors scanner.ts canonical types from agent-manager.
+// v2-beta YAML is normalised by the server into this shape; v1 is archived.
 // ---------------------------------------------------------------------------
 
+export type RovoApiVersion = 'rovo.atlassian.com/v2-beta';
+
 export interface RovoAgentConfig {
-  apiVersion: string;
+  apiVersion: RovoApiVersion;
   kind: string;
   identity: RovoAgentIdentity;
   scenarios: {
@@ -48,7 +51,6 @@ export interface RovoAgentIdentity {
   name: string;
   description: string;
   avatar?: string;
-  behavior: string;
   conversationStarters?: string[];
 }
 
@@ -57,13 +59,17 @@ export interface RovoDefaultScenario {
   knowledge?: 'all' | 'custom' | 'none';
   webSearch?: boolean;
   skills?: string[];
+  deepResearch?: boolean;
 }
 
 export interface RovoCustomScenario extends RovoDefaultScenario {
   name: string;
   trigger: string;
-  deepResearch?: boolean;
   enabled?: boolean;
+  /** Stable subagent key from the subagents{} map. */
+  key?: string;
+  /** Conversation starters scoped to this subagent. */
+  conversationStarters?: string[];
 }
 
 export interface RovoKnowledgeSource {

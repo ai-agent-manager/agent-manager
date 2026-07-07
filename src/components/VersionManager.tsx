@@ -212,7 +212,7 @@ export function VersionManager({
               return;
             }
 
-            if (source.type !== 'discovery') {
+            if (source.type !== 'url') {
               return;
             }
 
@@ -573,7 +573,7 @@ export function VersionManager({
     );
   }
 
-  const isUrlSource = source.type === 'discovery';
+  const isUrlSource = source.type === 'url';
   const overviewItems = [
     ...(isUrlSource
       ? [
@@ -614,7 +614,7 @@ export function VersionManager({
           }
 
           if (item.value === 'browse') {
-            if (source.type !== 'discovery') {
+            if (source.type !== 'url') {
               return;
             }
 

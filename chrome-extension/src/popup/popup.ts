@@ -109,9 +109,41 @@ async function fetchBundleInfo(token: string): Promise<{ version: string; publis
 // Find an Atlassian Studio tab
 // ---------------------------------------------------------------------------
 
+/**
+ * Pick the Studio tab to provision into.
+ *
+ * Strategy (most specific → fallback):
+ *   1. The currently-active tab in the currently-focused window, if it's
+ *      a Studio tab. This is what the user sees when they click the
+ *      extension icon, so it's almost always what they mean.
+ *   2. Any active Studio tab in any window.
+ *   3. The first Studio tab anywhere.
+ *
+ * Without step (1), Chrome's `chrome.tabs.query({url: ...})` returns
+ * tabs in an unspecified order across all windows. With multiple Studio
+ * tabs open (e.g. different workspaces, or a leftover tab on the
+ * "Getting started" page) the popup would silently send the provision
+ * request to the wrong tab and the content script would time out
+ * looking for elements that don't exist in its DOM.
+ */
 async function findStudioTab(): Promise<chrome.tabs.Tab | null> {
-  const tabs = await chrome.tabs.query({ url: 'https://studio.atlassian.com/*' });
-  return tabs.length > 0 ? tabs[0] : null;
+  const STUDIO_URL = 'https://studio.atlassian.com/*';
+
+  const activeInFocusedWindow = await chrome.tabs.query({
+    url: STUDIO_URL,
+    active: true,
+    currentWindow: true,
+  });
+  if (activeInFocusedWindow.length > 0) return activeInFocusedWindow[0];
+
+  const activeAnywhere = await chrome.tabs.query({
+    url: STUDIO_URL,
+    active: true,
+  });
+  if (activeAnywhere.length > 0) return activeAnywhere[0];
+
+  const anyStudioTab = await chrome.tabs.query({ url: STUDIO_URL });
+  return anyStudioTab.length > 0 ? anyStudioTab[0] : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -285,8 +317,20 @@ async function provisionAgent(agent: AgentSummary): Promise<void> {
 
     chrome.runtime.onMessage.removeListener(progressListener);
 
+    // If provisioning failed, enrich the error with the URL the popup
+    // actually targeted. With multiple Studio tabs open it's easy to
+    // accidentally send the request to the wrong tab, in which case the
+    // content script times out looking for buttons that don't exist in
+    // its DOM. Surfacing the tab URL makes that obvious.
+    const finalResult: ProvisionResult = !result.success && result.error
+      ? {
+          success: false,
+          error: `${result.error}\n\nTarget tab: ${studioTab.url ?? '(unknown URL)'}`,
+        }
+      : result;
+
     // Show result
-    showResult(result, agent.name);
+    showResult(finalResult, agent.name);
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Provisioning failed';
     showResult({ success: false, error: msg }, agent.name);
