@@ -75,31 +75,77 @@ export class StudioService {
     }
     await page.waitForTimeout(2000);
 
-    // Skip to manual setup
-    try {
-      await page.getByTestId('nl-create-skip-to-manual-setup-button').click();
-    } catch {
-      await page.getByRole('button', { name: /Skip to manual setup/i }).click();
+    // Skip to manual setup (when the natural-language create flow is shown).
+    // v2-beta uses several different labels for this — try all known
+    // variants before giving up. Without this, the provisioner stays on
+    // the NL chat page and the manual editor selectors never match.
+    const manualSetupTestIds = [
+      'nl-create-skip-to-manual-setup-button',
+      'create-skip-to-manual-setup-button',
+      'manual-setup-button',
+      'skip-to-manual-setup',
+    ];
+    const manualSetupLabels = [
+      /Skip to manual setup/i,
+      /Manual setup/i,
+      /Create manually/i,
+      /Start from scratch/i,
+      /Set up manually/i,
+      /^Skip$/i,
+    ];
+
+    let manualClicked = false;
+    for (const testId of manualSetupTestIds) {
+      try {
+        const btn = page.getByTestId(testId);
+        if (await btn.isVisible({ timeout: 1_500 })) {
+          await btn.click();
+          manualClicked = true;
+          break;
+        }
+      } catch {}
     }
-    await page.waitForTimeout(2000);
+    if (!manualClicked) {
+      for (const label of manualSetupLabels) {
+        try {
+          const btn = page.getByRole('button', { name: label });
+          if (await btn.isVisible({ timeout: 1_500 })) {
+            await btn.click();
+            manualClicked = true;
+            break;
+          }
+        } catch {}
+        try {
+          const link = page.getByRole('link', { name: label });
+          if (await link.isVisible({ timeout: 1_000 })) {
+            await link.click();
+            manualClicked = true;
+            break;
+          }
+        } catch {}
+      }
+    }
+    if (!manualClicked) {
+      throw new Error(
+        'Could not find a way to skip to manual setup. The natural-language create page is open ' +
+        'but none of the known button labels matched. Studio UI selectors may have changed.',
+      );
+    }
+    await page.waitForTimeout(2500);
 
-    // Configure identity
-    this.log('Configuring identity...', s + 2, totalSteps);
-    await this.configureIdentity(config);
+    // Configure the agent on the v2-beta single-page editor.
+    this.log('Configuring agent...', s + 2, totalSteps);
+    await this.configureAgent(config, knowledgePages);
 
-    // Configure default scenario
-    this.log('Configuring default scenario...', s + 3, totalSteps);
-    await this.configureDefaultScenario(config.scenarios.default, knowledgePages);
-
-    // Additional custom scenarios
+    // Subagents (formerly v1 custom scenarios).
     if (config.scenarios.custom?.length) {
       for (let i = 0; i < config.scenarios.custom.length; i++) {
-        const scenario = config.scenarios.custom[i];
-        this.log(`Adding scenario: ${scenario.name}...`, s + 4 + i, totalSteps);
+        const subagent = config.scenarios.custom[i];
+        this.log(`Adding subagent: ${subagent.name}...`, s + 3 + i, totalSteps);
         try {
-          await this.addCustomScenario(scenario, knowledgePages);
+          await this.addSubagent(subagent, knowledgePages);
         } catch (err) {
-          this.log(`ERROR adding scenario "${scenario.name}": ${err instanceof Error ? err.message : String(err)}`);
+          this.log(`ERROR adding subagent "${subagent.name}": ${err instanceof Error ? err.message : String(err)}`);
           throw err;
         }
       }
@@ -115,39 +161,6 @@ export class StudioService {
   // ---------------------------------------------------------------------------
   // Identity
   // ---------------------------------------------------------------------------
-
-  /**
-   * Navigate to the Identity page and fill in name, description, behaviour,
-   * and conversation starters.
-   */
-  private async configureIdentity(config: RovoAgentConfig): Promise<void> {
-    const page = this.page;
-
-    // Navigate to Identity page via sidebar
-    try {
-      await page.getByTestId('side-navigation-menu-item-identity').click();
-      await page.waitForTimeout(1500);
-    } catch { return; }
-
-    const { identity } = config;
-
-    // Name (max 30 chars)
-    try { await page.getByTestId('agent-identity-name-field-input').fill(identity.name); } catch {}
-    await page.waitForTimeout(500);
-
-    // Description (max 400 chars)
-    try { await page.getByTestId('agent-identity-description-field-input').fill(identity.description); } catch {}
-    await page.waitForTimeout(500);
-
-    // Behaviour
-    try { await page.getByTestId('agent-identity-behaviour-field-input').fill(identity.behavior); } catch {}
-    await page.waitForTimeout(500);
-
-    // Conversation starters
-    if (identity.conversationStarters?.length) {
-      await this.fillConversationStarters(identity.conversationStarters);
-    }
-  }
 
   /**
    * Fill conversation starter fields on the Identity page.
@@ -168,81 +181,154 @@ export class StudioService {
   }
 
   // ---------------------------------------------------------------------------
-  // Scenarios
+  // Subagents
   // ---------------------------------------------------------------------------
 
   /**
-   * Navigate to the Default Scenario page and configure it.
+   * Add a new subagent and configure it.
+   *
+   * Subagents are added by clicking "Add new scenario" in the sidebar (the
+   * underlying widget kept the v1 label) and filling the same name/trigger/
+   * instructions/knowledge form.
    */
-  private async configureDefaultScenario(
-    scenario: RovoDefaultScenario,
-    knowledgePages: KnowledgePage[] = [],
-  ): Promise<void> {
-    const page = this.page;
-    try {
-      await page.getByTestId('side-navigation-menu-item-default-scenario').click();
-      await page.waitForTimeout(1500);
-    } catch { return; }
-
-    await this.fillScenarioFields(scenario, /* isDefault */ true, knowledgePages);
-  }
-
-  /**
-   * Add a new custom scenario and configure it.
-   */
-  private async addCustomScenario(
-    scenario: RovoCustomScenario,
+  private async addSubagent(
+    subagent: RovoCustomScenario,
     knowledgePages: KnowledgePage[] = [],
   ): Promise<void> {
     const page = this.page;
 
-    // Click "Add new scenario" in the sidebar
-    await page.getByRole('button', { name: 'Add new scenario' }).click();
-    await page.waitForTimeout(2000);
+    // Count existing subagents BEFORE adding so we can identify the new one.
+    const existingCount = await page.locator('input[aria-label="Scenario name"]').count();
 
-    // Fill scenario name — try a few selector strategies
+    // Click "Add new scenario" (or "Add subagent") in the sidebar.
     try {
-      await page.getByRole('textbox', { name: /scenario name/i }).fill(scenario.name);
+      await page.getByRole('button', { name: /Add new scenario|Add subagent/i }).click();
     } catch {
-      const inputs = page.getByRole('textbox');
-      const count = await inputs.count();
-      let filled = false;
-      for (let i = 0; i < count; i++) {
-        const box = inputs.nth(i);
-        const val = await box.inputValue().catch(() => null);
-        if (val !== null && val.trim() === '') {
-          await box.fill(scenario.name);
-          filled = true;
-          break;
+      throw new Error(`Could not find "Add new scenario" button for subagent "${subagent.name}"`);
+    }
+
+    // Wait for the new Scenario name input to appear at index `existingCount`.
+    await page.waitForFunction(
+      (expectedCount) => document.querySelectorAll('input[aria-label="Scenario name"]').length > expectedCount,
+      existingCount,
+      { timeout: 5_000 },
+    ).catch(() => {
+      throw new Error(`New Scenario name input did not appear after clicking "Add subagent" for "${subagent.name}"`);
+    });
+
+    const nameInput = page.locator('input[aria-label="Scenario name"]').nth(existingCount);
+    await nameInput.fill(subagent.name);
+    await page.waitForTimeout(300);
+
+    // Trigger — the textarea that appears immediately after this subagent's
+    // name input in document order.
+    if (subagent.trigger) {
+      const triggerSelector = page.locator(
+        `input[aria-label="Scenario name"] >> nth=${existingCount} >> .. >> .. >> .. >> textarea`,
+      );
+      // The chained-locator above is brittle — fall back to a JS evaluate
+      // that walks forward in document order.
+      let triggerFilled = false;
+      try {
+        await page.evaluate(({ index, value }) => {
+          const all = Array.from(document.querySelectorAll('textarea, input[aria-label="Scenario name"]'));
+          const names = Array.from(document.querySelectorAll('input[aria-label="Scenario name"]'));
+          const after = names[index];
+          if (!after) throw new Error('no name input at index ' + index);
+          const i = all.indexOf(after);
+          for (let j = i + 1; j < all.length; j++) {
+            const el = all[j];
+            if (el.tagName === 'TEXTAREA') {
+              const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+              setter?.call(el, value);
+              el.dispatchEvent(new Event('input', { bubbles: true }));
+              el.dispatchEvent(new Event('change', { bubbles: true }));
+              return true;
+            }
+            if (el.getAttribute('aria-label') === 'Scenario name') return false;
+          }
+          return false;
+        }, { index: existingCount, value: subagent.trigger });
+        triggerFilled = true;
+      } catch {
+        // Try locator approach as fallback.
+      }
+      if (!triggerFilled) {
+        try {
+          await triggerSelector.fill(subagent.trigger);
+        } catch {
+          throw new Error(`Could not locate trigger textarea for subagent "${subagent.name}"`);
         }
       }
-      if (!filled) {
-        throw new Error(`Could not locate scenario name input for "${scenario.name}"`);
-      }
-    }
-    await page.waitForTimeout(500);
-
-    // Fill trigger
-    if (scenario.trigger) {
-      try {
-        await page.getByRole('textbox', { name: /trigger/i }).fill(scenario.trigger);
-      } catch {
-        throw new Error(`Could not locate trigger input for scenario "${scenario.name}"`);
-      }
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(300);
     }
 
-    // Enable/disable the scenario toggle
-    const isEnabled = scenario.enabled ?? true;
+    // Enable/disable the subagent toggle.
+    const isEnabled = subagent.enabled ?? true;
     await this.setScenarioEnabled(isEnabled);
 
-    // Fill the rest of the scenario fields
-    await this.fillScenarioFields(scenario, /* isDefault */ false, knowledgePages);
+    // Instructions — the AK editor that belongs to this subagent (the
+    // contenteditable that comes after the name input and is NOT inside
+    // the main agent's core-instructions-editor).
+    if (subagent.instructions) {
+      const editorHandle = await page.evaluateHandle((index) => {
+        const all = Array.from(document.querySelectorAll(
+          'input[aria-label="Scenario name"], [contenteditable="true"]',
+        ));
+        const names = Array.from(document.querySelectorAll('input[aria-label="Scenario name"]'));
+        const after = names[index];
+        if (!after) return null;
+        const i = all.indexOf(after);
+        for (let j = i + 1; j < all.length; j++) {
+          const el = all[j];
+          if (el.getAttribute('contenteditable') === 'true'
+            && !el.closest('[data-testid="core-instructions-editor"]')) {
+            return el;
+          }
+          if (el.getAttribute('aria-label') === 'Scenario name') return null;
+        }
+        return null;
+      }, existingCount);
+
+      const editor = editorHandle.asElement();
+      if (!editor) {
+        throw new Error(`Could not locate Instructions editor for subagent "${subagent.name}"`);
+      }
+      const editorLocator = page.locator(`[contenteditable="true"]:nth-of-type(${existingCount + 2})`);
+      // Use evaluate-based fill since we already have the handle.
+      await editor.evaluate((el, text) => {
+        (el as HTMLElement).focus();
+        document.execCommand('selectAll', false);
+        document.execCommand('insertText', false, text);
+      }, subagent.instructions);
+      await page.waitForTimeout(300);
+      // editorLocator unused after handle path — kept for type-only readability.
+      void editorLocator;
+    }
+
+    // Knowledge / Web search / Deep research / Skills — same primitives as
+    // the default scenario. NOTE: these are global on the page right now;
+    // a future improvement could scope them to the active subagent.
+    await this.selectKnowledge(subagent.knowledge ?? 'all');
+    if (knowledgePages.length > 0 && subagent.knowledge === 'custom') {
+      await this.addConfluencePageKnowledge(knowledgePages);
+    }
+    await this.setCheckbox('Web search', subagent.webSearch ?? false);
+    if (subagent.deepResearch !== undefined) {
+      await this.setCheckbox('Deep research', subagent.deepResearch);
+    }
+    if (subagent.skills?.length) {
+      await this.addSkillsToScenario(subagent.skills);
+    }
   }
 
   /**
    * Fill the common scenario fields: instructions, knowledge, web search,
-   * deep research (custom only), and skills.
+   * deep research, and skills.
+   *
+   * Throws if the Instructions field cannot be located/filled when
+   * `scenario.instructions` is non-empty — agents without instructions are
+   * useless.
    */
   private async fillScenarioFields(
     scenario: RovoDefaultScenario | RovoCustomScenario,
@@ -251,10 +337,9 @@ export class StudioService {
   ): Promise<void> {
     const page = this.page;
 
-    // Instructions
-    try {
-      await page.getByRole('textbox', { name: 'Instructions' }).fill(scenario.instructions);
-    } catch {}
+    if (scenario.instructions) {
+      await this.fillInstructions(scenario.instructions);
+    }
     await page.waitForTimeout(500);
 
     // Knowledge selection
@@ -270,7 +355,7 @@ export class StudioService {
     // Web search checkbox
     await this.setCheckbox('Web search', scenario.webSearch ?? false);
 
-    // Deep research checkbox — only available on custom scenarios
+    // Deep research checkbox
     if (!isDefault && 'deepResearch' in scenario) {
       await this.setCheckbox('Deep research', scenario.deepResearch ?? false);
     }
@@ -279,6 +364,269 @@ export class StudioService {
     if (scenario.skills?.length) {
       await this.addSkillsToScenario(scenario.skills);
     }
+  }
+
+  /**
+   * Fill the Instructions field — a rich-text editor (contenteditable /
+   * ProseMirror) in Studio. Falls back to a plain textbox when present.
+   *
+   * Throws if no usable instructions field is found within the timeout, or
+   * if the field still appears empty after the fill attempt.
+   */
+  /**
+   * Fill an Atlassian Design System InlineEdit field — used for both Name and
+   * Description in v2-beta Studio.
+   *
+   * The DOM looks like:
+   *   <form role="presentation">
+   *     <div>
+   *       <button aria-label="{value}, edit">  ← invisible 0×0 overlay button
+   *       <div role="presentation">
+   *         <... data-testid="{readViewTestId}">{value or placeholder}</...>
+   *       </div>
+   *     </div>
+   *   </form>
+   *
+   * After clicking the edit button, the form swaps to:
+   *   <form>
+   *     <div data-ds--text-field--container="true">
+   *       <input name="inlineEdit" data-ds--text-field--input="true" value="...">
+   *     </div>
+   *     <button type="submit">Confirm</button>
+   *     <button type="button">Cancel</button>
+   *   </form>
+   *
+   * Verified live against Studio v2-beta on 2026-06-17.
+   */
+  private async fillInlineEditField(
+    readViewTestId: string,
+    value: string,
+    fieldDescription: string,
+  ): Promise<void> {
+    const page = this.page;
+
+    const readView = page.getByTestId(readViewTestId);
+    try {
+      await readView.waitFor({ state: 'visible', timeout: 5_000 });
+    } catch {
+      throw new Error(
+        `Could not find the ${fieldDescription} read view ` +
+        `(testId: ${readViewTestId}). Studio UI selectors may have changed.`,
+      );
+    }
+
+    // The InlineEdit edit button is an invisible 0×0 overlay sibling. Click
+    // it programmatically via .evaluate so Playwright doesn't fail on the
+    // zero-size visibility check.
+    await page.evaluate(({ testId }) => {
+      const rv = document.querySelector(`[data-testid="${testId}"]`);
+      if (!rv) throw new Error('read view vanished between waitFor and evaluate');
+      const form = rv.closest('form[role="presentation"]');
+      if (!form) throw new Error('no form ancestor for read view');
+      const btn = form.querySelector('button[aria-label$=", edit" i]')
+        ?? form.querySelector('button[type="button"]');
+      if (!btn) throw new Error('no edit button in form');
+      (btn as HTMLButtonElement).click();
+    }, { testId: readViewTestId });
+
+    // Wait for the edit-mode input to appear inside the same form.
+    const inputLocator = page.locator(
+      `[data-testid="${readViewTestId}"] ~ * input[name="inlineEdit"], ` +
+      `form:has([data-testid="${readViewTestId}"]) input[name="inlineEdit"]`,
+    ).first();
+    try {
+      await inputLocator.waitFor({ state: 'visible', timeout: 3_000 });
+    } catch {
+      // Fall back to any input[name="inlineEdit"] on the page (there's
+      // normally only one open at a time).
+      const anyInput = page.locator('input[name="inlineEdit"]').first();
+      try {
+        await anyInput.waitFor({ state: 'visible', timeout: 1_500 });
+        await anyInput.fill(value);
+        await this.commitInlineEdit(readViewTestId);
+        return;
+      } catch {
+        throw new Error(
+          `Clicked the ${fieldDescription} edit button but no input[name="inlineEdit"] appeared. ` +
+          'Studio UI selectors may have changed.',
+        );
+      }
+    }
+
+    await inputLocator.fill(value);
+    await page.waitForTimeout(150);
+    await this.commitInlineEdit(readViewTestId);
+  }
+
+  /**
+   * Commit an open InlineEdit by clicking its Confirm (submit) button.
+   * Falls back to submitting the form directly.
+   */
+  private async commitInlineEdit(readViewTestId: string): Promise<void> {
+    const page = this.page;
+    await page.evaluate(({ testId }) => {
+      const rv = document.querySelector(`[data-testid="${testId}"]`);
+      const form = rv?.closest('form[role="presentation"]')
+        ?? document.querySelector('form[role="presentation"] input[name="inlineEdit"]')
+          ?.closest('form[role="presentation"]');
+      if (!form) return;
+      const confirm = form.querySelector('button[type="submit"]') as HTMLButtonElement | null;
+      if (confirm) {
+        confirm.click();
+      } else if ('requestSubmit' in form) {
+        (form as HTMLFormElement).requestSubmit?.();
+      }
+    }, { testId: readViewTestId });
+
+    // Wait for the form to swap back to read view.
+    try {
+      await page.locator(`[data-testid="${readViewTestId}"]`).waitFor({ state: 'visible', timeout: 2_000 });
+    } catch {}
+    await page.waitForTimeout(200);
+  }
+
+  /**
+   * Fill the agent's main Instructions field. v2-beta wraps the AK editor
+   * (ProseMirror) in `[data-testid="core-instructions-editor"]`. We focus
+   * the contenteditable and use `keyboard.insertText`, which integrates
+   * correctly with ProseMirror's React-controlled state.
+   *
+   * Verified live against Studio v2-beta on 2026-06-17.
+   */
+  private async fillInstructions(text: string): Promise<void> {
+    const page = this.page;
+
+    // Scope strictly to the main agent's editor — once subagents are added,
+    // there will be multiple AK editors on the page (one per scenario), and
+    // we don't want to overwrite a subagent's instructions with the
+    // main-agent text.
+    const editor = page.locator(
+      '[data-testid="core-instructions-editor"] [contenteditable="true"]',
+    ).first();
+    try {
+      await editor.waitFor({ state: 'visible', timeout: 5_000 });
+    } catch {
+      throw new Error(
+        'Could not find the main Instructions editor ' +
+        '(selector: [data-testid="core-instructions-editor"] [contenteditable="true"]). ' +
+        'Studio UI selectors may have changed.',
+      );
+    }
+
+    await this.fillAkEditor(editor, text);
+  }
+
+  /**
+   * Fill a ProseMirror / AK editor's contenteditable.
+   *
+   * Uses `page.evaluate` to run a script in the page context that walks
+   * the React fiber to find the ProseMirror `EditorView` and dispatches a
+   * real PM transaction replacing the document with paragraphs built from
+   * the lines of `text`. PM's transaction pipeline guarantees that AK
+   * Editor's `onChange` fires and React form state is updated.
+   *
+   * This mirrors the approach used in the chrome extension's content
+   * script, which has to inject a `<script>` tag to escape the isolated
+   * world; Playwright's `evaluate` already runs in the page world.
+   */
+  private async fillAkEditor(editor: import('playwright').Locator, text: string): Promise<void> {
+    const page = this.page;
+
+    await editor.scrollIntoViewIfNeeded().catch(() => undefined);
+    await editor.click();
+    await page.waitForTimeout(100);
+
+    const result = await editor.evaluate((el, content): string | null => {
+      const fiberKey = Object.keys(el).find(
+        (k) => k.startsWith('__reactFiber') || k.startsWith('__reactInternalInstance'),
+      );
+      if (!fiberKey) return 'react fiber not found on editor';
+      let node = (el as unknown as Record<string, unknown>)[fiberKey] as
+        | {
+            return?: unknown;
+            memoizedState?: {
+              memoizedState?: { current?: { dispatch?: unknown; state?: { doc?: unknown } } };
+              next?: unknown;
+            };
+          }
+        | undefined;
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let view: any = null;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let cursor: any = node;
+      for (let i = 0; i < 100 && cursor && !view; i++) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let hook: any = cursor.memoizedState;
+        while (hook) {
+          const ms = hook.memoizedState;
+          if (
+            ms
+            && ms.current
+            && typeof ms.current === 'object'
+            && typeof ms.current.dispatch === 'function'
+            && ms.current.state
+            && ms.current.state.doc
+          ) {
+            view = ms.current;
+            break;
+          }
+          hook = hook.next;
+        }
+        cursor = cursor.return;
+      }
+      if (!view) return 'ProseMirror EditorView not found via fiber walk';
+
+      const state = view.state;
+      const schema = state.schema;
+      const paragraphType = schema.nodes.paragraph;
+      if (!paragraphType) return 'schema has no paragraph node';
+
+      const lines = content.split('\n');
+      while (lines.length > 0 && lines[lines.length - 1].trim().length === 0) {
+        lines.pop();
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let nodes = lines.map((line: string) =>
+        line.length > 0
+          ? paragraphType.create({}, schema.text(line))
+          : paragraphType.create({}),
+      );
+      if (nodes.length === 0) {
+        nodes = [paragraphType.create({})];
+      }
+
+      let tr = state.tr.delete(0, state.doc.content.size);
+      let pos = 0;
+      for (const n of nodes) {
+        tr = tr.insert(pos, n);
+        pos += n.nodeSize;
+      }
+      if (typeof tr.setMeta === 'function') {
+        tr.setMeta('addToHistory', true);
+        tr.setMeta('uiEvent', 'input');
+      }
+      view.dispatch(tr);
+      return null;
+    }, text);
+
+    if (result !== null) {
+      throw new Error(`Could not fill AK editor via PM transaction: ${result}`);
+    }
+
+    await page.waitForTimeout(300);
+
+    // Final commit nudge — focus a sentinel element so any pending
+    // debounced onChange flushes.
+    await editor.evaluate((el) => {
+      (el as HTMLElement).dispatchEvent(
+        new FocusEvent('focusout', { bubbles: true, relatedTarget: document.body }),
+      );
+      (el as HTMLElement).blur();
+      (document.body as HTMLElement).tabIndex = -1;
+      (document.body as HTMLElement).focus();
+    });
+    await page.waitForTimeout(300);
   }
 
   // ---------------------------------------------------------------------------
@@ -465,6 +813,74 @@ export class StudioService {
       await page.getByTestId('tools-footer-add-button').click();
       await page.waitForTimeout(1000);
     } catch {}
+  }
+
+  // ---------------------------------------------------------------------------
+  // v2-beta single-page editor
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Configure the agent on the v2-beta single-page editor.
+   *
+   * v2-beta merges identity + default scenario into one form (no Identity /
+   * Default Scenario sidebar) and uses a rich-text editor for instructions.
+   * Subagents are added separately by the caller via {@link addSubagent}.
+   *
+   * Throws if Name, Description, or Instructions cannot be filled — these
+   * are the minimum required for a non-empty agent.
+   */
+  private async configureAgent(
+    config: RovoAgentConfig,
+    knowledgePages: KnowledgePage[] = [],
+  ): Promise<void> {
+    const { identity, scenarios } = config;
+
+    // Wait for the editor form to actually render before probing for inputs.
+    // Without this we race the SPA and every selector misses on first run.
+    await this.page.waitForLoadState('domcontentloaded').catch(() => {});
+    await this.page.waitForTimeout(1500);
+
+    // Name and Description both use Atlassian Design System InlineEdit on
+    // the /agents/create/details/ page. Verified live 2026-06-17.
+    await this.fillInlineEditField(
+      'agent-heading-toolbar-name-field-read-view',
+      identity.name,
+      'Name',
+    );
+
+    await this.fillInlineEditField(
+      'agent-heading-toolbar-description-field-read-view',
+      identity.description,
+      'Description',
+    );
+
+    // Instructions — required, rich text.
+    if (!scenarios.default.instructions || scenarios.default.instructions.trim().length === 0) {
+      throw new Error('Agent has empty instructions — refusing to activate an empty agent.');
+    }
+    await this.fillInstructions(scenarios.default.instructions);
+
+    // Conversation starters — optional, top-level.
+    if (identity.conversationStarters?.length) {
+      await this.fillConversationStarters(identity.conversationStarters);
+    }
+
+    // Knowledge / web search / deep research — optional toggles.
+    const scenarioKnowledge = scenarios.default.knowledge ?? 'all';
+    const shouldLinkPages = knowledgePages.length > 0 && scenarioKnowledge === 'custom';
+    await this.selectKnowledge(shouldLinkPages ? 'custom' : scenarioKnowledge);
+    if (shouldLinkPages) {
+      await this.addConfluencePageKnowledge(knowledgePages);
+    }
+    await this.setCheckbox('Web search', scenarios.default.webSearch ?? false);
+    if (scenarios.default.deepResearch !== undefined) {
+      await this.setCheckbox('Deep research', scenarios.default.deepResearch);
+    }
+
+    // Skills — optional.
+    if (scenarios.default.skills?.length) {
+      await this.addSkillsToScenario(scenarios.default.skills);
+    }
   }
 
   /**

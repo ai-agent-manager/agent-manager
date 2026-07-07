@@ -28,6 +28,18 @@ await esbuild.build({
   format: 'iife',
 });
 
+// Page-world content script — registered separately in manifest.json with
+// `"world": "MAIN"` so it runs in the page's main JavaScript world,
+// where it can access React fiber expandos and ProseMirror EditorView
+// instances on DOM elements. The isolated-world content script
+// communicates with this script via window.postMessage.
+await esbuild.build({
+  ...shared,
+  entryPoints: ['src/page-world/inject.ts'],
+  outfile: 'dist/page-world/inject.js',
+  format: 'iife',
+});
+
 // Popup script — must be a single file since it's loaded via <script> in popup.html.
 // Uses IIFE format for broad compatibility.
 await esbuild.build({

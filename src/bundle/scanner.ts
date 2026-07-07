@@ -51,6 +51,9 @@ export function isFileRef(value: StringOrFileRef): value is FileRef {
 
 // -- Resolved types (after $file resolution — all fields are plain strings) --
 
+/** Supported `apiVersion` values for rovo-agent.yaml manifests. v1 is archived. */
+export type RovoApiVersion = 'rovo.atlassian.com/v2-beta';
+
 export interface RovoAgentIdentity {
   /** Agent display name (max 30 chars in Studio) */
   name: string;
@@ -58,8 +61,6 @@ export interface RovoAgentIdentity {
   description: string;
   /** Optional emoji avatar */
   avatar?: string;
-  /** Multi-line behaviour text (tone, style, approach) */
-  behavior: string;
   /** Optional conversation starter prompts */
   conversationStarters?: string[];
 }
@@ -73,6 +74,8 @@ export interface RovoDefaultScenario {
   webSearch?: boolean;
   /** Skills available in this scenario (display names from Studio) */
   skills?: string[];
+  /** Enable deep research */
+  deepResearch?: boolean;
 }
 
 export interface RovoCustomScenario extends RovoDefaultScenario {
@@ -80,10 +83,12 @@ export interface RovoCustomScenario extends RovoDefaultScenario {
   name: string;
   /** Natural language trigger description */
   trigger: string;
-  /** Enable deep research (only available on custom scenarios) */
-  deepResearch?: boolean;
   /** Whether the scenario is enabled (default: true) */
   enabled?: boolean;
+  /** Stable identifier — the subagents{} key from YAML. */
+  key?: string;
+  /** Conversation starters scoped to this subagent. */
+  conversationStarters?: string[];
 }
 
 export interface RovoKnowledgeSource {
@@ -93,8 +98,23 @@ export interface RovoKnowledgeSource {
   filter?: string;
 }
 
+/**
+ * Canonical, fully-resolved Rovo agent configuration.
+ *
+ * v2-beta YAML is normalised into this shape during parsing so all
+ * downstream consumers can read `config.identity.*` and `config.scenarios.*`
+ * uniformly.
+ *
+ * Normalisation map:
+ *  - `name` → `identity.name`
+ *  - `description` → `identity.description`
+ *  - `instructions` → `scenarios.default.instructions`
+ *  - `conversationStarters` → `identity.conversationStarters`
+ *  - `skills` / `knowledge` / `webSearch` / `deepResearch` → `scenarios.default.*`
+ *  - `subagents{}` → `scenarios.custom[]` (with `key` set to the map key)
+ */
 export interface RovoAgentConfig {
-  apiVersion: 'rovo.atlassian.com/v1';
+  apiVersion: RovoApiVersion;
   kind: 'StudioAgent';
   identity: RovoAgentIdentity;
   scenarios: {
@@ -106,26 +126,30 @@ export interface RovoAgentConfig {
 
 // -- Raw types (before $file resolution — may contain FileRef objects) -------
 
-export interface RovoAgentIdentityRaw extends Omit<RovoAgentIdentity, 'behavior'> {
-  behavior: StringOrFileRef;
-}
-
-export interface RovoDefaultScenarioRaw extends Omit<RovoDefaultScenario, 'instructions'> {
-  instructions: StringOrFileRef;
-}
-
-export interface RovoCustomScenarioRaw extends Omit<RovoCustomScenario, 'instructions'> {
-  instructions: StringOrFileRef;
+export interface RovoAgentSubagentRaw {
+  name: string;
+  enabled: boolean;
+  trigger?: string;
+  instructions?: StringOrFileRef;
+  conversationStarters?: string[];
+  skills?: string[];
+  knowledge?: 'all' | 'custom' | 'none';
+  webSearch?: boolean;
+  deepResearch?: boolean;
 }
 
 export interface RovoAgentConfigRaw {
-  apiVersion: 'rovo.atlassian.com/v1';
+  apiVersion: 'rovo.atlassian.com/v2-beta';
   kind: 'StudioAgent';
-  identity: RovoAgentIdentityRaw;
-  scenarios: {
-    default: RovoDefaultScenarioRaw;
-    custom?: RovoCustomScenarioRaw[];
-  };
+  name: string;
+  description: string;
+  instructions: StringOrFileRef;
+  conversationStarters?: string[];
+  skills?: string[];
+  knowledge?: 'all' | 'custom' | 'none';
+  webSearch?: boolean;
+  deepResearch?: boolean;
+  subagents?: Record<string, RovoAgentSubagentRaw>;
   knowledgeSources?: RovoKnowledgeSource[];
 }
 
@@ -200,11 +224,12 @@ export let lastParseWarnings: string[] = [];
  */
 function normaliseBeforeValidation(data: Record<string, unknown>): string[] {
   const warnings: string[] = [];
-  const identity = data?.identity as Record<string, unknown> | undefined;
 
-  if (Array.isArray(identity?.conversationStarters) && identity.conversationStarters.length > 3) {
-    const dropped = identity.conversationStarters.length - 3;
-    identity.conversationStarters = identity.conversationStarters.slice(0, 3);
+  // Truncate top-level conversationStarters to 3 (Studio limit).
+  const topStarters = data?.conversationStarters;
+  if (Array.isArray(topStarters) && topStarters.length > 3) {
+    const dropped = topStarters.length - 3;
+    data.conversationStarters = topStarters.slice(0, 3);
     warnings.push(
       `conversationStarters has ${dropped + 3} items but Studio allows max 3 — truncated to first 3`
     );
@@ -218,6 +243,7 @@ function normaliseBeforeValidation(data: Record<string, unknown>): string[] {
  * {@link RovoAgentValidationError} if the content doesn't conform to the
  * schema or if any `$file` reference cannot be resolved.
  *
+ * Only `apiVersion: rovo.atlassian.com/v2-beta` is supported (v1 is archived).
  * Best-effort fixups (e.g. truncating conversationStarters) are applied
  * before validation.  Warnings are stored in {@link lastParseWarnings}.
  *
@@ -242,7 +268,6 @@ export async function parseRovoAgentYaml(
     throw new RovoAgentValidationError(errors);
   }
 
-  // Resolve any $file references to produce a fully-resolved config
   return resolveFileRefs(data as RovoAgentConfigRaw, baseDir);
 }
 
@@ -258,7 +283,7 @@ export async function parseRovoAgentYaml(
  * @param value    The value to resolve.
  * @param baseDir  Base directory for resolving relative paths.
  * @param field    Human-readable field path for error messages (e.g.
- *                 `"scenarios.default.instructions"`).
+ *                 `"instructions"`).
  */
 async function resolveValue(
   value: StringOrFileRef,
@@ -304,51 +329,85 @@ async function resolveValue(
 }
 
 /**
- * Walk a raw (schema-validated but unresolved) config, read any `$file`
- * references, and return a fully-resolved {@link RovoAgentConfig} where
- * every field is a plain string.
+ * Walk a raw (schema-validated but unresolved) v2-beta config, resolve any
+ * `$file` references, and normalise into the canonical {@link RovoAgentConfig}
+ * shape so all downstream consumers can read `config.identity.*` and
+ * `config.scenarios.*` uniformly.
+ *
+ * Mapping:
+ *  - `name` → `identity.name`
+ *  - `description` → `identity.description`
+ *  - `instructions` → `scenarios.default.instructions`
+ *  - `conversationStarters` → `identity.conversationStarters`
+ *  - `skills` / `knowledge` / `webSearch` / `deepResearch` → `scenarios.default.*`
+ *  - `subagents{}` → `scenarios.custom[]` (with `key` set to map key,
+ *    `enabled` preserved, missing `trigger`/`instructions` defaulted to '')
  */
 async function resolveFileRefs(
   raw: RovoAgentConfigRaw,
   baseDir: string,
 ): Promise<RovoAgentConfig> {
-  // Resolve identity.behavior
-  const behavior = await resolveValue(
-    raw.identity.behavior,
+  const instructions = await resolveValue(
+    raw.instructions,
     baseDir,
-    'identity.behavior',
+    'instructions',
   );
 
-  // Resolve scenarios.default.instructions
-  const defaultInstructions = await resolveValue(
-    raw.scenarios.default.instructions,
-    baseDir,
-    'scenarios.default.instructions',
-  );
-
-  // Resolve custom scenario instructions
+  // Convert subagents{} → custom[] preserving key for stable ordering / lookup
+  const subagentEntries = raw.subagents ? Object.entries(raw.subagents) : [];
   const customScenarios: RovoCustomScenario[] | undefined =
-    raw.scenarios.custom
+    subagentEntries.length > 0
       ? await Promise.all(
-          raw.scenarios.custom.map(async (s, i) => {
-            const instructions = await resolveValue(
-              s.instructions,
-              baseDir,
-              `scenarios.custom[${i}].instructions`,
-            );
-            return { ...s, instructions };
+          subagentEntries.map(async ([key, sub]) => {
+            const subInstructions = sub.instructions
+              ? await resolveValue(
+                  sub.instructions,
+                  baseDir,
+                  `subagents.${key}.instructions`,
+                )
+              : '';
+            const scenario: RovoCustomScenario = {
+              key,
+              name: sub.name,
+              trigger: sub.trigger ?? '',
+              instructions: subInstructions,
+              enabled: sub.enabled,
+            };
+            if (sub.knowledge !== undefined) scenario.knowledge = sub.knowledge;
+            if (sub.webSearch !== undefined) scenario.webSearch = sub.webSearch;
+            if (sub.deepResearch !== undefined) scenario.deepResearch = sub.deepResearch;
+            if (sub.skills !== undefined) scenario.skills = sub.skills;
+            if (sub.conversationStarters !== undefined) {
+              scenario.conversationStarters = sub.conversationStarters;
+            }
+            return scenario;
           }),
         )
       : undefined;
 
-  return {
-    ...raw,
-    identity: { ...raw.identity, behavior },
+  const identity: RovoAgentIdentity = {
+    name: raw.name,
+    description: raw.description,
+  };
+  if (raw.conversationStarters) identity.conversationStarters = raw.conversationStarters;
+
+  const defaultScenario: RovoDefaultScenario = { instructions };
+  if (raw.knowledge !== undefined) defaultScenario.knowledge = raw.knowledge;
+  if (raw.webSearch !== undefined) defaultScenario.webSearch = raw.webSearch;
+  if (raw.deepResearch !== undefined) defaultScenario.deepResearch = raw.deepResearch;
+  if (raw.skills !== undefined) defaultScenario.skills = raw.skills;
+
+  const config: RovoAgentConfig = {
+    apiVersion: raw.apiVersion,
+    kind: raw.kind,
+    identity,
     scenarios: {
-      default: { ...raw.scenarios.default, instructions: defaultInstructions },
+      default: defaultScenario,
       ...(customScenarios !== undefined ? { custom: customScenarios } : {}),
     },
   };
+  if (raw.knowledgeSources) config.knowledgeSources = raw.knowledgeSources;
+  return config;
 }
 
 // ---------------------------------------------------------------------------
@@ -455,7 +514,7 @@ function manifestEntryToAssetConfig(entry: AgentManifestEntry): AssetConfig | nu
   return config;
 }
 
-export async function scanKnowledgeBase(agentDir: string): Promise<KnowledgeBaseFile[]> {
+async function scanKnowledgeBase(agentDir: string): Promise<KnowledgeBaseFile[]> {
   const kbDir = path.join(agentDir, 'assets', 'knowledge-base');
   try {
     const entries = await readdir(kbDir, { withFileTypes: true });
