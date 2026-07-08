@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdir, rm, writeFile, mkdtemp } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -155,6 +155,25 @@ describe('resolveSkillSource — GitHub repo URLs', () => {
     expect(r.ref).toBe('master');
     expect(r.defaultBranch).toBe('master');
   });
+
+  it('preserves scheme and non-standard port in repoUrl for GHES with custom port', async () => {
+    const result = await resolveSkillSource(
+      'https://github.acme-corp.com:8443/my-org/my-repo',
+      { githubHosts: ['github.acme-corp.com'] },
+    );
+    const r = result as RepoSkillSource;
+    expect(r.repoUrl).toBe('https://github.acme-corp.com:8443/my-org/my-repo');
+  });
+
+  it('warns but still resolves the ref when /tree/<ref>/<path> has trailing segments', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = await resolveSkillSource('https://github.com/org/repo/tree/main/skills/my-skill');
+    const r = result as RepoSkillSource;
+    expect(r.ref).toBe('main');
+    expect(r.repoUrl).toBe('https://github.com/org/repo');
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('path after the ref'));
+    warnSpy.mockRestore();
+  });
 });
 
 describe('resolveSkillSource — artefact URLs', () => {
@@ -174,6 +193,16 @@ describe('resolveSkillSource — artefact URLs', () => {
   it('uses installLayout from options for artefact sources', async () => {
     const result = await resolveSkillSource('https://cdn.example.com/skill.zip', { installLayout: 'flat' });
     expect((result as ArtefactSkillSource).installLayout).toBe('flat');
+  });
+
+  it('resolves a GitHub release-asset .zip URL to an artefact source, not a repo source', async () => {
+    const result = await resolveSkillSource(
+      'https://github.com/org/repo/releases/download/v1.0/skill.zip',
+    );
+    expect(result.type).toBe('artefact');
+    expect((result as ArtefactSkillSource).artefactUrl).toBe(
+      'https://github.com/org/repo/releases/download/v1.0/skill.zip',
+    );
   });
 });
 

@@ -78,6 +78,7 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
   let sourcePin: SkillSourcePin | undefined;
 
   if (source.type === "discovery") {
+    // sourcePin stays undefined for discovery installs — added in the namespaced-layout follow-up.
     console.log("[agentman] Discovery document found");
 
     console.log(`[agentman] Resolving ${source.discovery.sources.length} source(s) from discovery document...`);
@@ -93,6 +94,7 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
     let bundleDir: string;
 
     if (source.type === "url") {
+      // sourcePin stays undefined here — this branch is dead code (resolveSource never returns 'url').
       console.log("[agentman] Downloading bundle...");
       const { zipPath } = await downloadBundle(source.baseUrl, config.bundleVersion);
       console.log("[agentman] Extracting bundle...");

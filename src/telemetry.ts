@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import type { BundleSource } from "./bundle/source.js";
-import type { SkillSource } from "./bundle/skill-source.js";
 import type { DiscoveryTelemetry } from "./discovery/types.js";
 
 const DEFAULT_TIMEOUT_MS = 1000;
@@ -58,27 +57,6 @@ export function getBundleSourceTelemetryProperties(source: BundleSource): Record
     };
 }
 
-export function getSkillSourceTelemetryProperties(source: SkillSource): Record<string, TelemetryValue> {
-    if (source.type === "repo") {
-        return {
-            source: "repo",
-            bundleEndpoint: source.repoUrl,
-        };
-    }
-    if (source.type === "artefact") {
-        return {
-            source: "artefact",
-            bundleEndpoint: source.artefactUrl,
-        };
-    }
-    // bundle source — map back to legacy telemetry shape
-    return {
-        source: source.baseUrl ? "url" : "directory",
-        bundleEndpoint: source.baseUrl
-            ? getBundleEndpointTelemetryValue(source.baseUrl)
-            : LOCAL_DIRECTORY_BUNDLE_ENDPOINT,
-    };
-}
 
 function isCiEnvironment(env: NodeJS.ProcessEnv): boolean {
     return Boolean(

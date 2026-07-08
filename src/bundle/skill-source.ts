@@ -193,14 +193,18 @@ export interface ResolveSkillSourceOptions {
  * Resolve a user-supplied input string into a typed SkillSource.
  *
  * Resolution rules (in priority order):
- *   1. https://<github-host>/<org>/<repo>[/tree/<ref>]  → repo source
- *   2. http(s) URL with .zip path                        → artefact source
+ *   1. http(s) URL with .zip path                        → artefact source
+ *   2. https://<github-host>/<org>/<repo>[/tree/<ref>]  → repo source
  *   3. Other http(s) URL                                 → bundle source (legacy url path)
  *   4. Local path that is a directory                    → bundle source (legacy directory path)
+ *
+ * Artefact is checked before repo so GitHub release-asset .zip URLs
+ * (github.com/org/repo/releases/download/v1.0/skill.zip) resolve correctly.
  *
  * GitHub URL path handling:
  *   /org/repo                   → ref defaults to options.defaultBranch ?? 'main'
  *   /org/repo/tree/<ref>        → ref pinned to <ref>
+ *   /org/repo/tree/<ref>/<path> → ref pinned, trailing path warned and ignored
  *   /org/repo/issues/5          → NOT treated as a pinned ref (non-tree path ignored)
  *
  * Throws descriptive errors for invalid inputs or non-existent local paths.
@@ -216,6 +220,15 @@ export async function resolveSkillSource(
     // Parse once — reused for all subsequent checks to avoid triple-parse.
     const parsed = new URL(input); // throws TypeError on invalid URL
 
+    // ── Artefact source — checked before repo to catch GitHub release-asset .zip URLs ──
+    if (parsed.pathname.toLowerCase().endsWith('.zip')) {
+      return {
+        type: 'artefact',
+        artefactUrl: input,
+        installLayout: options.installLayout ?? 'namespaced',
+      };
+    }
+
     // ── Repo source ──
     const segments = parsed.pathname.split('/').filter(Boolean);
     if (isGithubRepoParsed(parsed, knownHosts)) {
@@ -225,24 +238,24 @@ export async function resolveSkillSource(
       // Other path shapes (/issues/, /pulls/, /blob/) are not ref specifiers.
       const ref = (treeSegment === 'tree' && refFromPath) ? refFromPath : defaultBranch;
 
+      // Warn when the URL has path segments after the ref — e.g. /tree/main/skills/my-skill.
+      // agentman uses a list-and-choose model, so the path is redundant, but silent loss is confusing.
+      if (treeSegment === 'tree' && segments.length > 4) {
+        console.warn(
+          `[agentman] The path after the ref in "${input}" is ignored. ` +
+          `Select the skill from the list after resolving the repo.`,
+        );
+      }
+
       const source: RepoSkillSource = {
         type: 'repo',
-        repoUrl: `https://${parsed.hostname}/${org}/${repo}`,
+        repoUrl: `${parsed.origin}/${org}/${repo}`,
         defaultBranch,
         ref,
         installLayout: options.installLayout ?? 'namespaced',
       };
       if (options.skillPath) source.skillPath = options.skillPath;
       return source;
-    }
-
-    // ── Artefact source ──
-    if (parsed.pathname.toLowerCase().endsWith('.zip')) {
-      return {
-        type: 'artefact',
-        artefactUrl: input,
-        installLayout: options.installLayout ?? 'namespaced',
-      };
     }
 
     // ── Bundle source (legacy url path) ──
