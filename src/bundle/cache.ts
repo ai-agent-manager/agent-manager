@@ -11,6 +11,7 @@ import { parseManifest } from "./manifest.js";
 import { readRepoConfig, writeRepoConfig } from "./repo-config.js";
 import { scanBundle } from "./scanner.js";
 import { getPlatform } from "../lib/platform.js";
+import type { SkillSourcePin } from "./skill-source.js";
 
 export interface CachedBundle {
     version: string;
@@ -25,10 +26,32 @@ export interface AgentmanConfig {
     installations: Record<string, Record<string, InstallRecord>>;
 }
 
+/**
+ * Record of a single skill installation persisted in ~/.agentman/config.json.
+ *
+ * bundleVersion is optional so that repo/artefact installs (which have no
+ * concept of a bundle version) can omit it without inventing a dummy value.
+ * Legacy bundle installs always set this field, so existing config files
+ * continue to parse cleanly. When reading, prefer sourcePin if present;
+ * fall back to bundleVersion for bundle-sourced skills.
+ */
 export interface InstallRecord {
-    bundleVersion: string;
+    /**
+     * @deprecated Use sourcePin.bundleVersion instead. Kept for backward
+     * compatibility with bundle installs written by earlier versions of agentman.
+     * Absent for repo/artefact installs.
+     */
+    bundleVersion?: string;
     installedAt: string;
     method: "symlink" | "copy";
+    /** Source pin persisted at install time for multi-source tracking. */
+    sourcePin?: SkillSourcePin;
+}
+
+// Non-bundle source types (repo/artefact) carry no bundleVersion in their pin;
+// they will need their own display value once those install flows are live.
+export function getRecordVersion(record: { sourcePin?: SkillSourcePin; bundleVersion?: string }): string {
+    return record.sourcePin?.bundleVersion ?? record.bundleVersion ?? '';
 }
 
 /**

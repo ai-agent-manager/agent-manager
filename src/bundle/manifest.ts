@@ -1,3 +1,22 @@
+/**
+ * Bundle manifest types for agentman.
+ *
+ * These types represent the manifest.json format produced by agent-bundler and
+ * read by agentman during bundle download, extraction, and import flows.
+ *
+ * They are intentionally kept as a local copy so existing bundle flows
+ * continue to work without modification (backward compatibility).
+ *
+ * A future task will import from a shared published package once one is
+ * available, consolidating these definitions with the canonical schema.
+ *
+ * Divergences from the agent-bundler producer type:
+ *   - phases?: string[]  — present in bundler output; optional here so
+ *     legacy manifests without phases parse cleanly.
+ *   - agents?: AgentManifestEntry[] — kept optional for backward compatibility with
+ *     manifests produced before agents was required.
+ */
+
 /** Video metadata from manifest entry. */
 export interface ManifestVideoEntry {
   title: string;
@@ -14,6 +33,14 @@ export interface AgentManifestEntry {
   description: string;
   /** Tags from README frontmatter. */
   tags?: string[];
+  /**
+   * SDLC phases this agent/skill participates in (e.g. "design", "build").
+   * Optional so that legacy manifests without the field parse cleanly.
+   *
+   * Typed as string[] rather than a stricter enum to avoid coupling to
+   * the shared manifest schema before it is available as a package.
+   */
+  phases?: string[];
   /** Video entries from README frontmatter. */
   videos?: ManifestVideoEntry[];
 }

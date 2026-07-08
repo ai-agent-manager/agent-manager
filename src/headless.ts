@@ -1,14 +1,15 @@
-import { readFile } from "node:fs/promises";
-import { parse as parseYaml } from "yaml";
-import { downloadBundle } from "./bundle/downloader.js";
-import { extractBundle } from "./bundle/extractor.js";
-import { importLocalBundle } from "./bundle/importer.js";
-import { scanBundle, type SkillInfo } from "./bundle/scanner.js";
-import { setCurrentBundle } from "./bundle/cache.js";
-import { resolveSource } from "./bundle/source.js";
-import { resolveDiscoverySkills } from "./discovery/index.js";
-import { createSkillProvisioner, formatSupportedSkillToolIds } from "./provisioners/registry.js";
-import type { InstallScope } from "./config/scopes.js";
+import { readFile } from 'node:fs/promises';
+import { parse as parseYaml } from 'yaml';
+import { downloadBundle } from './bundle/downloader.js';
+import { extractBundle } from './bundle/extractor.js';
+import { importLocalBundle } from './bundle/importer.js';
+import { scanBundle, type SkillInfo } from './bundle/scanner.js';
+import { setCurrentBundle } from './bundle/cache.js';
+import { resolveSource } from './bundle/source.js';
+import { buildSourcePin, type SkillSourcePin } from './bundle/skill-source.js';
+import { resolveDiscoverySkills } from './discovery/index.js';
+import { createSkillProvisioner, formatSupportedSkillToolIds } from './provisioners/registry.js';
+import type { InstallScope } from './config/scopes.js';
 
 export interface HeadlessConfig {
   tools: string[];
@@ -52,6 +53,10 @@ export async function parseHeadlessConfig(configPath: string): Promise<HeadlessC
   };
 }
 
+export function buildPinForDirectorySource(dirPath: string, bundleVersion: string): SkillSourcePin {
+  return buildSourcePin({ type: 'bundle', dirPath, installLayout: 'flat' }, bundleVersion);
+}
+
 // TODO(#39): wire _forceUpdate into the headless acquisition path so `agentman <url> --update`
 // bypasses the cached bundle in extractBundle (src/bundle/extractor.ts:33-37).
 // See https://github.com/ai-agent-manager/agent-manager/issues/39
@@ -70,8 +75,10 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
   const source = await resolveSource(sourceInput);
   let allSkills: SkillInfo[];
   let bundleVersion: string;
+  let sourcePin: SkillSourcePin | undefined;
 
   if (source.type === "discovery") {
+    // sourcePin stays undefined for discovery installs — added in the namespaced-layout follow-up.
     console.log("[agentman] Discovery document found");
 
     console.log(`[agentman] Resolving ${source.discovery.sources.length} source(s) from discovery document...`);
@@ -87,6 +94,7 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
     let bundleDir: string;
 
     if (source.type === "url") {
+      // sourcePin stays undefined here — this branch is dead code (resolveSource never returns 'url').
       console.log("[agentman] Downloading bundle...");
       const { zipPath } = await downloadBundle(source.baseUrl, config.bundleVersion);
       console.log("[agentman] Extracting bundle...");
@@ -101,6 +109,7 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
       const result = await importLocalBundle(source.dirPath);
       bundleDir = result.bundleDir;
       bundleVersion = result.manifest.version;
+      sourcePin = buildPinForDirectorySource(source.dirPath, bundleVersion);
     }
 
     console.log(`[agentman] Bundle version: ${bundleVersion}`);
@@ -142,7 +151,7 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
   for (const toolId of config.tools) {
     console.log(`\n[agentman] Installing ${toInstall.length} skill(s) for ${toolId}...`);
     const provisioner = createSkillProvisioner(toolId, config.scope, repoRoot);
-    const result = await provisioner.install(toInstall, bundleVersion);
+    const result = await provisioner.install(toInstall, bundleVersion, sourcePin);
 
     if (result.installed.length > 0) {
       console.log(`[agentman] Installed (${toolId}):`);

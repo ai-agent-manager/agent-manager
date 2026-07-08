@@ -5,6 +5,15 @@ tmp/
 
 *.tsbuildinfo
 
+# Local agentman install state — generated at runtime, machine-specific
+.agentman.json
+
+# IntelliJ IDE project files — machine-specific
+.idea/
+
+# Backup files
+*.bak
+
 # Chrome extension signing key — keep out of git; store as CI secret AGENTMAN_CRX_KEY (base64)
 chrome-extension/agentman.pem
 

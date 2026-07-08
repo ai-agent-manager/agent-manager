@@ -57,6 +57,7 @@ export function getBundleSourceTelemetryProperties(source: BundleSource): Record
     };
 }
 
+
 function isCiEnvironment(env: NodeJS.ProcessEnv): boolean {
     return Boolean(
         env.CI || env.GITHUB_ACTIONS || env.BUILD_BUILDID || env.TF_BUILD || env.JENKINS_URL || env.TEAMCITY_VERSION,

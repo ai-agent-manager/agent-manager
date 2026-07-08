@@ -45,6 +45,7 @@ import {
   removeInstallRecord,
   setCurrentBundle,
   updateSkillVersion,
+  getRecordVersion,
   type AgentmanConfig,
 } from '../../../src/bundle/cache.js';
 import { scanBundle } from '../../../src/bundle/scanner.js';
@@ -459,5 +460,27 @@ describe('setCurrentBundle', () => {
       path.join(tempDir, 'current'),
       'junction',
     );
+  });
+});
+
+describe('getRecordVersion', () => {
+  it('returns sourcePin.bundleVersion when pin is present', () => {
+    const record = { bundleVersion: 'legacy', installedAt: '', method: 'symlink' as const, sourcePin: { sourceType: 'bundle' as const, installLayout: 'flat' as const, bundleVersion: '2026.07.01' } };
+    expect(getRecordVersion(record)).toBe('2026.07.01');
+  });
+
+  it('returns bundleVersion when no sourcePin is present', () => {
+    const record = { bundleVersion: '2026.06.01', installedAt: '', method: 'symlink' as const };
+    expect(getRecordVersion(record)).toBe('2026.06.01');
+  });
+
+  it('returns empty string when sourcePin has no bundleVersion (repo/artefact shaped)', () => {
+    const record = { installedAt: '', method: 'symlink' as const, sourcePin: { sourceType: 'repo' as const, installLayout: 'namespaced' as const } };
+    expect(getRecordVersion(record)).toBe('');
+  });
+
+  it('returns empty string when neither sourcePin nor bundleVersion is present', () => {
+    const record = { installedAt: '', method: 'symlink' as const };
+    expect(getRecordVersion(record)).toBe('');
   });
 });

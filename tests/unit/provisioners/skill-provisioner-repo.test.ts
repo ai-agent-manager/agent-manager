@@ -9,6 +9,7 @@ import { AgentsProvisioner } from "../../../src/provisioners/AgentsProvisioner.j
 import { CursorProvisioner } from "../../../src/provisioners/CursorProvisioner.js";
 import { KiroProvisioner } from "../../../src/provisioners/KiroProvisioner.js";
 import type { SkillInfo } from "../../../src/bundle/scanner.js";
+import type { SkillSourcePin } from "../../../src/bundle/skill-source.js";
 import { REPO_CONFIG_FILENAME } from "../../../src/bundle/repo-config.js";
 
 describe("SkillProvisioner (repo scope)", () => {
@@ -125,6 +126,24 @@ describe("SkillProvisioner (repo scope)", () => {
       expect(config.bundleVersion).toBe("test-version-hash");
       expect(config.installations["claude-code"]["test-skill"]).toBeDefined();
       expect(config.installations["claude-code"]["test-skill"].method).toBe("symlink");
+    });
+
+    it("threads sourcePin into the written install record", async () => {
+      const prov = new ClaudeCodeProvisioner({ scope: "repo", repoRoot });
+      const skill = getSkillInfo();
+      const pin: SkillSourcePin = {
+        sourceType: "bundle",
+        installLayout: "flat",
+        bundleVersion: "test-version-hash",
+      };
+
+      await prov.install([skill], "test-version-hash", pin);
+
+      const configRaw = await readFile(path.join(repoRoot, REPO_CONFIG_FILENAME), "utf-8");
+      const config = JSON.parse(configRaw);
+      const record = config.installations["claude-code"]["test-skill"];
+      expect(record.sourcePin).toEqual(pin);
+      expect(record.sourcePin.sourceType).toBe("bundle");
     });
   });
 

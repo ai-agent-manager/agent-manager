@@ -87,7 +87,7 @@ async function acquireBundle(
 async function acquireDiscoverySkills(
     source: Extract<BundleSource, { type: 'discovery' }>,
     setLoadingMessage: (message: string) => void,
-): Promise<{ skills: SkillInfo[]; warnings: string[] }> {
+): Promise<{ skills: SkillInfo[]; warnings: string[]; bundleVersion?: string }> {
     const warnings: string[] = [];
 
     setLoadingMessage("Resolving skills from discovery document...");
@@ -101,7 +101,7 @@ async function acquireDiscoverySkills(
         warnings.push(`Failed to resolve source '${source.name}': ${error}`);
     }
 
-    return { skills: result.skills, warnings };
+    return { skills: result.skills, warnings, bundleVersion: result.bundleVersion };
 }
 
 export function App({ source, forceUpdate }: AppProps) {
@@ -119,6 +119,7 @@ export function App({ source, forceUpdate }: AppProps) {
     const [repoBundleContents, setRepoBundleContents] = useState<BundleContents | null>(null);
     const [repoBundleVersion, setRepoBundleVersion] = useState<string | null>(null);
     const [discoverySkills, setDiscoverySkills] = useState<SkillInfo[] | null>(null);
+    const [discoveryBundleVersion, setDiscoveryBundleVersion] = useState<string | null>(null);
 
     const bundleTelemetryProps = getBundleSourceTelemetryProperties(source);
 
@@ -190,7 +191,7 @@ export function App({ source, forceUpdate }: AppProps) {
 
                 // --- Discovery source: resolve skills from discovery document ---
                 if (source.type === "discovery") {
-                    const { skills, warnings } = await acquireDiscoverySkills(
+                    const { skills, warnings, bundleVersion: discoveredVersion } = await acquireDiscoverySkills(
                         source,
                         setLoadingMessage,
                     );
@@ -200,6 +201,7 @@ export function App({ source, forceUpdate }: AppProps) {
                     }
 
                     setDiscoverySkills(skills);
+                    if (discoveredVersion) setDiscoveryBundleVersion(discoveredVersion);
                     // Wrap discovery skills in a BundleContents-compatible shape
                     setBundleContents({ skills, rovoAgents: [] });
                     setScreen("main-menu");
@@ -365,7 +367,7 @@ export function App({ source, forceUpdate }: AppProps) {
 
     const effectiveContents = installScope === "repo" && repoBundleContents ? repoBundleContents : bundleContents;
     const effectiveVersion =
-        installScope === "repo" && repoBundleVersion ? repoBundleVersion : (manifest?.version ?? "unknown");
+        installScope === "repo" && repoBundleVersion ? repoBundleVersion : (manifest?.version ?? discoveryBundleVersion ?? "unknown");
 
     if (screen === "loading") {
         return (

@@ -48,44 +48,43 @@ Fetches `/agents/index.json` from your bundle server, downloads the latest versi
 Skip the menu entirely with a config file:
 
 ```bash
-npx -y @ai-agent-manager/cli@latest <base-url> --config .github/ai-skills.yml
+npx -y @ai-agent-manager/cli@latest <source> --config .github/ai-skills.yml
 ```
+
+The `<source>` can be a **bundle URL** or a **local directory** — agentman detects the type automatically.
 
 **Config format:**
 
 ```yaml
 tools: claude-code        # one or more: claude-code | windsurf | github-copilot | cursor | kiro
 scope: repo              # repo (default) | system
-bundle-version: 1.2.0   # optional — omit to always use latest
 skills:
-  - code-review-backend-v1
-  - pr-description-generator-v1
+  - my-skill-name
+bundle-version: 1.2.0   # optional — bundle sources only, omit to use latest
 ```
 
 | Field | Required | Description |
 |-------|----------|-------------|
 | `tools` | Yes | AI coding tool(s) to install skills for |
 | `scope` | No | `repo` installs into the current directory; `system` installs to the home directory |
-| `bundle-version` | No | Pin to a specific bundle version, or omit to track latest |
-| `skills` | Yes | Skills to install from the bundle |
+| `skills` | Yes | Names of skills to install (matched by directory name) |
+| `bundle-version` | No | Bundle sources only — pin to a specific version, or omit to track latest |
 
 Unknown skill names log a warning and are skipped. If no valid skills are found, the tool exits non-zero.
 
-**GitHub Actions example:**
+#### Install from a bundle server
 
-```yaml
-- name: Install AI skills
-  run: |
-    npx -y @ai-agent-manager/cli@latest https://bundles.example.com \
-      --config .github/ai-skills.yml
+```bash
+npx -y @ai-agent-manager/cli@latest https://bundles.example.com \
+  --config .github/ai-skills.yml
 ```
 
 ### Force re-download
 
-Bypass the local cache and pull the latest bundle:
+Bypass the local cache and pull fresh content:
 
 ```bash
-npx -y @ai-agent-manager/cli@latest <base-url> --update
+npx -y @ai-agent-manager/cli@latest <source> --update
 ```
 
 ### Help

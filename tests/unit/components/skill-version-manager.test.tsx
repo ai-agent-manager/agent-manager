@@ -4,11 +4,15 @@ import { render } from "ink-testing-library";
 import { SkillVersionManager } from "../../../src/components/SkillVersionManager.js";
 
 // Mock dependencies
-vi.mock("../../../src/bundle/cache.js", () => ({
-  readConfig: vi.fn(),
-  listCachedBundles: vi.fn(),
-  updateSkillVersion: vi.fn(),
-}));
+vi.mock("../../../src/bundle/cache.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../src/bundle/cache.js")>();
+  return {
+    readConfig: vi.fn(),
+    listCachedBundles: vi.fn(),
+    updateSkillVersion: vi.fn(),
+    getRecordVersion: actual.getRecordVersion,
+  };
+});
 
 vi.mock("../../../src/bundle/repo-config.js", () => ({
   readRepoConfig: vi.fn(),
