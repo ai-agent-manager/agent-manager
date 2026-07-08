@@ -1,173 +1,162 @@
-apiVersion: rovo.atlassian.com/v1
+apiVersion: rovo.atlassian.com/v2-beta
 kind: StudioAgent
 
-identity:
-  name: "Epic Elaboration Agent"
-  description: >-
-    Transforms requirements into well-structured epics with comprehensive
-    Confluence planning documents and Jira tickets.
-  avatar: "\U0001F3D7\uFE0F"
-  behavior:
-    $file: ./identity/behavior.md
-  conversationStarters:
-    - "Create epics for my project"
-    - "Explain how the epic planning workflow works"
-    - "Help me prioritize my epics"
+name: "Epic Elaboration Agent"
+description: >-
+  Transforms requirements into well-structured epics with comprehensive
+  Confluence planning documents and Jira tickets.
 
-scenarios:
-  default:
+# Top-level instructions merge the v1 identity.behavior + default scenario
+# instructions into a single rich-text field for the v2-beta single-page editor.
+instructions:
+  $file: ./identity/instructions.md
+
+conversationStarters:
+  - "Create epics for my project"
+  - "Explain how the epic planning workflow works"
+  - "Help me prioritize my epics"
+
+knowledge: custom
+webSearch: false
+skills:
+  - "Create page"
+  - "Create work item"
+
+# Scenarios become subagents in v2-beta. Map keys are stable identifiers.
+subagents:
+  workflow-explanation:
+    name: "Workflow Explanation"
+    enabled: true
+    trigger: >-
+      When someone asks to explain the workflow, how does this work,
+      or what's the process
     instructions:
-      $file: ./scenarios/default/instructions.md
+      $file: ./scenarios/workflow-explanation/instructions.md
+    knowledge: none
+    webSearch: false
+    deepResearch: false
+    skills: []
+
+  material-gathering:
+    name: "Material Gathering"
+    enabled: true
+    trigger: >-
+      When someone wants to create epics, start epic planning,
+      begin a new project, or break down requirements
+    instructions:
+      $file: ./scenarios/material-gathering/instructions.md
     knowledge: custom
     webSearch: false
+    deepResearch: false
+    skills: []
+
+  epic-analysis:
+    name: "Epic Analysis"
+    enabled: true
+    trigger: >-
+      After materials are gathered and confirmed, when the agent needs
+      to analyze requirements and break them into epics
+    instructions:
+      $file: ./scenarios/epic-analysis/instructions.md
+    knowledge: custom
+    webSearch: false
+    deepResearch: false
+    skills: []
+
+  confluence-doc-creation:
+    name: "Confluence Doc Creation"
+    enabled: true
+    trigger: >-
+      After epic analysis is complete, when the agent needs to create
+      the Confluence planning document
+    instructions:
+      $file: ./scenarios/confluence-doc-creation/instructions.md
+    knowledge: custom
+    webSearch: false
+    deepResearch: false
     skills:
       - "Create page"
+
+  team-review-support:
+    name: "Team Review Support"
+    enabled: true
+    trigger: >-
+      When someone provides feedback on the epic breakdown, wants to
+      review changes, or requests updates to the planning document
+    instructions:
+      $file: ./scenarios/team-review-support/instructions.md
+    knowledge: custom
+    webSearch: false
+    deepResearch: false
+    skills:
+      - "Create page"
+
+  jira-epic-creation:
+    name: "Jira Epic Creation"
+    enabled: true
+    trigger: >-
+      When someone says to create Jira epics, the plan is approved,
+      or they're ready to create tickets
+    instructions:
+      $file: ./scenarios/jira-epic-creation/instructions.md
+    knowledge: custom
+    webSearch: false
+    deepResearch: false
+    skills:
       - "Create work item"
+      - "Create page"
 
-  custom:
-    # -------------------------------------------------------------------------
-    # Scenario 0: Workflow Explanation
-    # -------------------------------------------------------------------------
-    - name: "Workflow Explanation"
-      trigger: >-
-        When someone asks to explain the workflow, how does this work,
-        or what's the process
-      instructions:
-        $file: ./scenarios/workflow-explanation/instructions.md
-      knowledge: none
-      webSearch: false
-      deepResearch: false
-      skills: []
+  prioritization-support:
+    name: "Prioritization Support"
+    enabled: true
+    trigger: >-
+      When someone asks to prioritize epics, about MoSCoW, WSJF,
+      or which epic should come first
+    instructions:
+      $file: ./scenarios/prioritization-support/instructions.md
+    knowledge: custom
+    webSearch: false
+    deepResearch: false
+    skills: []
 
-    # -------------------------------------------------------------------------
-    # Scenario 1: Material Gathering
-    # -------------------------------------------------------------------------
-    - name: "Material Gathering"
-      trigger: >-
-        When someone wants to create epics, start epic planning,
-        begin a new project, or break down requirements
-      instructions:
-        $file: ./scenarios/material-gathering/instructions.md
-      knowledge: custom
-      webSearch: false
-      deepResearch: false
-      skills: []
+  dependency-mapping:
+    name: "Dependency Mapping"
+    enabled: true
+    trigger: >-
+      When someone asks about dependencies, what depends on what,
+      wants a dependency diagram, or asks about the critical path
+    instructions:
+      $file: ./scenarios/dependency-mapping/instructions.md
+    knowledge: custom
+    webSearch: false
+    deepResearch: false
+    skills: []
 
-    # -------------------------------------------------------------------------
-    # Scenario 2: Epic Analysis
-    # -------------------------------------------------------------------------
-    - name: "Epic Analysis"
-      trigger: >-
-        After materials are gathered and confirmed, when the agent needs
-        to analyze requirements and break them into epics
-      instructions:
-        $file: ./scenarios/epic-analysis/instructions.md
-      knowledge: custom
-      webSearch: false
-      deepResearch: false
-      skills: []
+  requirements-traceability:
+    name: "Requirements Traceability"
+    enabled: true
+    trigger: >-
+      When someone asks about traceability, coverage, requirements mapping,
+      or whether all requirements are covered
+    instructions:
+      $file: ./scenarios/requirements-traceability/instructions.md
+    knowledge: custom
+    webSearch: false
+    deepResearch: false
+    skills: []
 
-    # -------------------------------------------------------------------------
-    # Scenario 3: Confluence Doc Creation
-    # -------------------------------------------------------------------------
-    - name: "Confluence Doc Creation"
-      trigger: >-
-        After epic analysis is complete, when the agent needs to create
-        the Confluence planning document
-      instructions:
-        $file: ./scenarios/confluence-doc-creation/instructions.md
-      knowledge: custom
-      webSearch: false
-      deepResearch: false
-      skills:
-        - "Create page"
-
-    # -------------------------------------------------------------------------
-    # Scenario 4: Team Review Support
-    # -------------------------------------------------------------------------
-    - name: "Team Review Support"
-      trigger: >-
-        When someone provides feedback on the epic breakdown, wants to
-        review changes, or requests updates to the planning document
-      instructions:
-        $file: ./scenarios/team-review-support/instructions.md
-      knowledge: custom
-      webSearch: false
-      deepResearch: false
-      skills:
-        - "Create page"
-
-    # -------------------------------------------------------------------------
-    # Scenario 5: Jira Epic Creation
-    # -------------------------------------------------------------------------
-    - name: "Jira Epic Creation"
-      trigger: >-
-        When someone says to create Jira epics, the plan is approved,
-        or they're ready to create tickets
-      instructions:
-        $file: ./scenarios/jira-epic-creation/instructions.md
-      knowledge: custom
-      webSearch: false
-      deepResearch: false
-      skills:
-        - "Create work item"
-        - "Create page"
-
-    # -------------------------------------------------------------------------
-    # Scenario 6: Prioritization Support
-    # -------------------------------------------------------------------------
-    - name: "Prioritization Support"
-      trigger: >-
-        When someone asks to prioritize epics, about MoSCoW, WSJF,
-        or which epic should come first
-      instructions:
-        $file: ./scenarios/prioritization-support/instructions.md
-      knowledge: custom
-      webSearch: false
-      deepResearch: false
-      skills: []
-
-    # -------------------------------------------------------------------------
-    # Scenario 7: Dependency Mapping
-    # -------------------------------------------------------------------------
-    - name: "Dependency Mapping"
-      trigger: >-
-        When someone asks about dependencies, what depends on what,
-        wants a dependency diagram, or asks about the critical path
-      instructions:
-        $file: ./scenarios/dependency-mapping/instructions.md
-      knowledge: custom
-      webSearch: false
-      deepResearch: false
-      skills: []
-
-    # -------------------------------------------------------------------------
-    # Scenario 8: Requirements Traceability
-    # -------------------------------------------------------------------------
-    - name: "Requirements Traceability"
-      trigger: >-
-        When someone asks about traceability, coverage, requirements mapping,
-        or whether all requirements are covered
-      instructions:
-        $file: ./scenarios/requirements-traceability/instructions.md
-      knowledge: custom
-      webSearch: false
-      deepResearch: false
-      skills: []
-
-    # -------------------------------------------------------------------------
-    # Scenario 9: Troubleshooting
-    # -------------------------------------------------------------------------
-    - name: "Troubleshooting"
-      trigger: >-
-        When someone reports an error, issue, problem, says something is
-        not working, or asks for help with a problem
-      instructions:
-        $file: ./scenarios/troubleshooting/instructions.md
-      knowledge: custom
-      webSearch: false
-      deepResearch: false
-      skills: []
+  troubleshooting:
+    name: "Troubleshooting"
+    enabled: true
+    trigger: >-
+      When someone reports an error, issue, problem, says something is
+      not working, or asks for help with a problem
+    instructions:
+      $file: ./scenarios/troubleshooting/instructions.md
+    knowledge: custom
+    webSearch: false
+    deepResearch: false
+    skills: []
 
 knowledgeSources:
   - type: confluence

@@ -9,7 +9,6 @@ import {
   isBundleSource,
   resolveSkillSource,
   buildSourcePin,
-  type SkillSource,
   type RepoSkillSource,
   type ArtefactSkillSource,
   type BundleSkillSource,

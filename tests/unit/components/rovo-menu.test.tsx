@@ -45,16 +45,15 @@ const { CheckAuth, Authenticate, CheckKbExists, Provision } = testing;
 const STUDIO_URL = "https://studio.atlassian.com/s/test/agents";
 
 const ROVO_CONFIG: RovoAgentConfig = {
-  apiVersion: "rovo.atlassian.com/v1",
-  kind: "StudioAgent",
-  identity: {
-    name: "Test Agent",
-    description: "A test agent",
-    behavior: "Be helpful",
-  },
-  scenarios: {
-    default: { instructions: "Do the thing" },
-  },
+    apiVersion: "rovo.atlassian.com/v2-beta",
+    kind: "StudioAgent",
+    identity: {
+        name: "Test Agent",
+        description: "A test agent",
+    },
+    scenarios: {
+        default: { instructions: "Do the thing" },
+    },
 };
 
 const EXISTING_KB: ExistingKnowledgeBase = {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Box, Text, useApp } from 'ink';
+import { Box, Text } from 'ink';
 import SelectInput from 'ink-select-input';
 import { startServer, DEFAULT_PORT, BIND_HOST, type ServerHandle } from '../server/index.js';
 import type { BundleContents } from '../bundle/scanner.js';

@@ -39,6 +39,10 @@ jobs:
       - name: Type check
         run: npm run typecheck
 
+      - name: Lint
+        if: runner.os == 'Linux'
+        run: npm run lint
+
       - name: Run tests
         run: npm test
 

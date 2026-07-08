@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import type { DiscoveryDocument } from '../../../src/discovery/types.js';
 import type { SkillInfo } from '../../../src/bundle/scanner.js';
 
@@ -38,7 +38,7 @@ vi.mock('../../../src/bundle/extractor.js', () => ({
 vi.mock('../../../src/bundle/scanner.js', () => ({
   scanBundle: vi.fn(async () => ({
     skills: mockBundleSkills,
-    rovoAgents: [],
+    agents: [],
   })),
 }));
 
@@ -49,7 +49,6 @@ vi.mock('../../../src/bundle/cache.js', () => ({
 vi.mock('../../../src/discovery/git-importer.js', () => ({
   importGitSkills: vi.fn(async () => ({
     skills: mockGitSkills,
-    rovoAgents: [],
     clonePath: '/tmp/git-cache/repo',
   })),
 }));

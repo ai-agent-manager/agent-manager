@@ -1,25 +1,24 @@
-apiVersion: rovo.atlassian.com/v1
+apiVersion: rovo.atlassian.com/v2-beta
 kind: StudioAgent
 
-identity:
-  name: "Test Agent"
-  description: "A test Rovo agent"
-  behavior: "Helpful and concise"
-  conversationStarters:
-    - "Help me get started"
+name: "Test Agent"
+description: "A test Rovo agent"
+instructions: "You are a test agent."
+conversationStarters:
+  - "Help me get started"
 
-scenarios:
-  default:
-    instructions: "You are a test agent."
-    knowledge: all
+knowledge: all
+webSearch: false
+skills:
+  - "Create page"
+
+subagents:
+  greeting:
+    name: "Greeting"
+    enabled: true
+    trigger: "When someone says hello or greets the agent"
+    instructions: "Respond with a friendly greeting."
+    knowledge: none
     webSearch: false
-    skills:
-      - "Create page"
-  custom:
-    - name: "Greeting"
-      trigger: "When someone says hello or greets the agent"
-      instructions: "Respond with a friendly greeting."
-      knowledge: none
-      webSearch: false
-      deepResearch: false
-      skills: []
+    deepResearch: false
+    skills: []

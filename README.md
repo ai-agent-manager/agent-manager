@@ -155,6 +155,22 @@ The tool expects a version index at `<base-url>/agents/index.json` and versioned
 
 ---
 
+## Examples Folder
+
+The [examples/](examples/) directory contains sample assets used for reference, local testing, and smoke tests.
+
+- `examples/epic-elaboration-agent/` -- Example Rovo agent used by the live test helper script (`scripts/test-rovo-live.ts`).
+- `examples/story-build-readiness-agent/` -- Additional example Rovo agent manifest for authoring and testing patterns.
+- `examples/git-skill-importer/` -- End-to-end example for git skill discovery; exercised in CI.
+
+Important behavior:
+
+- These examples are repository-local fixtures. They are not automatically used when you run Agent Manager against a remote bundle URL.
+- In normal production usage, Agent Manager pulls agents from your configured bundle source (`<base-url>/agents/...`).
+- To use local examples directly, run Agent Manager with a local directory source instead of a remote URL.
+
+---
+
 ## Telemetry
 
 Agent Manager can send a small set of anonymous usage events to help understand adoption and catch operational failures. Telemetry is opt-in, based on your bundle server. No prompts, skill content, repo names, file paths, or personal identifiers are ever sent. Telemetry is automatically disabled in CI.

@@ -49,12 +49,11 @@ describe('substituteKbFilenames', () => {
 
 describe('applyKbUrlSubstitutions', () => {
   const baseConfig: RovoAgentConfig = {
-    apiVersion: 'rovo.atlassian.com/v1',
+    apiVersion: 'rovo.atlassian.com/v2-beta',
     kind: 'StudioAgent',
     identity: {
       name: 'Test Agent',
       description: 'A test agent',
-      behavior: 'Refer to 01_epic_breakdown_analysis.md for guidance',
     },
     scenarios: {
       default: {
@@ -69,12 +68,6 @@ describe('applyKbUrlSubstitutions', () => {
       ],
     },
   };
-
-  it('replaces filenames in identity.behavior', () => {
-    const result = applyKbUrlSubstitutions(baseConfig, pages);
-    expect(result.identity.behavior).toContain('[01_epic_breakdown_analysis]');
-    expect(result.identity.behavior).not.toContain('.md');
-  });
 
   it('replaces filenames in scenarios.default.instructions', () => {
     const result = applyKbUrlSubstitutions(baseConfig, pages);
@@ -93,8 +86,8 @@ describe('applyKbUrlSubstitutions', () => {
   });
 
   it('does not mutate the original config', () => {
-    const originalBehavior = baseConfig.identity.behavior;
+    const originalInstructions = baseConfig.scenarios.default.instructions;
     applyKbUrlSubstitutions(baseConfig, pages);
-    expect(baseConfig.identity.behavior).toBe(originalBehavior);
+    expect(baseConfig.scenarios.default.instructions).toBe(originalInstructions);
   });
 });
