@@ -1,212 +1,212 @@
 name: CI
 
 on:
-  push:
-    branches: [main, develop]
-    tags:
-      - 'v*'
-  pull_request:
-    branches: [main, develop]
+    push:
+        branches: [main, develop]
+        tags:
+            - "v*"
+    pull_request:
+        branches: [main, develop]
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+    group: ci-${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
 
 jobs:
-  verify:
-    name: Verify (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    verify:
+        name: Verify (${{ matrix.os }})
+        runs-on: ${{ matrix.os }}
 
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
+        strategy:
+            fail-fast: false
+            matrix:
+                os: [ubuntu-latest, windows-latest]
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v6
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version-file: '.nvmrc'
-          cache: 'npm'
-          cache-dependency-path: package-lock.json
+            - name: Setup Node.js
+              uses: actions/setup-node@v6
+              with:
+                  node-version-file: ".nvmrc"
+                  cache: "npm"
+                  cache-dependency-path: package-lock.json
 
-      - name: Install dependencies
-        run: npm ci
+            - name: Install dependencies
+              run: npm ci
 
-      - name: Type check
-        run: npm run typecheck
+            - name: Type check
+              run: npm run typecheck
 
-      - name: Lint
-        if: runner.os == 'Linux'
-        run: npm run lint
+            - name: Lint
+              if: runner.os == 'Linux'
+              run: npm run lint
 
-      - name: Run tests
-        run: npm test
+            - name: Run tests
+              run: npm test
 
-      - name: Build
-        run: npm run build
+            - name: Build
+              run: npm run build
 
-  smoke-test-git-importer:
-    name: Smoke test — git skill importer
-    runs-on: ubuntu-latest
+    smoke-test-git-importer:
+        name: Smoke test — git skill importer
+        runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v6
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version-file: '.nvmrc'
-          cache: 'npm'
-          cache-dependency-path: package-lock.json
+            - name: Setup Node.js
+              uses: actions/setup-node@v6
+              with:
+                  node-version-file: ".nvmrc"
+                  cache: "npm"
+                  cache-dependency-path: package-lock.json
 
-      - name: Install dependencies
-        run: npm ci
+            - name: Install dependencies
+              run: npm ci
 
-      - name: Create test plugin repo
-        run: ./examples/git-skill-importer/create-test-repo.sh
+            - name: Create test plugin repo
+              run: ./examples/git-skill-importer/create-test-repo.sh
 
-      - name: Run git skill importer
-        run: npx tsx examples/git-skill-importer/test-git-import.ts
+            - name: Run git skill importer
+              run: npx tsx examples/git-skill-importer/test-git-import.ts
 
-  publish-npm:
-    name: Publish to npmjs.org
-    runs-on: ubuntu-latest
-    needs: [verify, smoke-test-git-importer]
-    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
+    publish-npm:
+        name: Publish to npmjs.org
+        runs-on: ubuntu-latest
+        needs: [verify, smoke-test-git-importer]
+        if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
 
-    permissions:
-      contents: read
-      id-token: write
+        permissions:
+            contents: read
+            id-token: write
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v6
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version-file: '.nvmrc'
-          registry-url: 'https://registry.npmjs.org/'
-          cache: 'npm'
-          cache-dependency-path: package-lock.json
+            - name: Setup Node.js
+              uses: actions/setup-node@v6
+              with:
+                  node-version-file: ".nvmrc"
+                  registry-url: "https://registry.npmjs.org/"
+                  cache: "npm"
+                  cache-dependency-path: package-lock.json
 
-      - name: Upgrade npm for trusted publishing
-        run: npm install -g npm@latest
+            - name: Upgrade npm for trusted publishing
+              run: npm install -g npm@11.9.0
 
-      - name: Install dependencies
-        run: npm ci
+            - name: Install dependencies
+              run: npm ci
 
-      - name: Set package version from tag
-        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
+            - name: Set package version from tag
+              run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
 
-      - name: Build chrome extension
-        run: npm ci --prefix chrome-extension && npm run build:chrome-extension
-        env:
-          AGENTMAN_CRX_KEY: ${{ secrets.AGENTMAN_CRX_KEY }}
+            - name: Build chrome extension
+              run: npm ci --prefix chrome-extension && npm run build:chrome-extension
+              env:
+                  AGENTMAN_CRX_KEY: ${{ secrets.AGENTMAN_CRX_KEY }}
 
-      - name: Build
-        run: npm run build
+            - name: Build
+              run: npm run build
 
-      - name: Publish to npmjs.org
-        run: npm publish --access public
+            - name: Publish to npmjs.org
+              run: npm publish --access public
 
-  create-github-release:
-    name: Create GitHub Release
-    runs-on: ubuntu-latest
-    needs: [publish-npm]
-    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
+    create-github-release:
+        name: Create GitHub Release
+        runs-on: ubuntu-latest
+        needs: [publish-npm]
+        if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
 
-    permissions:
-      contents: write
+        permissions:
+            contents: write
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v6
+              with:
+                  fetch-depth: 0
 
-      - name: Generate changelog
-        id: changelog
-        run: |
-          CURRENT_TAG="${GITHUB_REF_NAME}"
-          PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -v "^${CURRENT_TAG}$" | grep -v -- '-' | head -n 1)
-          if [ -n "$PREVIOUS_TAG" ]; then
-            CHANGES=$(git log "${PREVIOUS_TAG}..${CURRENT_TAG}" --pretty=format:"- %s" --no-merges)
-          else
-            CHANGES=$(git log "${CURRENT_TAG}" --pretty=format:"- %s" --no-merges)
-          fi
-          {
-            echo "changes<<EOF"
-            echo "$CHANGES"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+            - name: Generate changelog
+              id: changelog
+              run: |
+                  CURRENT_TAG="${GITHUB_REF_NAME}"
+                  PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -v "^${CURRENT_TAG}$" | grep -v -- '-' | head -n 1)
+                  if [ -n "$PREVIOUS_TAG" ]; then
+                    CHANGES=$(git log "${PREVIOUS_TAG}..${CURRENT_TAG}" --pretty=format:"- %s" --no-merges)
+                  else
+                    CHANGES=$(git log "${CURRENT_TAG}" --pretty=format:"- %s" --no-merges)
+                  fi
+                  {
+                    echo "changes<<EOF"
+                    echo "$CHANGES"
+                    echo "EOF"
+                  } >> "$GITHUB_OUTPUT"
 
-      - name: Create GitHub release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          PACKAGE_NAME=$(node -p "require('./package.json').name")
-          VERSION="${GITHUB_REF_NAME#v}"
-          NPM_URL="https://www.npmjs.com/package/${PACKAGE_NAME}/v/${VERSION}"
-          {
-            echo "## Install"
-            echo ""
-            echo '```sh'
-            echo "npm install -g ${PACKAGE_NAME}@${VERSION}"
-            echo '```'
-            echo ""
-            echo "[View on npm](${NPM_URL})"
-            echo ""
-            echo "## Changes"
-            echo ""
-            printf '%s\n' "${{ steps.changelog.outputs.changes }}"
-          } > /tmp/release-notes.md
-          gh release create "${GITHUB_REF_NAME}" \
-            --title "${GITHUB_REF_NAME}" \
-            --notes-file /tmp/release-notes.md
+            - name: Create GitHub release
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  PACKAGE_NAME=$(node -p "require('./package.json').name")
+                  VERSION="${GITHUB_REF_NAME#v}"
+                  NPM_URL="https://www.npmjs.com/package/${PACKAGE_NAME}/v/${VERSION}"
+                  {
+                    echo "## Install"
+                    echo ""
+                    echo '```sh'
+                    echo "npm install -g ${PACKAGE_NAME}@${VERSION}"
+                    echo '```'
+                    echo ""
+                    echo "[View on npm](${NPM_URL})"
+                    echo ""
+                    echo "## Changes"
+                    echo ""
+                    printf '%s\n' "${{ steps.changelog.outputs.changes }}"
+                  } > /tmp/release-notes.md
+                  gh release create "${GITHUB_REF_NAME}" \
+                    --title "${GITHUB_REF_NAME}" \
+                    --notes-file /tmp/release-notes.md
 
-  publish-gpr:
-    name: Publish to GitHub Packages (beta)
-    runs-on: ubuntu-latest
-    needs: [verify, smoke-test-git-importer]
-    if: startsWith(github.ref, 'refs/tags/v') && contains(github.ref_name, '-')
+    publish-gpr:
+        name: Publish to GitHub Packages (beta)
+        runs-on: ubuntu-latest
+        needs: [verify, smoke-test-git-importer]
+        if: startsWith(github.ref, 'refs/tags/v') && contains(github.ref_name, '-')
 
-    permissions:
-      contents: read
-      packages: write
+        permissions:
+            contents: read
+            packages: write
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v6
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version-file: '.nvmrc'
-          registry-url: 'https://npm.pkg.github.com/'
-          cache: 'npm'
-          cache-dependency-path: package-lock.json
+            - name: Setup Node.js
+              uses: actions/setup-node@v6
+              with:
+                  node-version-file: ".nvmrc"
+                  registry-url: "https://npm.pkg.github.com/"
+                  cache: "npm"
+                  cache-dependency-path: package-lock.json
 
-      - name: Install dependencies
-        run: npm ci
+            - name: Install dependencies
+              run: npm ci
 
-      - name: Set package version from tag
-        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
+            - name: Set package version from tag
+              run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
 
-      - name: Build chrome extension
-        run: npm ci --prefix chrome-extension && npm run build:chrome-extension
-        env:
-          AGENTMAN_CRX_KEY: ${{ secrets.AGENTMAN_CRX_KEY }}
+            - name: Build chrome extension
+              run: npm ci --prefix chrome-extension && npm run build:chrome-extension
+              env:
+                  AGENTMAN_CRX_KEY: ${{ secrets.AGENTMAN_CRX_KEY }}
 
-      - name: Build
-        run: npm run build
+            - name: Build
+              run: npm run build
 
-      - name: Publish to GitHub Packages
-        run: npm publish --tag beta
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            - name: Publish to GitHub Packages
+              run: npm publish --tag beta
+              env:
+                  NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
