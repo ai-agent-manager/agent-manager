@@ -38,7 +38,7 @@ vi.mock('../../../src/bundle/extractor.js', () => ({
 vi.mock('../../../src/bundle/scanner.js', () => ({
   scanBundle: vi.fn(async () => ({
     skills: mockBundleSkills,
-    agents: [],
+    rovoAgents: [],
   })),
 }));
 
