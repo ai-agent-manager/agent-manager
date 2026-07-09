@@ -21,7 +21,7 @@ import { extractBundle } from "./bundle/extractor.js";
 import { importLocalBundle } from "./bundle/importer.js";
 import type { BundleManifest } from "./bundle/manifest.js";
 import { readRepoConfig } from "./bundle/repo-config.js";
-import { scanBundle, type BundleContents, type SkillInfo } from "./bundle/scanner.js";
+import { scanBundle, type BundleContents, type RovoAgentInfo, type SkillInfo } from "./bundle/scanner.js";
 import type { BundleSource } from "./bundle/source.js";
 import { getBundleVersionDir } from "./config/paths.js";
 import type { InstallScope } from "./config/scopes.js";
@@ -87,7 +87,7 @@ async function acquireBundle(
 async function acquireDiscoverySkills(
     source: Extract<BundleSource, { type: 'discovery' }>,
     setLoadingMessage: (message: string) => void,
-): Promise<{ skills: SkillInfo[]; warnings: string[]; bundleVersion?: string }> {
+): Promise<{ skills: SkillInfo[]; rovoAgents: RovoAgentInfo[]; warnings: string[]; bundleVersion?: string }> {
     const warnings: string[] = [];
 
     setLoadingMessage("Resolving skills from discovery document...");
@@ -101,7 +101,7 @@ async function acquireDiscoverySkills(
         warnings.push(`Failed to resolve source '${source.name}': ${error}`);
     }
 
-    return { skills: result.skills, warnings, bundleVersion: result.bundleVersion };
+    return { skills: result.skills, rovoAgents: result.rovoAgents, warnings, bundleVersion: result.bundleVersion };
 }
 
 export function App({ source, forceUpdate }: AppProps) {
@@ -191,7 +191,7 @@ export function App({ source, forceUpdate }: AppProps) {
 
                 // --- Discovery source: resolve skills from discovery document ---
                 if (source.type === "discovery") {
-                    const { skills, warnings, bundleVersion: discoveredVersion } = await acquireDiscoverySkills(
+                    const { skills, rovoAgents, warnings, bundleVersion: discoveredVersion } = await acquireDiscoverySkills(
                         source,
                         setLoadingMessage,
                     );
@@ -202,8 +202,7 @@ export function App({ source, forceUpdate }: AppProps) {
 
                     setDiscoverySkills(skills);
                     if (discoveredVersion) setDiscoveryBundleVersion(discoveredVersion);
-                    // Wrap discovery skills in a BundleContents-compatible shape
-                    setBundleContents({ skills, rovoAgents: [] });
+                    setBundleContents({ skills, rovoAgents });
                     setScreen("main-menu");
                     return;
                 }
