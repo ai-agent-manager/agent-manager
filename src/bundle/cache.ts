@@ -1,4 +1,4 @@
-import { readdir, readFile, readlink, rename, rm, symlink, unlink, mkdir, writeFile, lstat } from "node:fs/promises";
+import { readdir, readFile, readlink, rm, symlink, unlink, mkdir, writeFile, lstat } from "node:fs/promises";
 import path from "node:path";
 import {
     getAgentmanDir,
@@ -7,10 +7,9 @@ import {
     getCurrentBundleLink,
     getConfigPath,
 } from "../config/paths.js";
-import { parseManifest, type BundleManifest } from "./manifest.js";
+import { parseManifest } from "./manifest.js";
 import { readRepoConfig, writeRepoConfig } from "./repo-config.js";
 import { scanBundle } from "./scanner.js";
-import { SKILL_TOOLS } from "../config/tools.js";
 import { getPlatform } from "../lib/platform.js";
 import type { SkillSourcePin } from "./skill-source.js";
 
@@ -47,6 +46,12 @@ export interface InstallRecord {
     method: "symlink" | "copy";
     /** Source pin persisted at install time for multi-source tracking. */
     sourcePin?: SkillSourcePin;
+}
+
+// Non-bundle source types (repo/artefact) carry no bundleVersion in their pin;
+// they will need their own display value once those install flows are live.
+export function getRecordVersion(record: { sourcePin?: SkillSourcePin; bundleVersion?: string }): string {
+    return record.sourcePin?.bundleVersion ?? record.bundleVersion ?? '';
 }
 
 /**
@@ -109,6 +114,26 @@ async function replaceSymlink(linkPath: string, targetPath: string): Promise<voi
     await symlink(targetPath, linkPath, symlinkType);
 }
 
+async function resolveInstalledSkillPath(
+    toolId: string,
+    scope: 'system' | 'repo',
+    repoRoot: string | undefined,
+    skillName: string,
+): Promise<{ ok: true; skillPath: string } | { ok: false; error: string }> {
+    const { createSkillProvisioner } = await import('../provisioners/registry.js');
+
+    try {
+        const provisioner = createSkillProvisioner(toolId, scope, repoRoot);
+        return { ok: true, skillPath: path.join(provisioner.getEffectiveSkillsDir(), skillName) };
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.startsWith('Unknown tool:')) {
+            return { ok: false, error: message };
+        }
+        return { ok: false, error: `Unknown tool: ${toolId}` };
+    }
+}
+
 /**
  * Set the 'current' symlink to point to a specific bundle version.
  * This only changes which bundle is used for NEW installations.
@@ -155,7 +180,7 @@ export async function updateSkillVersion(
         if (!skillExists) {
             return { success: false, error: `Skill '${skillName}' does not exist in version ${newVersion}` };
         }
-    } catch (error) {
+    } catch {
         return { success: false, error: `Cannot access bundle version ${newVersion}` };
     }
 
@@ -169,11 +194,11 @@ export async function updateSkillVersion(
             return { success: false, error: `Skill '${skillName}' is not installed at repo scope for ${toolId}` };
         }
 
-        const tool = SKILL_TOOLS.find((t) => t.id === toolId);
-        if (!tool) {
-            return { success: false, error: `Unknown tool: ${toolId}` };
+        const skillPathResult = await resolveInstalledSkillPath(toolId, 'repo', repoRoot, skillName);
+        if (!skillPathResult.ok) {
+            return { success: false, error: skillPathResult.error };
         }
-        const skillPath = path.join(tool.getRepoSkillsDir(repoRoot), skillName);
+        const skillPath = skillPathResult.skillPath;
         const newTargetPath = path.join(newBundleDir, skillName);
 
         try {
@@ -203,11 +228,11 @@ export async function updateSkillVersion(
         return { success: false, error: `Skill '${skillName}' is not installed for ${toolId}` };
     }
 
-    const tool = SKILL_TOOLS.find((t) => t.id === toolId);
-    if (!tool) {
-        return { success: false, error: `Unknown tool: ${toolId}` };
+    const skillPathResult = await resolveInstalledSkillPath(toolId, 'system', undefined, skillName);
+    if (!skillPathResult.ok) {
+        return { success: false, error: skillPathResult.error };
     }
-    const skillPath = path.join(tool.getSkillsDir(), skillName);
+    const skillPath = skillPathResult.skillPath;
     const newTargetPath = path.join(newBundleDir, skillName);
 
     try {
@@ -260,50 +285,22 @@ export async function removeCachedBundle(version: string): Promise<void> {
 
 /**
  * Read the agentman config file.
- *
- * A missing file yields an empty config (first run). A file that exists but
- * cannot be parsed throws: silently falling back to an empty config would
- * cause the next write to wipe every install record.
  */
 export async function readConfig(): Promise<AgentmanConfig> {
-    let raw: string;
     try {
-        raw = await readFile(getConfigPath(), "utf-8");
-    } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-            return { installations: {} };
-        }
-        throw error;
-    }
-
-    try {
+        const raw = await readFile(getConfigPath(), "utf-8");
         return JSON.parse(raw) as AgentmanConfig;
-    } catch (error) {
-        throw new Error(
-            `Config file is corrupted: ${getConfigPath()}\n` +
-                `  ${error instanceof Error ? error.message : String(error)}\n` +
-                `  Fix or remove the file and retry.`,
-        );
+    } catch {
+        return { installations: {} };
     }
 }
 
 /**
  * Write the agentman config file.
- *
- * Writes to a temp file and renames into place so an interrupted write can
- * never leave a truncated config.json behind.
  */
 export async function writeConfig(config: AgentmanConfig): Promise<void> {
     await mkdir(getAgentmanDir(), { recursive: true });
-    const configPath = getConfigPath();
-    const tempPath = `${configPath}.${process.pid}.tmp`;
-    await writeFile(tempPath, JSON.stringify(config, null, 2));
-    try {
-        await rename(tempPath, configPath);
-    } catch (error) {
-        await rm(tempPath, { force: true }).catch(() => {});
-        throw error;
-    }
+    await writeFile(getConfigPath(), JSON.stringify(config, null, 2));
 }
 
 /**

@@ -1,4 +1,4 @@
-import type { SkillInfo, RovoAgentInfo } from '../bundle/scanner.js';
+import type { SkillInfo } from '../bundle/scanner.js';
 import type { InstallScope } from '../config/scopes.js';
 import type { SkillSourcePin } from '../bundle/skill-source.js';
 

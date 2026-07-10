@@ -5,7 +5,7 @@ import type { SkillInfo } from '../bundle/scanner.js';
 import type { InstallScope } from '../config/scopes.js';
 import { createLink, removeLink, resolveSkillVersion } from '../lib/symlink.js';
 import { ensureDir, pathExists } from '../lib/fs.js';
-import { recordInstall, removeInstallRecord, readConfig } from '../bundle/cache.js';
+import { recordInstall, removeInstallRecord, readConfig, getRecordVersion } from '../bundle/cache.js';
 import { recordRepoInstall, removeRepoInstallRecord, readRepoConfig } from '../bundle/repo-config.js';
 import type { SkillSourcePin } from '../bundle/skill-source.js';
 
@@ -55,10 +55,7 @@ export abstract class SkillProvisioner implements Provisioner {
     if (!(await pathExists(skillsDir))) return [];
 
     // Read install records from the appropriate config
-    let toolInstalls: Record<
-      string,
-      { bundleVersion?: string; installedAt?: string; method?: string; sourcePin?: SkillSourcePin }
-    > = {};
+    let toolInstalls: Record<string, { bundleVersion?: string; installedAt?: string; method?: string; sourcePin?: SkillSourcePin }> = {};
     if (this.scope === 'repo' && this.repoRoot) {
       const repoConfig = await readRepoConfig(this.repoRoot);
       toolInstalls = repoConfig?.installations[this.id] ?? {};
@@ -79,10 +76,11 @@ export abstract class SkillProvisioner implements Provisioner {
       // Repo/artefact installs have no bundle version — surface the version
       // coordinate pinned at install time instead (artefact version or git ref).
       const pinnedVersion = record?.sourcePin?.artefactVersion ?? record?.sourcePin?.ref;
+      const recordVer = record ? getRecordVersion(record) : undefined;
 
       installed.push({
         name: entry.name,
-        bundleVersion: version ?? record?.bundleVersion ?? pinnedVersion ?? 'unknown',
+        bundleVersion: (version ?? (recordVer || undefined) ?? pinnedVersion) || 'unknown',
         installedAt: record?.installedAt ?? 'unknown',
         method: (record?.method as 'symlink' | 'copy') ?? (version ? 'symlink' : 'copy'),
         path: skillPath,

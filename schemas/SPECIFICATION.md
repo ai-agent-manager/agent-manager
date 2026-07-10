@@ -1,141 +1,119 @@
 # `rovo-agent.yaml` Specification
 
 **Schema**: `rovo-agent.schema.json` (JSON Schema 2020-12)
-**API Version**: `rovo.atlassian.com/v1`
+**API Version**: `rovo.atlassian.com/v2-beta`
 
 This document describes the `rovo-agent.yaml` manifest format used by the agent-manager to define and provision Atlassian Studio Rovo agents.
+
+> **v1 archived.** The earlier `rovo.atlassian.com/v1` format (with a separate
+> `identity` block, `behavior`, and `scenarios.default` / `scenarios.custom[]`)
+> is no longer supported. Studio's editor moved to a single-page rich-text
+> form, so the manifest now mirrors that flat shape.
 
 ---
 
 ## Overview
 
-A `rovo-agent.yaml` file is the declarative configuration for a single Rovo agent. It maps directly to the settings available in the Atlassian Studio UI: identity (name, description, behaviour), scenarios (default + custom), knowledge sources, and skills.
+A `rovo-agent.yaml` file is the declarative configuration for a single Rovo agent. It maps directly to the settings available in the Atlassian Studio v2-beta single-page editor: name, description, instructions (rich text), conversation starters, knowledge scope, web search, deep research, skills, and subagents.
 
-The manifest is parsed, validated against the JSON Schema, and then any external file references (`$file`) are resolved before the configuration is passed to the provisioner.
+The manifest is parsed, validated against the JSON Schema, and any external file references (`$file`) are resolved before the configuration is passed to the provisioner.
 
 ---
 
 ## Top-Level Structure
 
 ```yaml
-apiVersion: rovo.atlassian.com/v1   # Required — fixed value
-kind: StudioAgent                    # Required — fixed value
+apiVersion: rovo.atlassian.com/v2-beta   # Required — fixed value
+kind: StudioAgent                         # Required — fixed value
 
-identity:          # Required — agent identity
+name: "My Agent"                          # Required
+description: "Short description."         # Required
+instructions: |                            # Required (string or $file)
   ...
 
-scenarios:         # Required — agent scenarios
+# Optional fields
+avatar: "🤖"
+conversationStarters:
+  - "..."
+knowledge: all
+webSearch: false
+deepResearch: false
+skills:
+  - "..."
+
+subagents:
   ...
 
-knowledgeSources:  # Optional — custom knowledge integrations
+knowledgeSources:
   ...
 ```
 
-| Field              | Type     | Required | Description                                           |
-|--------------------|----------|----------|-------------------------------------------------------|
-| `apiVersion`       | `string` | Yes      | Must be `"rovo.atlassian.com/v1"`.                    |
-| `kind`             | `string` | Yes      | Must be `"StudioAgent"`.                              |
-| `identity`         | object   | Yes      | Agent identity — maps to the Identity page in Studio. |
-| `scenarios`        | object   | Yes      | Agent scenarios — maps to the Scenarios section.      |
-| `knowledgeSources` | array    | No       | Knowledge source integrations for `custom` knowledge. |
+| Field                  | Type                    | Required | Description                                              |
+|------------------------|-------------------------|----------|----------------------------------------------------------|
+| `apiVersion`           | `string`                | Yes      | Must be `"rovo.atlassian.com/v2-beta"`.                  |
+| `kind`                 | `string`                | Yes      | Must be `"StudioAgent"`.                                 |
+| `name`                 | `string`                | Yes      | Agent display name (1–30 chars).                         |
+| `description`          | `string`                | Yes      | Short agent description (1–400 chars).                   |
+| `instructions`         | `string` or `$file` ref | Yes      | Rich-text instructions for the agent.                    |
+| `avatar`               | `string`                | No       | Emoji or short avatar string.                            |
+| `conversationStarters` | `string[]`              | No       | Up to 3 starter prompts shown in Studio.                 |
+| `knowledge`            | `string`                | No       | Knowledge scope: `"all"` (default), `"custom"`, `"none"`. |
+| `webSearch`            | `boolean`               | No       | Enable web search (default `false`).                     |
+| `deepResearch`         | `boolean`               | No       | Enable deep research (default `false`).                  |
+| `skills`               | `string[]`              | No       | Skill display names from Studio (e.g. `"Create page"`).  |
+| `subagents`            | object                  | No       | Map of subagents — see below.                            |
+| `knowledgeSources`     | array                   | No       | Knowledge integrations for `knowledge: custom`.          |
 
 No additional top-level properties are allowed.
 
----
-
-## `identity`
-
-Defines who the agent is — its name, description, avatar, behaviour, and conversation starters. Maps to the Identity page in Atlassian Studio.
-
-```yaml
-identity:
-  name: "My Agent"
-  description: "A short description of what this agent does."
-  avatar: "🤖"                     # Optional
-  behavior: |                       # Or: { $file: ./identity/behavior.md }
-    You are a helpful assistant...
-  conversationStarters:             # Optional, max 3
-    - "How can you help me?"
-    - "Show me an example"
-```
-
-| Field                  | Type                    | Required | Constraints       | Description                                  |
-|------------------------|-------------------------|----------|-------------------|----------------------------------------------|
-| `name`                 | `string`                | Yes      | 1–30 characters   | Agent display name.                          |
-| `description`          | `string`                | Yes      | 1–400 characters  | Short agent description.                     |
-| `avatar`               | `string`                | No       |                   | Emoji avatar for the agent.                  |
-| `behavior`             | `string` or `$file` ref | Yes      | Min 1 character   | Multi-line behaviour text (tone, style, approach). |
-| `conversationStarters` | `string[]`              | No       | Max 3 items       | Conversation starter prompts shown to users. |
-
 ### Notes
 
-- `behavior` accepts either an inline string or a [`$file` reference](#file-references). This is useful for large behaviour definitions.
+- `instructions` is rendered into Studio's rich-text (ProseMirror) field. Plain Markdown is fine — Studio renders headings, lists, code, and links.
 - If `conversationStarters` has more than 3 items, the parser truncates to the first 3 and emits a warning.
 
 ---
 
-## `scenarios`
+## `subagents`
 
-Defines the agent's scenarios — instructions, knowledge scope, capabilities, and skills. Every agent has a `default` scenario and may have additional `custom` scenarios.
+Subagents are specialised behaviours triggered by natural-language conditions. Each subagent has its own instructions, knowledge scope, and skills. The map key is a stable identifier (used for diffs and lookups); the `name` is what users see in Studio.
 
 ```yaml
-scenarios:
-  default:
-    instructions: |
-      Your primary task is...
-    knowledge: all
-    webSearch: false
+subagents:
+  troubleshooting:
+    name: "Troubleshooting"
+    enabled: true
+    trigger: "When someone reports an error or issue"
+    instructions:
+      $file: ./subagents/troubleshooting/instructions.md
+    knowledge: custom
+    deepResearch: true
     skills:
-      - "Create page"
-
-  custom:
-    - name: "Troubleshooting"
-      trigger: "When someone reports an error or issue"
-      instructions:
-        $file: ./scenarios/troubleshooting/instructions.md
-      knowledge: custom
-      deepResearch: true
-      skills:
-        - "Create work item"
+      - "Create work item"
 ```
 
-### `scenarios.default`
-
-The default scenario — always present, has no trigger, and no deep research toggle.
-
-| Field          | Type                    | Required | Default | Description                                        |
-|----------------|-------------------------|----------|---------|----------------------------------------------------|
-| `instructions` | `string` or `$file` ref | Yes      |         | Multi-line instructions for this scenario.         |
-| `knowledge`    | `string`                | No       | `"all"` | Knowledge scope: `"all"`, `"custom"`, or `"none"`. |
-| `webSearch`    | `boolean`               | No       | `false` | Enable web search capability.                      |
-| `skills`       | `string[]`              | No       |         | Skills available in this scenario (display names). |
-
-### `scenarios.custom[]`
-
-Additional custom scenarios with natural-language triggers.
-
-| Field          | Type                    | Required | Default | Description                                                 |
-|----------------|-------------------------|----------|---------|-------------------------------------------------------------|
-| `name`         | `string`                | Yes      |         | Scenario display name.                                      |
-| `trigger`      | `string`                | Yes      |         | Natural language trigger (e.g. "When someone asks about…"). |
-| `instructions` | `string` or `$file` ref | Yes      |         | Multi-line instructions for this scenario.                  |
-| `knowledge`    | `string`                | No       | `"all"` | Knowledge scope: `"all"`, `"custom"`, or `"none"`.          |
-| `webSearch`    | `boolean`               | No       | `false` | Enable web search capability.                               |
-| `deepResearch` | `boolean`               | No       | `false` | Enable deep research (only available on custom scenarios).  |
-| `enabled`      | `boolean`               | No       | `true`  | Whether the scenario is enabled.                            |
-| `skills`       | `string[]`              | No       |         | Skills available in this scenario (display names).          |
+| Field                  | Type                    | Required | Default | Description                                              |
+|------------------------|-------------------------|----------|---------|----------------------------------------------------------|
+| `name`                 | `string`                | Yes      |         | Subagent display name.                                   |
+| `enabled`              | `boolean`               | Yes      |         | Whether the subagent is active.                          |
+| `trigger`              | `string`                | No       |         | Natural language trigger (e.g. "When someone asks…").    |
+| `instructions`         | `string` or `$file` ref | No       |         | Multi-line instructions for this subagent.               |
+| `conversationStarters` | `string[]`              | No       |         | Subagent-scoped starters (max 3).                        |
+| `knowledge`            | `string`                | No       |         | `"all"`, `"custom"`, or `"none"`.                        |
+| `webSearch`            | `boolean`               | No       |         | Enable web search.                                       |
+| `deepResearch`         | `boolean`               | No       |         | Enable deep research.                                    |
+| `skills`               | `string[]`              | No       |         | Skill display names from Studio.                         |
 
 ### Notes
 
 - `knowledge: "custom"` requires at least one entry in the top-level `knowledgeSources` array.
-- `skills` values must match the display names from Atlassian Studio (e.g. `"Create page"`, `"Create work item"`).
-- The `deepResearch` toggle is only available on custom scenarios — the default scenario does not support it.
+- `skills` values must match the display names from Studio (e.g. `"Create page"`).
+- The map key (e.g. `troubleshooting`) is the stable identifier the agent-manager uses for diffs; the user-visible label is `name`.
 
 ---
 
 ## `knowledgeSources`
 
-Optional array of knowledge source integrations. Required when any scenario uses `knowledge: "custom"`. Maps to the Custom Knowledge dialog in Atlassian Studio.
+Optional array of knowledge source integrations. Required when `knowledge: "custom"` is used at any level. Maps to the Custom Knowledge dialog in Studio.
 
 ```yaml
 knowledgeSources:
@@ -154,15 +132,12 @@ knowledgeSources:
 
 ## `$file` References
 
-Fields that accept large text content can reference external files instead of inlining the content in the YAML. This keeps the manifest concise and allows content to be authored as standalone Markdown or text files.
+Fields that accept large text content can reference external files instead of inlining content in the YAML.
 
 ### Supported Fields
 
-Only the following fields support `$file` references:
-
-- `identity.behavior`
-- `scenarios.default.instructions`
-- `scenarios.custom[*].instructions`
+- `instructions` (top-level)
+- `subagents.<key>.instructions`
 
 All other fields must be inline values.
 
@@ -171,27 +146,27 @@ All other fields must be inline values.
 Instead of an inline string:
 
 ```yaml
-behavior: |
+instructions: |
   You are a helpful assistant who...
 ```
 
 Use a `$file` reference:
 
 ```yaml
-behavior:
-  $file: ./identity/behavior.md
+instructions:
+  $file: ./instructions.md
 ```
 
 The object must contain exactly one property: `$file`, whose value is a relative file path.
 
 ### Path Rules
 
-| Rule                  | Example (rejected)           | Reason                           |
-|-----------------------|------------------------------|----------------------------------|
-| Must be relative      | `/etc/passwd`                | Absolute paths are rejected.     |
-| No `..` segments      | `../../secrets/key.txt`      | Directory traversal is rejected. |
-| Must stay within dir  | (any path escaping base dir) | Resolved path must be within the agent directory. |
-| Must not be empty     | `""`                         | Empty path strings are rejected. |
+| Rule                  | Example (rejected)           | Reason                                                |
+|-----------------------|------------------------------|-------------------------------------------------------|
+| Must be relative      | `/etc/passwd`                | Absolute paths are rejected.                          |
+| No `..` segments      | `../../secrets/key.txt`      | Directory traversal is rejected.                      |
+| Must stay within dir  | (any path escaping base dir) | Resolved path must be within the agent directory.     |
+| Must not be empty     | `""`                         | Empty path strings are rejected.                      |
 
 Paths are resolved relative to the directory containing the `rovo-agent.yaml` file.
 
@@ -199,75 +174,76 @@ Paths are resolved relative to the directory containing the `rovo-agent.yaml` fi
 
 1. The YAML is parsed.
 2. Best-effort normalisations are applied (e.g. truncating `conversationStarters`).
-3. **Schema validation runs** — the raw structure (including `{ $file: "..." }` objects) is validated against the JSON Schema.
+3. **Schema validation runs** — the raw structure (including `{ $file: "..." }` objects) is validated.
 4. **`$file` references are resolved** — each `$file` value is replaced with the contents of the referenced file.
-5. The fully-resolved configuration is returned.
+5. The configuration is normalised into the canonical in-memory shape and returned.
 
-This means schema errors (e.g. missing required fields, invalid types) are reported **before** any file I/O occurs.
+Schema errors (missing required fields, invalid types) are reported **before** any file I/O.
 
-### Backwards Compatibility
+### Mixing Inline and `$file`
 
-Inline strings continue to work exactly as before. The `$file` mechanism is purely additive — manifests that don't use it require no changes.
-
-You can also mix inline and `$file` within the same manifest:
+You can mix inline and `$file` within the same manifest:
 
 ```yaml
-scenarios:
-  default:
-    instructions:
-      $file: ./scenarios/default/instructions.md    # from file
-  custom:
-    - name: "Simple Scenario"
-      trigger: "When someone asks a simple question"
-      instructions: "Just answer the question directly."  # inline
+instructions:
+  $file: ./instructions.md
+subagents:
+  quick-answer:
+    name: "Quick Answer"
+    enabled: true
+    trigger: "When someone asks a simple question"
+    instructions: "Just answer the question directly."
 ```
 
 ---
 
-## Example: Inline Manifest
-
-A minimal manifest with all content inlined:
+## Example: Minimal Inline Manifest
 
 ```yaml
-apiVersion: rovo.atlassian.com/v1
+apiVersion: rovo.atlassian.com/v2-beta
 kind: StudioAgent
 
-identity:
-  name: "Help Desk Agent"
-  description: "Answers common IT support questions."
-  behavior: |
-    You are a friendly IT support agent.
-    Answer questions clearly and concisely.
+name: "Help Desk Agent"
+description: "Answers common IT support questions."
+instructions: |
+  You are a friendly IT support agent.
+  Answer questions clearly and concisely.
+  If you don't know the answer, suggest contacting the IT help desk.
 
-scenarios:
-  default:
-    instructions: |
-      Help users with common IT support questions.
-      If you don't know the answer, suggest they contact the IT help desk.
-    knowledge: all
-    webSearch: false
+knowledge: all
+webSearch: false
 ```
 
-## Example: Manifest with `$file` References
-
-The same agent with behaviour and instructions externalised:
+## Example: Manifest with `$file` References and Subagents
 
 ```yaml
-apiVersion: rovo.atlassian.com/v1
+apiVersion: rovo.atlassian.com/v2-beta
 kind: StudioAgent
 
-identity:
-  name: "Help Desk Agent"
-  description: "Answers common IT support questions."
-  behavior:
-    $file: ./identity/behavior.md
+name: "Help Desk Agent"
+description: "Answers common IT support questions."
+instructions:
+  $file: ./instructions.md
 
-scenarios:
-  default:
+conversationStarters:
+  - "I need help with my password"
+  - "My VPN won't connect"
+
+knowledge: custom
+webSearch: false
+
+subagents:
+  password-reset:
+    name: "Password Reset"
+    enabled: true
+    trigger: "When someone needs help resetting a password"
     instructions:
-      $file: ./scenarios/default/instructions.md
+      $file: ./subagents/password-reset.md
     knowledge: all
-    webSearch: false
+
+knowledgeSources:
+  - type: confluence
+    filter: "IT"
 ```
 
 With the corresponding file structure:
@@ -275,11 +251,9 @@ With the corresponding file structure:
 ```
 help-desk-agent/
 ├── rovo-agent.yaml
-├── identity/
-│   └── behavior.md
-└── scenarios/
-    └── default/
-        └── instructions.md
+├── instructions.md
+└── subagents/
+    └── password-reset.md
 ```
 
 ---
@@ -292,19 +266,38 @@ The manifest is validated against `rovo-agent.schema.json` (JSON Schema 2020-12)
 
 | Error                                          | Cause                                              |
 |------------------------------------------------|----------------------------------------------------|
-| `Missing required property: identity`          | Top-level `identity` block is absent.              |
-| `Missing required property: scenarios`         | Top-level `scenarios` block is absent.             |
-| `Missing required property: default`           | `scenarios.default` is absent.                     |
-| `/identity/name: must NOT have more than 30 characters` | Name exceeds Studio's 30-character limit. |
-| `/identity/description: must NOT have more than 400 characters` | Description exceeds Studio's 400-character limit. |
+| `Missing required property: name`              | Top-level `name` is absent.                        |
+| `Missing required property: description`       | Top-level `description` is absent.                 |
+| `Missing required property: instructions`      | Top-level `instructions` is absent.                |
+| `apiVersion: must be equal to constant`        | `apiVersion` is not `rovo.atlassian.com/v2-beta`.  |
+| `/name: must NOT have more than 30 characters` | Name exceeds Studio's 30-character limit.          |
+| `/description: must NOT have more than 400 characters` | Description exceeds Studio's 400-character limit. |
+| `subagents/<key>: missing required property 'enabled'` | Every subagent must declare `enabled: true | false`. |
 | `$file path must be relative`                  | An absolute path was used in a `$file` reference.  |
 | `$file path must not contain '..' segments`    | Directory traversal was attempted.                 |
 | `failed to read $file '...'`                   | The referenced file does not exist or is unreadable. |
 
 ### Normalisation Warnings
 
-Some non-conformant values are auto-corrected with a warning:
-
 | Warning                                        | Action                                             |
 |------------------------------------------------|----------------------------------------------------|
-| `conversationStarters has N items but Studio allows max 3` | Truncated to first 3 items.           |
+| `conversationStarters has N items but Studio allows max 3` | Truncated to first 3 items.            |
+
+---
+
+## Internal Normalisation
+
+For consumers that read the parsed config (e.g. provisioners, UI components),
+the v2-beta YAML is normalised in-memory into a canonical shape that mirrors
+the v1 internal model. This keeps downstream code stable:
+
+| YAML field                              | Canonical config path                               |
+|-----------------------------------------|-----------------------------------------------------|
+| `name`                                  | `identity.name`                                     |
+| `description`                           | `identity.description`                              |
+| `avatar`                                | `identity.avatar`                                   |
+| `conversationStarters`                  | `identity.conversationStarters`                     |
+| `instructions`                          | `scenarios.default.instructions`                    |
+| `knowledge` / `webSearch` / `deepResearch` / `skills` | `scenarios.default.*`                  |
+| `subagents.<key>`                       | `scenarios.custom[]` (with `key` set)               |
+| `knowledgeSources`                      | `knowledgeSources`                                  |

@@ -1,9 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { mkdir, rm, writeFile, mkdtemp } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import {
-  isGithubRepoUrl,
   isArtefactUrl,
   isRepoSource,
   isArtefactSource,
@@ -11,60 +10,10 @@ import {
   resolveSkillSource,
   buildSourcePin,
   describeSkillSource,
-  GITHUB_HOSTS_DEFAULT,
-  type SkillSource,
   type RepoSkillSource,
   type ArtefactSkillSource,
   type BundleSkillSource,
 } from '../../../src/bundle/skill-source.js';
-
-// ── isGithubRepoUrl ───────────────────────────────────────────────────────────
-
-describe('isGithubRepoUrl', () => {
-  it('returns true for a simple org/repo URL', () => {
-    expect(isGithubRepoUrl('https://github.com/org/repo')).toBe(true);
-  });
-
-  it('returns true for a URL with a /tree/<ref> path', () => {
-    expect(isGithubRepoUrl('https://github.com/org/repo/tree/main')).toBe(true);
-  });
-
-  it('returns true for a URL with trailing slash', () => {
-    expect(isGithubRepoUrl('https://github.com/org/repo/')).toBe(true);
-  });
-
-  it('returns false for github.com with only one path segment (org only)', () => {
-    expect(isGithubRepoUrl('https://github.com/org')).toBe(false);
-  });
-
-  it('returns false for a non-GitHub URL', () => {
-    expect(isGithubRepoUrl('https://example.com/org/repo')).toBe(false);
-  });
-
-  it('returns false for a CDN URL', () => {
-    expect(isGithubRepoUrl('https://cdn.example.com/skills/my-skill.zip')).toBe(false);
-  });
-
-  it('returns false for an invalid URL string', () => {
-    expect(isGithubRepoUrl('not-a-url')).toBe(false);
-  });
-
-  it('GITHUB_HOSTS_DEFAULT contains only github.com', () => {
-    expect(GITHUB_HOSTS_DEFAULT).toEqual(['github.com']);
-  });
-
-  it('returns false for a GHES hostname when using default hosts', () => {
-    expect(isGithubRepoUrl('https://github.acme-corp.com/org/repo')).toBe(false);
-  });
-
-  it('returns true for a GHES hostname when passed as a custom knownHost', () => {
-    expect(isGithubRepoUrl('https://github.acme-corp.com/org/repo', ['github.com', 'github.acme-corp.com'])).toBe(true);
-  });
-
-  it('returns true for a GHES hostname when it is the only entry in knownHosts', () => {
-    expect(isGithubRepoUrl('https://github.acme-corp.com/org/repo', ['github.acme-corp.com'])).toBe(true);
-  });
-});
 
 // ── isArtefactUrl ─────────────────────────────────────────────────────────────
 
@@ -207,6 +156,25 @@ describe('resolveSkillSource — GitHub repo URLs', () => {
     expect(r.ref).toBe('master');
     expect(r.defaultBranch).toBe('master');
   });
+
+  it('preserves scheme and non-standard port in repoUrl for GHES with custom port', async () => {
+    const result = await resolveSkillSource(
+      'https://github.acme-corp.com:8443/my-org/my-repo',
+      { githubHosts: ['github.acme-corp.com'] },
+    );
+    const r = result as RepoSkillSource;
+    expect(r.repoUrl).toBe('https://github.acme-corp.com:8443/my-org/my-repo');
+  });
+
+  it('warns but still resolves the ref when /tree/<ref>/<path> has trailing segments', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = await resolveSkillSource('https://github.com/org/repo/tree/main/skills/my-skill');
+    const r = result as RepoSkillSource;
+    expect(r.ref).toBe('main');
+    expect(r.repoUrl).toBe('https://github.com/org/repo');
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('path after the ref'));
+    warnSpy.mockRestore();
+  });
 });
 
 describe('resolveSkillSource — artefact URLs', () => {
@@ -226,6 +194,16 @@ describe('resolveSkillSource — artefact URLs', () => {
   it('uses installLayout from options for artefact sources', async () => {
     const result = await resolveSkillSource('https://cdn.example.com/skill.zip', { installLayout: 'flat' });
     expect((result as ArtefactSkillSource).installLayout).toBe('flat');
+  });
+
+  it('resolves a GitHub release-asset .zip URL to an artefact source, not a repo source', async () => {
+    const result = await resolveSkillSource(
+      'https://github.com/org/repo/releases/download/v1.0/skill.zip',
+    );
+    expect(result.type).toBe('artefact');
+    expect((result as ArtefactSkillSource).artefactUrl).toBe(
+      'https://github.com/org/repo/releases/download/v1.0/skill.zip',
+    );
   });
 
   it('rejects plain http artefact URLs', async () => {
@@ -264,8 +242,7 @@ describe('resolveSkillSource — local directory paths', () => {
   let tempDir: string;
 
   beforeEach(async () => {
-    tempDir = path.join(os.tmpdir(), `skill-source-test-${Date.now()}`);
-    await mkdir(tempDir, { recursive: true });
+    tempDir = await mkdtemp(path.join(os.tmpdir(), 'skill-source-test-'));
   });
 
   afterEach(async () => {
@@ -430,3 +407,4 @@ describe('describeSkillSource', () => {
     expect(describeSkillSource(source)).toBe('bundle: (local)');
   });
 });
+

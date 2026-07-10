@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdir, writeFile, stat, utimes, unlink, rm } from 'node:fs/promises';
+import { mkdir, writeFile, stat, utimes, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { RovoProvisioner } from '../../../src/provisioners/RovoProvisioner.js';
@@ -103,12 +103,11 @@ describe('RovoProvisioner - auth state management', () => {
         provisioner.createAgent({
           studioUrl: 'https://studio.atlassian.com/s/test/agents',
           config: {
-            apiVersion: 'rovo.atlassian.com/v1',
+            apiVersion: 'rovo.atlassian.com/v2-beta',
             kind: 'StudioAgent',
             identity: {
               name: 'Test Agent',
               description: 'A test agent',
-              behavior: 'Be helpful',
             },
             scenarios: {
               default: {
@@ -130,12 +129,11 @@ describe('RovoProvisioner - auth state management', () => {
         provisioner.createAgent({
           studioUrl: 'https://studio.atlassian.com/s/test/agents',
           config: {
-            apiVersion: 'rovo.atlassian.com/v1',
+            apiVersion: 'rovo.atlassian.com/v2-beta',
             kind: 'StudioAgent',
             identity: {
               name: 'Test Agent',
               description: 'A test agent',
-              behavior: 'Be helpful',
             },
             scenarios: {
               default: {

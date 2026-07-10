@@ -35,7 +35,6 @@ export function substituteKbFilenames(text: string, pages: KnowledgePage[]): str
  * in text fields replaced with Confluence page URLs (via {@link substituteKbFilenames}).
  *
  * Fields processed:
- *  - `identity.behavior`
  *  - `scenarios.default.instructions`
  *  - `scenarios.custom[*].instructions`
  */
@@ -43,10 +42,6 @@ export function applyKbUrlSubstitutions(config: RovoAgentConfig, pages: Knowledg
   if (pages.length === 0) return config;
   return {
     ...config,
-    identity: {
-      ...config.identity,
-      behavior: substituteKbFilenames(config.identity.behavior, pages),
-    },
     scenarios: {
       default: {
         ...config.scenarios.default,

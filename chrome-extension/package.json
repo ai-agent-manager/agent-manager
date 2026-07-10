@@ -14,7 +14,10 @@
   "devDependencies": {
     "@types/chrome": "^0.0.287",
     "crx": "^5.0.1",
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.25.12",
     "typescript": "^5.7.0"
+  },
+  "optionalDependencies": {
+    "@esbuild/linux-x64": "^0.25.12"
   }
 }

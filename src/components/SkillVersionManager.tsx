@@ -2,11 +2,11 @@ import React, { useState, useEffect, useRef } from "react";
 import path from "node:path";
 import { Box, Text } from "ink";
 import SelectInput from "ink-select-input";
-import { readConfig, listCachedBundles, updateSkillVersion, type CachedBundle } from "../bundle/cache.js";
+import { readConfig, listCachedBundles, updateSkillVersion, getRecordVersion, type CachedBundle } from "../bundle/cache.js";
 import { readRepoConfig } from "../bundle/repo-config.js";
 import { scanBundle } from "../bundle/scanner.js";
 import { getBundleVersionDir } from "../config/paths.js";
-import { SKILL_TOOLS } from "../config/tools.js";
+import { getSkillTools } from "../config/tools.js";
 import { findRepoRoot } from "../lib/repo.js";
 import { LoadingSpinner } from "./Spinner.js";
 import { StatusMessage } from "./StatusMessage.js";
@@ -39,10 +39,10 @@ function VersionMenuItem({ label }: { isSelected?: boolean; label: string }) {
 function buildInstalledSkills(config: Awaited<ReturnType<typeof readConfig>>): InstalledSkillWithTool[] {
     const skills: InstalledSkillWithTool[] = [];
     for (const [toolId, skillRecords] of Object.entries(config.installations)) {
-        const tool = SKILL_TOOLS.find((t) => t.id === toolId);
+        const tool = getSkillTools().find((t) => t.id === toolId);
         const toolName = tool?.name ?? toolId;
         for (const [skillName, record] of Object.entries(skillRecords)) {
-            skills.push({ skillName, toolId, toolName, currentVersion: record.bundleVersion ?? '', scope: "system" });
+            skills.push({ skillName, toolId, toolName, currentVersion: getRecordVersion(record), scope: "system" });
         }
     }
     return skills;
@@ -52,14 +52,14 @@ function buildRepoInstalledSkills(repoConfig: Awaited<ReturnType<typeof readRepo
     if (!repoConfig) return [];
     const skills: InstalledSkillWithTool[] = [];
     for (const [toolId, skillRecords] of Object.entries(repoConfig.installations)) {
-        const tool = SKILL_TOOLS.find((t) => t.id === toolId);
+        const tool = getSkillTools().find((t) => t.id === toolId);
         const toolName = tool?.name ?? toolId;
         for (const [skillName, record] of Object.entries(skillRecords)) {
             skills.push({
                 skillName,
                 toolId,
                 toolName,
-                currentVersion: record.bundleVersion ?? repoConfig.bundleVersion,
+                currentVersion: getRecordVersion(record) || repoConfig.bundleVersion || '',
                 scope: "repo",
             });
         }

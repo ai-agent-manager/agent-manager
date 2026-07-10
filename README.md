@@ -56,7 +56,7 @@ The `<source>` can be a **bundle URL**, a **GitHub repository URL**, a **publish
 **Config format:**
 
 ```yaml
-tools: claude-code        # one or more: claude-code | windsurf | github-copilot | cursor
+tools: claude-code        # one or more: claude-code | windsurf | github-copilot | cursor | kiro
 scope: repo              # repo (default) | system
 skills:
   - my-skill-name
@@ -182,12 +182,12 @@ Skills are installed as symlinks into each tool's native skills directory:
 
 | Tool | System-wide Path | Repo-scoped Path |
 |------|-----------------|-----------------|
+| Agents (Generic) | `~/.agents/skills/<skill>/` | `<repo>/.agents/skills/<skill>/` |
 | Claude Code | `~/.claude/skills/<skill>/` | `<repo>/.claude/skills/<skill>/` |
-| Windsurf | `~/.codeium/windsurf/skills/<skill>/` | `<repo>/.windsurf/skills/<skill>/` |
+| Cursor | `~/.cursor/skills/<skill>/` | `<repo>/.cursor/skills/<skill>/` |
 | GitHub Copilot | `~/.copilot/skills/<skill>/` | `<repo>/.github/copilot/skills/<skill>/` |
-| Cursor | `~/.agents/skills/<skill>/` | `<repo>/.cursor/skills/<skill>/` |
-
-> **Cursor note:** There is no official global filesystem skills path for Cursor. Skills install to `~/.agents/skills/` using the cross-client convention. You may need to configure Cursor to discover this location.
+| Kiro | `~/.kiro/skills/<skill>/` | `<repo>/.kiro/skills/<skill>/` |
+| Windsurf | `~/.codeium/windsurf/skills/<skill>/` | `<repo>/.windsurf/skills/<skill>/` |
 
 > **Windows note:** If symlink creation fails (requires admin rights or Developer Mode), the tool falls back to copying the skill directory instead.
 
@@ -212,6 +212,22 @@ A `.agentman.json` file is written at the repo root tracking the pinned bundle v
 ## Bundle Format
 
 The tool expects a version index at `<base-url>/agents/index.json` and versioned zips at `<base-url>/agents/<version>/bundle.zip`. See [docs/bundle-format.md](docs/bundle-format.md) for the full spec.
+
+---
+
+## Examples Folder
+
+The [examples/](examples/) directory contains sample assets used for reference, local testing, and smoke tests.
+
+- `examples/epic-elaboration-agent/` -- Example Rovo agent used by the live test helper script (`scripts/test-rovo-live.ts`).
+- `examples/story-build-readiness-agent/` -- Additional example Rovo agent manifest for authoring and testing patterns.
+- `examples/git-skill-importer/` -- End-to-end example for git skill discovery; exercised in CI.
+
+Important behavior:
+
+- These examples are repository-local fixtures. They are not automatically used when you run Agent Manager against a remote bundle URL.
+- In normal production usage, Agent Manager pulls agents from your configured bundle source (`<base-url>/agents/...`).
+- To use local examples directly, run Agent Manager with a local directory source instead of a remote URL.
 
 ---
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
@@ -145,6 +145,27 @@ describe("repo-config", () => {
             expect(config!.bundleVersion).toBe("version-1");
             expect(config!.installations["claude-code"]["skill-a"].bundleVersion).toBe("version-1");
             expect(config!.installations["windsurf"]["skill-b"].bundleVersion).toBe("version-2");
+        });
+
+        it("omits bundleVersion from record and top-level config when not provided", async () => {
+            await recordRepoInstall(
+                tmpDir,
+                "claude-code",
+                "my-skill",
+                {
+                    installedAt: "2025-01-01T00:00:00Z",
+                    method: "symlink",
+                },
+                // bundleVersion intentionally omitted
+            );
+
+            const config = await readRepoConfig(tmpDir);
+            expect(config).not.toBeNull();
+            expect(config!.bundleVersion).toBeUndefined();
+            const record = config!.installations["claude-code"]["my-skill"];
+            expect(record.bundleVersion).toBeUndefined();
+            expect(record.installedAt).toBe("2025-01-01T00:00:00Z");
+            expect(record.method).toBe("symlink");
         });
     });
 

@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentmanager.dev/schemas/discovery/v1.json",
+  "title": "Agent Manager Discovery Document",
+  "description": "Discovery document for agent-manager, served at <base_url>/.well-known/agents/discovery.json",
+  "type": "object",
+  "required": ["version", "sources"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "1",
+      "description": "Schema version"
+    },
+    "auth": {
+      "type": "object",
+      "description": "Authentication configuration. Omit entirely if no authentication is required.",
+      "required": ["required"],
+      "properties": {
+        "required": {
+          "type": "boolean",
+          "description": "Whether authentication is needed to access skills from this endpoint"
+        },
+        "oidcDiscoveryUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to the standard OIDC discovery document (e.g. https://auth.example.com/.well-known/openid-configuration)"
+        },
+        "clientId": {
+          "type": "string",
+          "description": "OAuth2 client ID that agent-manager should use"
+        },
+        "scopes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["openid"],
+          "description": "OAuth2 scopes to request. Defaults to [\"openid\"] if omitted."
+        }
+      },
+      "if": {
+        "properties": { "required": { "const": true } }
+      },
+      "then": {
+        "required": ["required", "oidcDiscoveryUrl", "clientId"]
+      }
+    },
+    "telemetry": {
+      "type": "object",
+      "description": "Telemetry configuration. Omit entirely to leave telemetry unconfigured (env vars still apply).",
+      "required": ["url", "siteId"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Base URL of the telemetry endpoint (e.g. https://telemetry.example.com)"
+        },
+        "siteId": {
+          "type": "string",
+          "description": "Site identifier for the telemetry service"
+        }
+      },
+      "additionalProperties": false
+    },
+    "sources": {
+      "type": "array",
+      "description": "List of available sources",
+      "items": {
+        "type": "object",
+        "required": ["name", "type", "url"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Source identifier (kebab-case recommended)"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["http", "git", "artefact"],
+            "description": "How to fetch the source. 'http' downloads a bundle directly. 'git' clones a repository in Claude Code plugin marketplace format. 'artefact' downloads a packaged skill zip."
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Location of the source (bundle URL for http, repository URL for git)"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["official", "community"],
+            "description": "Trust level indicator"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
