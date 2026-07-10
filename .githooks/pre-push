@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Pre-push: secrets scan on every commit about to leave this machine (the
+# pre-commit hook only sees staged diffs — this catches leaks that arrived via
+# merges, rebases, or --no-verify commits), then the quality gate.
+# Installed automatically by `npm install` via the package.json "prepare"
+# script. Emergency bypass: git push --no-verify.
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+remote=${1:-origin}
+zero=0000000000000000000000000000000000000000
+
+if ! command -v betterleaks >/dev/null 2>&1; then
+  echo "pre-push: betterleaks not found — refusing to push unscanned commits." >&2
+  echo "Install it: brew install betterleaks  |  sudo dnf install betterleaks" >&2
+  exit 1
+fi
+
+config=()
+local_rules="$(git rev-parse --git-dir)/betterleaks-local.toml"
+[[ -f $local_rules ]] && config=(--config "$local_rules")
+
+# stdin: <local_ref> <local_sha> <remote_ref> <remote_sha> per ref being pushed
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+  [[ $local_sha == "$zero" ]] && continue        # deleting a remote ref — nothing outgoing
+  if [[ $remote_sha == "$zero" ]]; then
+    range="$local_sha --not --remotes=$remote"   # new remote branch: scan what the remote lacks
+  else
+    range="$remote_sha..$local_sha"
+  fi
+  betterleaks git . --log-opts="$range" --redact --no-banner "${config[@]}"
+done
+
+npm run typecheck
+npm test

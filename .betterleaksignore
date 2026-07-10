@@ -1,0 +1,13 @@
+# Findings audited and confirmed benign (repo hygiene audit, 2026-07).
+# Format: [commit:]path:rule-id:line — unpinned entries cover the working
+# tree / staged scans, commit-pinned entries cover history scans.
+
+# Chrome extension public key in the manifest — public by design, not a secret.
+chrome-extension/manifest.json:generic-api-key:5
+42ad60951f7e97270f84e19cd37d01f1e582e861:chrome-extension/manifest.json:generic-api-key:5
+
+# Example native-host session token in the user guide — a sample UUID shown in
+# example output, not a service credential. The tip of the tree now uses an
+# all-zeros placeholder; these entries cover the pre-replacement history only.
+02dcd7818a5654bcd0cd799e46ddea3a3b97cd8b:chrome-extension/USER-GUIDE.md:generic-api-key:203
+c7c0f332679cbf178fc86d48e79f22cce430a4fa:chrome-extension/USER-GUIDE.md:generic-api-key:185
