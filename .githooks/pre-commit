@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Pre-commit: secrets scan (betterleaks) + lint, on staged changes only.
+# Installed automatically by `npm install` via the package.json "prepare"
+# script (git config core.hooksPath .githooks).
+# Emergency bypass: git commit --no-verify — CI runs the same secrets scan,
+# so a bypassed leak is still caught before merge.
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+if ! command -v betterleaks >/dev/null 2>&1; then
+  echo "pre-commit: betterleaks not found — refusing to commit unscanned changes." >&2
+  echo "Install it: brew install betterleaks  |  sudo dnf install betterleaks" >&2
+  exit 1
+fi
+
+# Private extra rules (internal hostnames, employer patterns, local paths) live
+# outside the repo so the patterns themselves are never published. To activate,
+# drop a config at the path below; start it with [extend] useDefault = true so
+# the builtin rules still apply.
+config=()
+local_rules="$(git rev-parse --git-dir)/betterleaks-local.toml"
+[[ -f $local_rules ]] && config=(--config "$local_rules")
+
+betterleaks git . --pre-commit --staged --redact --no-banner "${config[@]}"
+
+npx oxlint

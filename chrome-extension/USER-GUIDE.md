@@ -200,7 +200,7 @@ $env:AGENTMAN_CHROME_EXTENSION="1"; npx -y @ai-agent-manager/cli@latest https://
 Starting server for Chrome Extension provisioning...
 
 ✓ Server running on http://127.0.0.1:19876
-✓ Auth token: 3d5e8f2a-9c1b-4d7e-a6f3-5b8c9e2d4a1f
+✓ Auth token: 00000000-0000-0000-0000-000000000000
 
 The server is ready to accept connections from the Chrome Extension.
 
