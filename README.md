@@ -51,7 +51,7 @@ Skip the menu entirely with a config file:
 npx -y @ai-agent-manager/cli@latest <source> --config .github/ai-skills.yml
 ```
 
-The `<source>` can be a **bundle URL**, a **GitHub repository URL**, a **published artefact** (a `.zip` URL), or a **local directory** — agentman detects the type automatically.
+The `<source>` can be a **bundle URL**, a **GitHub repository URL**, or a **local directory** — agentman detects the type automatically. Published artefacts (`.zip` URLs) are supported as sources within a [discovery document](docs/discovery.md).
 
 **Config format:**
 
@@ -117,14 +117,9 @@ npx -y @ai-agent-manager/cli@latest https://github.com/org/my-skills-repo/tree/v
       --config .github/ai-skills.yml
 ```
 
-#### Install from a published artefact
+#### Install from a published artefact (via discovery)
 
-Point agentman at a published, versioned skill `.zip` (an artefact). Unlike a bundle, an artefact is a single packaged skill (or small set of skills) addressed by a direct URL:
-
-```bash
-npx -y @ai-agent-manager/cli@latest https://cdn.example.com/skills/my-skill-1.2.0.zip \
-  --config .github/ai-skills.yml
-```
+Artefacts (versioned `.zip` skill packages) are consumed through a [discovery document](docs/discovery.md) — you add an `artefact` source entry pointing to the zip URL, and agentman downloads and installs it during discovery resolution. **Artefacts are untrusted third-party packages** — review the source before adding it to your discovery document. See [docs/discovery.md](docs/discovery.md) for the full guide.
 
 The version is resolved from the filename (`my-skill-1.2.0.zip`), the URL path, an embedded `manifest.json`, or — as a last resort — the content hash. The resolved version and source URL are pinned in the install record so the exact artefact can be reproduced and tracked later.
 

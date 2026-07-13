@@ -13,7 +13,7 @@ import { setCurrentBundle } from '../bundle/cache.js';
 import { importGitSkills } from './git-importer.js';
 import { downloadArtefact } from '../bundle/artefact-downloader.js';
 import { scanArtefactForSkills } from '../bundle/artefact-scanner.js';
-import type { ArtefactSkillSource } from '../bundle/skill-source.js';
+import { buildSourcePin, type ArtefactSkillSource } from '../bundle/skill-source.js';
 import type { DiscoveryDocument, DiscoverySource } from './types.js';
 
 export interface ResolvedSources {
@@ -34,11 +34,26 @@ export interface ResolvedSources {
  * @param accessToken  Optional Bearer token for authenticated HTTP requests.
  * @param onProgress   Optional callback for progress updates.
  */
+export interface ResolveDiscoveryOptions {
+  /** SHA-256 pin for artefact sources — overrides sidecar lookup when set. */
+  artefactSha256?: string;
+}
+
+/**
+ * Resolve all skills from a discovery document.
+ *
+ * @param discovery    The parsed discovery document.
+ * @param accessToken  Optional token for authenticated HTTP requests.
+ * @param onProgress   Optional callback for progress updates.
+ * @param options      Optional configuration (artefact integrity pin, etc.).
+ */
 export async function resolveDiscoverySkills(
   discovery: DiscoveryDocument,
   accessToken?: string,
   onProgress?: (message: string) => void,
+  options?: ResolveDiscoveryOptions,
 ): Promise<ResolvedSources> {
+  const artefactSha256 = options?.artefactSha256;
   const allSkills: SkillInfo[] = [];
   const allRovoAgents: RovoAgentInfo[] = [];
   const errors: Array<{ source: DiscoverySource; error: string }> = [];
@@ -76,10 +91,17 @@ export async function resolveDiscoverySkills(
             type: 'artefact',
             artefactUrl: source.url,
             installLayout: 'namespaced',
+            sha256: artefactSha256,
           };
           const download = await downloadArtefact(artefactSource);
-          const scanResult = await scanArtefactForSkills(download.extractDir, artefactSource);
-          allSkills.push(...scanResult.skills);
+          const resolvedSource: ArtefactSkillSource = {
+            ...artefactSource,
+            version: download.version,
+            sha256: download.sha256 ?? artefactSha256,
+          };
+          const pin = buildSourcePin(resolvedSource);
+          const scanResult = await scanArtefactForSkills(download.extractDir, resolvedSource);
+          allSkills.push(...scanResult.skills.map((skill) => ({ ...skill, sourcePin: pin })));
           break;
         }
       }

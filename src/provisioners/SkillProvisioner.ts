@@ -106,19 +106,21 @@ export abstract class SkillProvisioner implements Provisioner {
           path: linkPath,
         });
 
+        const effectivePin = item.sourcePin ?? sourcePin;
+
         // Record in the appropriate config
         if (this.scope === 'repo' && this.repoRoot) {
           await recordRepoInstall(this.repoRoot, this.id, item.dirName, {
             installedAt: new Date().toISOString(),
             method: linkResult.method,
-            sourcePin,
+            sourcePin: effectivePin,
           }, bundleVersion || undefined);
         } else {
           await recordInstall(this.id, item.dirName, {
             bundleVersion: bundleVersion || undefined,
             installedAt: new Date().toISOString(),
             method: linkResult.method,
-            sourcePin,
+            sourcePin: effectivePin,
           });
         }
       } catch (error) {

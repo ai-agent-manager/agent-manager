@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import os from 'node:os';
@@ -9,7 +9,9 @@ import {
   checkArtefactUpdate,
   downloadArtefact,
   fetchArtefactHash,
+  MAX_DOWNLOAD_BYTES,
   parseArtefactUrl,
+  removeEscapingSymlinks,
 } from '../../../src/bundle/artefact-downloader.js';
 import type { ArtefactSkillSource, SkillSourcePin } from '../../../src/bundle/skill-source.js';
 
@@ -139,6 +141,12 @@ describe('buildArtefactHashUrl', () => {
   it('appends .sha256 to the artefact URL', () => {
     expect(buildArtefactHashUrl('https://cdn.example.com/my-skill-1.2.0.zip')).toBe(
       'https://cdn.example.com/my-skill-1.2.0.zip.sha256',
+    );
+  });
+
+  it('strips query string and fragment before appending .sha256', () => {
+    expect(buildArtefactHashUrl('https://cdn.example.com/my-skill.zip?token=abc#v1')).toBe(
+      'https://cdn.example.com/my-skill.zip.sha256',
     );
   });
 });
@@ -497,5 +505,117 @@ describe('checkArtefactUpdate', () => {
     };
 
     await expect(checkArtefactUpdate(pin)).rejects.toThrow('artefact source pin');
+  });
+});
+
+describe('enforceArtefactUrl', () => {
+  it('rejects plain http on non-loopback hosts', async () => {
+    const source: ArtefactSkillSource = {
+      type: 'artefact',
+      artefactUrl: 'http://cdn.example.com/my-skill-1.0.0.zip',
+      installLayout: 'namespaced',
+    };
+    await expect(downloadArtefact(source)).rejects.toThrow('Artefact URLs must use https');
+  });
+
+  it('allows http on localhost', async () => {
+    const source: ArtefactSkillSource = {
+      type: 'artefact',
+      artefactUrl: 'http://localhost:8080/my-skill-1.0.0.zip',
+      installLayout: 'namespaced',
+    };
+    // Will fail on fetch (no server), but should NOT throw the https error
+    await expect(downloadArtefact(source)).rejects.not.toThrow('Artefact URLs must use https');
+  });
+
+  it('allows https on any host', async () => {
+    const source: ArtefactSkillSource = {
+      type: 'artefact',
+      artefactUrl: 'https://cdn.example.com/my-skill-1.0.0.zip',
+      installLayout: 'namespaced',
+    };
+    // Will fail on fetch (mocked/no server), but should NOT throw the https error
+    await expect(downloadArtefact(source)).rejects.not.toThrow('Artefact URLs must use https');
+  });
+});
+
+describe('removeEscapingSymlinks', () => {
+  let tempDir: string;
+
+  beforeEach(async () => {
+    tempDir = path.join(os.tmpdir(), `symlink-test-${Date.now()}`);
+    await mkdir(tempDir, { recursive: true });
+  });
+
+  afterEach(async () => {
+    await rm(tempDir, { recursive: true, force: true });
+  });
+
+  it('removes symlinks pointing outside the root directory', async () => {
+    const skillDir = path.join(tempDir, 'my-skill');
+    await mkdir(skillDir);
+    await writeFile(path.join(skillDir, 'SKILL.md'), '# legit');
+    await symlink('/etc/passwd', path.join(skillDir, 'leak'));
+
+    const removed = await removeEscapingSymlinks(tempDir);
+    expect(removed).toHaveLength(1);
+    expect(removed[0]).toContain('leak');
+  });
+
+  it('keeps symlinks pointing within the root directory', async () => {
+    const target = path.join(tempDir, 'real-file.md');
+    await writeFile(target, '# real');
+    await symlink(target, path.join(tempDir, 'internal-link'));
+
+    const removed = await removeEscapingSymlinks(tempDir);
+    expect(removed).toHaveLength(0);
+  });
+
+  it('removes symlinks with dangling targets', async () => {
+    await symlink('/nonexistent/path/nowhere', path.join(tempDir, 'dangling'));
+
+    const removed = await removeEscapingSymlinks(tempDir);
+    expect(removed).toHaveLength(1);
+  });
+
+  it('recursively checks nested directories', async () => {
+    const nested = path.join(tempDir, 'a', 'b');
+    await mkdir(nested, { recursive: true });
+    await symlink('/etc/hosts', path.join(nested, 'escape'));
+
+    const removed = await removeEscapingSymlinks(tempDir);
+    expect(removed).toHaveLength(1);
+    expect(removed[0]).toContain(path.join('a', 'b', 'escape'));
+  });
+});
+
+describe('download size limits', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('rejects when Content-Length header exceeds MAX_DOWNLOAD_BYTES', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      headers: { get: (h: string) => (h === 'content-length' ? String(MAX_DOWNLOAD_BYTES + 1) : null) },
+      arrayBuffer: async () => new ArrayBuffer(0),
+    } as unknown as Response);
+
+    await expect(downloadArtefact(makeSource())).rejects.toThrow('Content-Length');
+  });
+
+  it('rejects when actual buffer size exceeds MAX_DOWNLOAD_BYTES', async () => {
+    const oversized = new ArrayBuffer(MAX_DOWNLOAD_BYTES + 1);
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      headers: { get: () => null },
+      arrayBuffer: async () => oversized,
+    } as unknown as Response);
+
+    await expect(downloadArtefact(makeSource())).rejects.toThrow('actual size');
   });
 });

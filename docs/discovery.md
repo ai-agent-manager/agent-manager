@@ -63,13 +63,13 @@ When a user provides a base URL to agent-manager, it fetches the discovery docum
 | `sources[].name` | string | Yes | Source identifier |
 | `sources[].type` | `"http"` \| `"git"` \| `"artefact"` | Yes | How to fetch the source |
 | `sources[].url` | string (URI) | Yes | Location of the source |
-| `sources[].status` | `"official"` \| `"community"` | No | Trust level indicator |
+| `sources[].status` | `"official"` \| `"community"` | No | Informational label set by the discovery document publisher — agentman does not enforce or act on this value |
 
 ### Source Types
 
 - **`http`** — URL points to a skill bundle (ZIP or similar) that agent-manager downloads directly. If auth is required, agent-manager passes the access token as a Bearer header. Supports both skills and rovo agents.
 - **`git`** — URL points to a git repository in the [Claude Code plugin marketplace format](https://code.claude.com/docs/en/plugin-marketplaces). Agent-manager clones the repo and scans for skills (`.claude-plugin/` directory, `skills/<name>/SKILL.md` files). Only skills are supported in this model.
-- **`artefact`** — URL points directly to a `.zip` file containing one or more packaged skills. Agent-manager downloads the zip, verifies integrity via a `.sha256` sidecar, extracts it, and scans for skills. Artefact URLs must use `https://` (plain `http://` is only allowed for `localhost` during development). Artefact sources produce skills only (no rovo agents).
+- **`artefact`** — URL points directly to a `.zip` file containing one or more packaged skills. Artefact URLs must use `https://` (plain `http://` is only allowed for `localhost` during development). Agent-manager downloads the zip, checks integrity against a `.sha256` sidecar if one exists (the install proceeds with a warning if no sidecar is found — publish a sidecar or set `artefact-sha256` for stronger guarantees), then extracts and scans for skills. Artefact sources are **untrusted third-party packages** — review the source before adding it to your discovery document. Artefact sources produce skills only (no rovo agents).
 
 ---
 
@@ -104,7 +104,9 @@ artefact.zip/
       SKILL.md
 ```
 
-**Resolution order matters:** Layout 1 is checked first — if a `SKILL.md` exists at the root, that single skill is used and subdirectories are ignored. Layout 3 only kicks in when there's exactly one top-level directory and no skills were found at root level.
+**Resolution order matters:** Layout 1 is checked first — if a `SKILL.md` exists at the root, that single skill is used and subdirectories are ignored (a warning is logged if skill directories are also present). Layout 3 only kicks in when there's exactly one top-level directory and no skills were found at root level.
+
+> **Note:** In Layout 1, the skill's identifier is derived from the zip filename (e.g. `my-skill-1.0.0.zip` → `my-skill`), not from the `name:` field in `SKILL.md`. The `name:` field is used as display metadata only. Use Layouts 2 or 3 if you need to control the skill identifier directly.
 
 Each skill **must** have a `SKILL.md` file. The frontmatter is optional but recommended:
 

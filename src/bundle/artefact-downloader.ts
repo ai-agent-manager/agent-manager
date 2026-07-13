@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readdir, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import extractZip from 'extract-zip';
 import { getArtefactCacheDir, getTempDir } from '../config/paths.js';
@@ -9,6 +9,97 @@ import type { ArtefactSkillSource, SkillSourcePin } from './skill-source.js';
 
 /** Name of the metadata file written alongside cached artefact content. */
 export const ARTEFACT_META_FILE = '.artefact.json';
+
+export const MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024; // 100 MB
+export const MAX_EXTRACT_BYTES = 500 * 1024 * 1024; // 500 MB
+export const MAX_EXTRACT_ENTRIES = 10_000;
+
+function isLoopbackHost(hostname: string): boolean {
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '::1' ||
+    hostname === '[::1]'
+  );
+}
+
+/**
+ * Validates an artefact URL: must be https (http allowed only for loopback).
+ * Rejects redirect-to-http by design — callers use redirect: 'error'.
+ */
+export function enforceArtefactUrl(url: string): void {
+  const parsed = new URL(url);
+  if (parsed.protocol === 'http:' && !isLoopbackHost(parsed.hostname)) {
+    throw new Error(
+      `Artefact URLs must use https: ${url}\n` +
+        'Plain http is only allowed for localhost during local development.',
+    );
+  }
+}
+
+/**
+ * Recursively removes symlinks that escape the root directory.
+ * Skill packages have no legitimate use for symlinks — a zip containing one
+ * that points outside the extract dir is either broken or malicious.
+ */
+export async function removeEscapingSymlinks(rootDir: string): Promise<string[]> {
+  const removed: string[] = [];
+  const resolvedRoot = await realpath(rootDir);
+
+  async function walk(dir: string): Promise<void> {
+    const entries = await readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isSymbolicLink()) {
+        const target = await realpath(fullPath).catch(() => null);
+        if (!target || !target.startsWith(resolvedRoot + path.sep)) {
+          await rm(fullPath);
+          removed.push(fullPath);
+        }
+      } else if (entry.isDirectory()) {
+        await walk(fullPath);
+      }
+    }
+  }
+
+  await walk(resolvedRoot);
+  return removed;
+}
+
+/**
+ * Recursively sums file sizes and entry counts in a directory.
+ * Throws if either limit is exceeded.
+ */
+async function enforceExtractLimits(rootDir: string): Promise<void> {
+  let totalBytes = 0;
+  let totalEntries = 0;
+
+  async function walk(dir: string): Promise<void> {
+    const entries = await readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      totalEntries += 1;
+      if (totalEntries > MAX_EXTRACT_ENTRIES) {
+        throw new Error(
+          `Artefact extraction aborted: exceeds ${MAX_EXTRACT_ENTRIES} entries (possible zip bomb).`,
+        );
+      }
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(fullPath);
+      } else if (entry.isFile()) {
+        const { size } = await lstat(fullPath);
+        totalBytes += size;
+        if (totalBytes > MAX_EXTRACT_BYTES) {
+          throw new Error(
+            `Artefact extraction aborted: extracted content exceeds ${MAX_EXTRACT_BYTES / 1024 / 1024} MB (possible zip bomb).`,
+          );
+        }
+      }
+    }
+  }
+
+  await walk(rootDir);
+}
 
 /** Metadata persisted in the artefact cache for reuse on cache hits. */
 export interface ArtefactCacheMeta {
@@ -81,7 +172,11 @@ function sanitiseName(name: string): string {
  * Convention: append `.sha256` to the zip URL (matching bundle.zip.sha256).
  */
 export function buildArtefactHashUrl(artefactUrl: string): string {
-  return `${artefactUrl}.sha256`;
+  const parsed = new URL(artefactUrl);
+  parsed.pathname = `${parsed.pathname}.sha256`;
+  parsed.search = '';
+  parsed.hash = '';
+  return parsed.toString();
 }
 
 /**
@@ -93,8 +188,9 @@ export function buildArtefactHashUrl(artefactUrl: string): string {
  */
 export async function fetchArtefactHash(artefactUrl: string): Promise<string | null> {
   const url = buildArtefactHashUrl(artefactUrl);
+  enforceArtefactUrl(url);
 
-  const response = await fetch(url);
+  const response = await fetch(url, { redirect: 'error' });
 
   if (response.status === 404 || response.status === 403) {
     return null;
@@ -171,9 +267,13 @@ export async function downloadArtefact(
   const tempExtractDir = path.join(tempDir, `artefact-extract-${name}-${stamp}`);
 
   try {
-    // Download
+    // Validate URL scheme before making any network request
+    enforceArtefactUrl(source.artefactUrl);
+
+    // Download — reject redirects to prevent cross-scheme downgrade
     const response = await fetch(source.artefactUrl, {
       headers: { 'User-Agent': 'agentman' },
+      redirect: 'error',
     });
 
     if (!response.ok) {
@@ -182,7 +282,23 @@ export async function downloadArtefact(
       );
     }
 
+    // Reject oversized downloads before buffering (Content-Length may be absent or spoofed —
+    // the actual buffer size check below is the hard limit)
+    const contentLength = Number(response.headers?.get('content-length') ?? 0);
+    if (contentLength > MAX_DOWNLOAD_BYTES) {
+      throw new Error(
+        `Artefact download rejected: Content-Length ${contentLength} exceeds ${MAX_DOWNLOAD_BYTES / 1024 / 1024} MB limit.`,
+      );
+    }
+
     const buffer = await response.arrayBuffer();
+
+    if (buffer.byteLength > MAX_DOWNLOAD_BYTES) {
+      throw new Error(
+        `Artefact download rejected: actual size ${buffer.byteLength} bytes exceeds ${MAX_DOWNLOAD_BYTES / 1024 / 1024} MB limit.`,
+      );
+    }
+
     await writeFile(zipPath, new Uint8Array(buffer));
 
     const actualSha256 = createHash('sha256').update(new Uint8Array(buffer)).digest('hex');
@@ -207,6 +323,17 @@ export async function downloadArtefact(
     // Extract
     await mkdir(tempExtractDir, { recursive: true });
     await extractZip(zipPath, { dir: tempExtractDir });
+
+    // Security: remove symlinks that escape the extract directory
+    const escapingLinks = await removeEscapingSymlinks(tempExtractDir);
+    if (escapingLinks.length > 0) {
+      console.warn(
+        `Warning: Removed ${escapingLinks.length} symlink(s) escaping the artefact directory.`,
+      );
+    }
+
+    // Security: reject zip bombs by checking extracted size and entry count
+    await enforceExtractLimits(tempExtractDir);
 
     // Resolve the final version: URL → embedded manifest.json → content hash
     const version =

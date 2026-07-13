@@ -46,7 +46,6 @@ export function parseCli() {
     $ agentman /absolute/path/to/agents --update
     $ agentman https://github.com/org/my-skills-repo --config ai-skills.yml
     $ agentman https://github.com/org/my-skills-repo/tree/v2.0 --config ai-skills.yml
-    $ agentman https://cdn.example.com/my-skill-1.2.0.zip --config ai-skills.yml
     $ agentman https://bundles.example.com --config ai-skills.yml
     $ agentman ./my-local-bundle
 `,
