@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { lstat, mkdir, readdir, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import extractZip from 'extract-zip';
+import yauzl from 'yauzl';
 import { getArtefactCacheDir, getTempDir } from '../config/paths.js';
 import { trackTelemetryError, trackTelemetryEvent } from '../telemetry.js';
 import { IntegrityError, verifyBundleHash } from './downloader.js';
@@ -13,6 +14,74 @@ export const ARTEFACT_META_FILE = '.artefact.json';
 export const MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024; // 100 MB
 export const MAX_EXTRACT_BYTES = 500 * 1024 * 1024; // 500 MB
 export const MAX_EXTRACT_ENTRIES = 10_000;
+
+/**
+ * Reads the zip central directory WITHOUT extracting anything to disk and
+ * rejects if the declared entry count or sum of uncompressed sizes would
+ * exceed the configured limits.
+ *
+ * This is a pre-extraction guard. Because a malicious central directory can
+ * under-report sizes, the post-extraction enforceExtractLimits() backstop
+ * must also run after extractZip().
+ */
+export async function assertZipWithinLimits(zipPath: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    yauzl.open(zipPath, { lazyEntries: true, autoClose: true, validateEntrySizes: false }, (openErr, zipfile) => {
+      if (openErr) {
+        reject(openErr);
+        return;
+      }
+
+      let entryCount = 0;
+      let totalUncompressed = 0;
+
+      zipfile.on('error', (err) => reject(err));
+
+      zipfile.on('entry', (entry) => {
+        entryCount += 1;
+
+        if (entryCount > MAX_EXTRACT_ENTRIES) {
+          zipfile.close();
+          reject(
+            new Error(
+              `Zip rejected: central directory declares more than ${MAX_EXTRACT_ENTRIES} entries (possible zip bomb).`,
+            ),
+          );
+          return;
+        }
+
+        // Guard against per-entry overflow before accumulating
+        const size = entry.uncompressedSize;
+        if (size > MAX_EXTRACT_BYTES) {
+          zipfile.close();
+          reject(
+            new Error(
+              `Zip rejected: single entry declares ${size} bytes uncompressed, exceeds ${MAX_EXTRACT_BYTES / 1024 / 1024} MB limit (possible zip bomb).`,
+            ),
+          );
+          return;
+        }
+
+        totalUncompressed += size;
+        if (totalUncompressed > MAX_EXTRACT_BYTES) {
+          zipfile.close();
+          reject(
+            new Error(
+              `Zip rejected: central directory declares ${totalUncompressed} bytes uncompressed, exceeds ${MAX_EXTRACT_BYTES / 1024 / 1024} MB limit (possible zip bomb).`,
+            ),
+          );
+          return;
+        }
+
+        zipfile.readEntry();
+      });
+
+      zipfile.on('end', () => resolve());
+
+      zipfile.readEntry();
+    });
+  });
+}
 
 function isLoopbackHost(hostname: string): boolean {
   return (
@@ -319,6 +388,11 @@ export async function downloadArtefact(
         `Warning: No SHA-256 available for ${source.artefactUrl}. Skipping integrity check.`,
       );
     }
+
+    // Pre-extraction check: read central directory and reject zip bombs before
+    // writing anything to disk. Keep enforceExtractLimits() below as a backstop
+    // in case the central directory under-reports sizes.
+    await assertZipWithinLimits(zipPath);
 
     // Extract
     await mkdir(tempExtractDir, { recursive: true });

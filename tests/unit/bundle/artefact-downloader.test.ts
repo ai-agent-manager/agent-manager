@@ -5,11 +5,14 @@ import path from 'node:path';
 import os from 'node:os';
 import {
   ARTEFACT_META_FILE,
+  assertZipWithinLimits,
   buildArtefactHashUrl,
   checkArtefactUpdate,
   downloadArtefact,
   fetchArtefactHash,
   MAX_DOWNLOAD_BYTES,
+  MAX_EXTRACT_BYTES,
+  MAX_EXTRACT_ENTRIES,
   parseArtefactUrl,
   removeEscapingSymlinks,
 } from '../../../src/bundle/artefact-downloader.js';
@@ -47,7 +50,78 @@ vi.mock('extract-zip', () => ({ default: mockExtractZip }));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const ZIP_BYTES = new TextEncoder().encode('fake-zip-content');
+/**
+ * Build a minimal structurally-valid zip with one stored entry.
+ * declaredUncompressedSize is written into the central directory only —
+ * the actual file data is empty, mimicking a zip bomb's forged header.
+ */
+function makeZipBuffer(declaredUncompressedSize: number, entryCount = 1): Buffer {
+  const parts: Buffer[] = [];
+  const localOffsets: number[] = [];
+  let offset = 0;
+
+  const cdEntries: Buffer[] = [];
+
+  for (let i = 0; i < entryCount; i++) {
+    const fileName = Buffer.from(`file${i}.txt`);
+
+    const local = Buffer.alloc(30 + fileName.length);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0, 6);
+    local.writeUInt16LE(0, 8);
+    local.writeUInt16LE(0, 10);
+    local.writeUInt16LE(0, 12);
+    local.writeUInt32LE(0, 14);
+    local.writeUInt32LE(0, 18);
+    local.writeUInt32LE(0, 22);
+    local.writeUInt16LE(fileName.length, 26);
+    local.writeUInt16LE(0, 28);
+    fileName.copy(local, 30);
+
+    localOffsets.push(offset);
+    parts.push(local);
+    offset += local.length;
+
+    const cd = Buffer.alloc(46 + fileName.length);
+    cd.writeUInt32LE(0x02014b50, 0);
+    cd.writeUInt16LE(20, 4);
+    cd.writeUInt16LE(20, 6);
+    cd.writeUInt16LE(0, 8);
+    cd.writeUInt16LE(0, 10);
+    cd.writeUInt16LE(0, 12);
+    cd.writeUInt16LE(0, 14);
+    cd.writeUInt32LE(0, 16);
+    cd.writeUInt32LE(0, 20);
+    cd.writeUInt32LE(declaredUncompressedSize >>> 0, 24);
+    cd.writeUInt16LE(fileName.length, 28);
+    cd.writeUInt16LE(0, 30);
+    cd.writeUInt16LE(0, 32);
+    cd.writeUInt16LE(0, 34);
+    cd.writeUInt16LE(0, 36);
+    cd.writeUInt32LE(0, 38);
+    cd.writeUInt32LE(localOffsets[i], 42);
+    fileName.copy(cd, 46);
+    cdEntries.push(cd);
+  }
+
+  const cdBuf = Buffer.concat(cdEntries);
+
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(0, 4);
+  eocd.writeUInt16LE(0, 6);
+  eocd.writeUInt16LE(entryCount, 8);
+  eocd.writeUInt16LE(entryCount, 10);
+  eocd.writeUInt32LE(cdBuf.length, 12);
+  eocd.writeUInt32LE(offset, 16);
+  eocd.writeUInt16LE(0, 20);
+
+  return Buffer.concat([...parts, cdBuf, eocd]);
+}
+
+// A minimal valid zip (1 stored 0-byte entry) — real enough for yauzl to parse
+const ZIP_BYTES = new Uint8Array(makeZipBuffer(0, 1));
 const ZIP_SHA256 = createHash('sha256').update(ZIP_BYTES).digest('hex');
 
 function makeSource(overrides: Partial<ArtefactSkillSource> = {}): ArtefactSkillSource {
@@ -617,5 +691,47 @@ describe('download size limits', () => {
     } as unknown as Response);
 
     await expect(downloadArtefact(makeSource())).rejects.toThrow('actual size');
+  });
+});
+
+// ── assertZipWithinLimits ─────────────────────────────────────────────────────
+
+describe('assertZipWithinLimits', () => {
+  let tempDir: string;
+
+  beforeEach(async () => {
+    tempDir = path.join(os.tmpdir(), `zip-limits-${Date.now()}`);
+    await mkdir(tempDir, { recursive: true });
+  });
+
+  afterEach(async () => {
+    await rm(tempDir, { recursive: true, force: true });
+  });
+
+  it('rejects before extraction when central directory declares uncompressed size above limit', async () => {
+    const zipPath = path.join(tempDir, 'bomb.zip');
+    await writeFile(zipPath, makeZipBuffer(MAX_EXTRACT_BYTES + 1));
+
+    const tempExtractDir = path.join(tempDir, 'extracted');
+
+    await expect(assertZipWithinLimits(zipPath)).rejects.toThrow('zip bomb');
+
+    // Nothing was written to disk — extraction never started
+    await expect(import('node:fs/promises').then(fs => fs.access(tempExtractDir))).rejects.toThrow();
+  });
+
+  it('rejects when central directory entry count exceeds limit', async () => {
+    const zipPath = path.join(tempDir, 'many-entries.zip');
+    await writeFile(zipPath, makeZipBuffer(0, MAX_EXTRACT_ENTRIES + 1));
+
+    await expect(assertZipWithinLimits(zipPath)).rejects.toThrow('zip bomb');
+  });
+
+  it('accepts a normal zip within limits', async () => {
+    const zipPath = path.join(tempDir, 'normal.zip');
+    // 0-byte stored entry — compressedSize == uncompressedSize == 0, well within limits
+    await writeFile(zipPath, makeZipBuffer(0, 1));
+
+    await expect(assertZipWithinLimits(zipPath)).resolves.toBeUndefined();
   });
 });
