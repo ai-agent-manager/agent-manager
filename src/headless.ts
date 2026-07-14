@@ -100,8 +100,17 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
       artefactSha256: config.artefactSha256,
     });
 
-    for (const { source: failedSource, error } of result.errors) {
-      console.warn(`[agentman] WARNING: Failed to resolve source '${failedSource.name}': ${error}`);
+    for (const { source: failedSource, error, isIntegrity } of result.errors) {
+      if (isIntegrity) {
+        console.error(`[agentman] ERROR: Integrity check failed for '${failedSource.name}': ${error}`);
+      } else {
+        console.warn(`[agentman] WARNING: Failed to resolve source '${failedSource.name}': ${error}`);
+      }
+    }
+
+    const hasIntegrityError = result.errors.some((e) => e.isIntegrity);
+    if (hasIntegrityError) {
+      process.exit(1);
     }
 
     allSkills = result.skills;

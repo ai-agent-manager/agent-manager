@@ -1,8 +1,22 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { parseHeadlessConfig, buildPinForDirectorySource } from '../../src/headless.js';
+import { parseHeadlessConfig, buildPinForDirectorySource, runHeadless } from '../../src/headless.js';
+
+vi.mock('../../src/bundle/source.js', () => ({
+  resolveSource: vi.fn(async () => ({
+    type: 'discovery',
+    discovery: {
+      version: '1' as const,
+      sources: [{ name: 'test-artefact', type: 'artefact', url: 'https://cdn.example.com/skill.zip' }],
+    },
+  })),
+}));
+
+vi.mock('../../src/discovery/index.js', () => ({
+  resolveDiscoverySkills: vi.fn(),
+}));
 
 describe('parseHeadlessConfig', () => {
   let tmpDir: string;
@@ -89,5 +103,47 @@ describe('buildPinForDirectorySource', () => {
     expect(pin.bundleBaseUrl).toBeUndefined();
     expect(pin.repoUrl).toBeUndefined();
     expect(pin.artefactUrl).toBeUndefined();
+  });
+});
+
+describe('runHeadless', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(path.join(os.tmpdir(), 'agentman-headless-'));
+  });
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  it('exits non-zero and does not install when an artefact fails integrity check', async () => {
+    const { resolveDiscoverySkills } = await import('../../src/discovery/index.js');
+    vi.mocked(resolveDiscoverySkills).mockResolvedValueOnce({
+      skills: [],
+      rovoAgents: [],
+      errors: [
+        {
+          source: { name: 'test-artefact', type: 'artefact', url: 'https://cdn.example.com/skill.zip' },
+          error: 'Bundle integrity check failed.',
+          isIntegrity: true,
+        },
+      ],
+      bundleVersion: undefined,
+    });
+
+    const configPath = path.join(tmpDir, 'ai-skills.yml');
+    await writeFile(configPath, 'tools: claude-code\nscope: repo\nskills:\n  - my-skill\n');
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((_code) => {
+      throw new Error('process.exit called');
+    });
+
+    await expect(
+      runHeadless('https://cdn.example.com/discovery', configPath, false),
+    ).rejects.toThrow('process.exit called');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
   });
 });

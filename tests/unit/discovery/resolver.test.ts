@@ -20,12 +20,18 @@ const mockBundleSkills: SkillInfo[] = [
   },
 ];
 
-vi.mock('../../../src/bundle/downloader.js', () => ({
-  downloadBundle: vi.fn(async () => ({
-    zipPath: '/tmp/bundle.zip',
-    version: '1.0.0',
-  })),
-}));
+vi.mock('../../../src/bundle/downloader.js', async () => {
+  const actual = await vi.importActual<typeof import('../../../src/bundle/downloader.js')>(
+    '../../../src/bundle/downloader.js',
+  );
+  return {
+    ...actual,
+    downloadBundle: vi.fn(async () => ({
+      zipPath: '/tmp/bundle.zip',
+      version: '1.0.0',
+    })),
+  };
+});
 
 vi.mock('../../../src/bundle/extractor.js', () => ({
   extractBundle: vi.fn(async () => ({
@@ -51,6 +57,14 @@ vi.mock('../../../src/discovery/git-importer.js', () => ({
     skills: mockGitSkills,
     clonePath: '/tmp/git-cache/repo',
   })),
+}));
+
+vi.mock('../../../src/bundle/artefact-downloader.js', () => ({
+  downloadArtefact: vi.fn(),
+}));
+
+vi.mock('../../../src/bundle/artefact-scanner.js', () => ({
+  scanArtefactForSkills: vi.fn(async () => ({ skills: [] })),
 }));
 
 const { resolveDiscoverySkills } = await import(
@@ -141,5 +155,41 @@ describe('resolveDiscoverySkills', () => {
     const result = await resolveDiscoverySkills(doc);
     expect(result.skills).toHaveLength(0);
     expect(result.errors).toHaveLength(0);
+  });
+
+  it('tags artefact integrity errors with isIntegrity: true', async () => {
+    const { downloadArtefact } = await import('../../../src/bundle/artefact-downloader.js');
+    const { IntegrityError } = await import('../../../src/bundle/downloader.js');
+
+    vi.mocked(downloadArtefact).mockRejectedValueOnce(
+      new IntegrityError('expected-hash', 'actual-hash'),
+    );
+
+    const doc: DiscoveryDocument = {
+      version: '1',
+      sources: [{ name: 'bad-artefact', type: 'artefact', url: 'https://cdn.example.com/skill.zip' }],
+    };
+
+    const result = await resolveDiscoverySkills(doc);
+
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]!.source.name).toBe('bad-artefact');
+    expect(result.errors[0]!.isIntegrity).toBe(true);
+    expect(result.skills).toHaveLength(0);
+  });
+
+  it('does not tag non-integrity errors with isIntegrity', async () => {
+    const { importGitSkills } = await import('../../../src/discovery/git-importer.js');
+    vi.mocked(importGitSkills).mockRejectedValueOnce(new Error('network failure'));
+
+    const doc: DiscoveryDocument = {
+      version: '1',
+      sources: [{ name: 'bad-repo', type: 'git', url: 'https://github.com/example/bad.git' }],
+    };
+
+    const result = await resolveDiscoverySkills(doc);
+
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]!.isIntegrity).toBe(false);
   });
 });

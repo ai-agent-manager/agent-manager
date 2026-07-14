@@ -12,6 +12,7 @@ import { scanBundle, type SkillInfo, type RovoAgentInfo } from '../bundle/scanne
 import { setCurrentBundle } from '../bundle/cache.js';
 import { importGitSkills } from './git-importer.js';
 import { downloadArtefact } from '../bundle/artefact-downloader.js';
+import { IntegrityError } from '../bundle/downloader.js';
 import { scanArtefactForSkills } from '../bundle/artefact-scanner.js';
 import { buildSourcePin, type ArtefactSkillSource } from '../bundle/skill-source.js';
 import type { DiscoveryDocument, DiscoverySource } from './types.js';
@@ -22,7 +23,7 @@ export interface ResolvedSources {
   /** All rovo agents successfully resolved from the discovery document. */
   rovoAgents: RovoAgentInfo[];
   /** Sources that failed to resolve, with error details. */
-  errors: Array<{ source: DiscoverySource; error: string }>;
+  errors: Array<{ source: DiscoverySource; error: string; isIntegrity: boolean }>;
   /** Bundle version if an HTTP bundle was downloaded (for cache management). */
   bundleVersion?: string;
 }
@@ -56,7 +57,7 @@ export async function resolveDiscoverySkills(
   const artefactSha256 = options?.artefactSha256;
   const allSkills: SkillInfo[] = [];
   const allRovoAgents: RovoAgentInfo[] = [];
-  const errors: Array<{ source: DiscoverySource; error: string }> = [];
+  const errors: Array<{ source: DiscoverySource; error: string; isIntegrity: boolean }> = [];
   let bundleVersion: string | undefined;
 
   for (const source of discovery.sources) {
@@ -107,7 +108,8 @@ export async function resolveDiscoverySkills(
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      errors.push({ source, error: message });
+      const isIntegrity = err instanceof IntegrityError;
+      errors.push({ source, error: message, isIntegrity });
     }
   }
 

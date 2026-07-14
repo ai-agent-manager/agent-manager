@@ -59,6 +59,7 @@
     "ajv-formats": "^3.0.1",
     "chalk": "^5.4.1",
     "extract-zip": "^2.0.1",
+    "yauzl": "2.10.0",
     "ink": "^5.1.0",
     "ink-select-input": "^6.0.0",
     "ink-spinner": "^5.0.0",
@@ -70,6 +71,7 @@
   "devDependencies": {
     "@types/node": "^22",
     "@types/react": "^18.3.18",
+    "@types/yauzl": "2.10.3",
     "ink-testing-library": "^4.0.0",
     "oxlint": "^1.71.0",
     "tsx": "^4.19.0",
