@@ -20,7 +20,7 @@ export interface DiscoveryAuth {
   scopes?: string[];
 }
 
-export type SourceType = 'http' | 'git';
+export type SourceType = 'http' | 'git' | 'artefact';
 export type SourceStatus = 'official' | 'community';
 
 export interface DiscoverySource {

@@ -60,6 +60,12 @@ export interface ArtefactSkillSource {
   artefactUrl: string;
   /** Optional SHA-256 hex digest for integrity verification. */
   sha256?: string;
+  /**
+   * Resolved artefact version. Derived from the URL, the embedded
+   * manifest.json, or the content hash — populated by the artefact
+   * downloader after acquisition.
+   */
+  version?: string;
   installLayout: InstallLayout;
 }
 
@@ -105,6 +111,8 @@ export interface SkillSourcePin {
   // Artefact fields
   artefactUrl?: string;
   sha256?: string;
+  /** Resolved artefact version pinned at install time. */
+  artefactVersion?: string;
   // Bundle fields (legacy)
   bundleVersion?: string;
   bundleBaseUrl?: string;
@@ -139,6 +147,16 @@ export const GITHUB_HOSTS_DEFAULT: readonly string[] = ['github.com'];
 function isGithubRepoParsed(parsed: URL, knownHosts: readonly string[]): boolean {
   const segments = parsed.pathname.split('/').filter(Boolean);
   return knownHosts.includes(parsed.hostname) && segments.length >= 2;
+}
+
+/** Hosts considered loopback for the artefact https requirement. */
+function isLoopbackHost(hostname: string): boolean {
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '::1' ||
+    hostname === '[::1]'
+  );
 }
 
 /**
@@ -222,6 +240,12 @@ export async function resolveSkillSource(
 
     // ── Artefact source — checked before repo to catch GitHub release-asset .zip URLs ──
     if (parsed.pathname.toLowerCase().endsWith('.zip')) {
+      if (parsed.protocol === 'http:' && !isLoopbackHost(parsed.hostname)) {
+        throw new Error(
+          `Artefact sources must use https: ${input}\n` +
+          `  Plain http is only allowed for localhost during development.`,
+        );
+      }
       return {
         type: 'artefact',
         artefactUrl: input,
@@ -319,6 +343,7 @@ export function buildSourcePin(
       ...base,
       artefactUrl: source.artefactUrl,
       sha256: source.sha256,
+      artefactVersion: source.version,
     };
   }
 
@@ -331,3 +356,21 @@ export function buildSourcePin(
 }
 
 // ── Display helpers ───────────────────────────────────────────────────────────
+
+/**
+ * Return a human-readable description of a SkillSource for use in CLI output.
+ */
+export function describeSkillSource(source: SkillSource): string {
+  if (source.type === 'repo') {
+    const ref = source.ref ?? source.defaultBranch ?? 'main';
+    const skillSegment = source.skillPath ? ` (${source.skillPath})` : '';
+    return `repo: ${source.repoUrl}@${ref}${skillSegment}`;
+  }
+  if (source.type === 'artefact') {
+    return `artefact: ${source.artefactUrl}`;
+  }
+  return source.baseUrl
+    ? `bundle: ${source.baseUrl}`
+    : `bundle: ${source.dirPath ?? '(local)'}`;
+}
+

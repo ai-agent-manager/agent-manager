@@ -51,7 +51,7 @@ Skip the menu entirely with a config file:
 npx -y @ai-agent-manager/cli@latest <source> --config .github/ai-skills.yml
 ```
 
-The `<source>` can be a **bundle URL** or a **local directory** — agentman detects the type automatically.
+The `<source>` can be a **bundle URL**, a **GitHub repository URL**, or a **local directory** — agentman detects the type automatically. Published artefacts (`.zip` URLs) are supported as sources within a [discovery document](docs/discovery.md).
 
 **Config format:**
 
@@ -61,6 +61,7 @@ scope: repo              # repo (default) | system
 skills:
   - my-skill-name
 bundle-version: 1.2.0   # optional — bundle sources only, omit to use latest
+artefact-sha256: <hex>  # optional — artefact sources only, pins the expected zip hash
 ```
 
 | Field | Required | Description |
@@ -69,8 +70,62 @@ bundle-version: 1.2.0   # optional — bundle sources only, omit to use latest
 | `scope` | No | `repo` installs into the current directory; `system` installs to the home directory |
 | `skills` | Yes | Names of skills to install (matched by directory name) |
 | `bundle-version` | No | Bundle sources only — pin to a specific version, or omit to track latest |
+| `artefact-sha256` | No | Artefact sources only — expected SHA-256 of the zip; the install fails if the download doesn't match |
 
 Unknown skill names log a warning and are skipped. If no valid skills are found, the tool exits non-zero.
+
+#### Install from a GitHub repository
+
+Point agentman at any GitHub repository that contains skills under a `skills/` directory:
+
+```
+my-skills-repo/
+  skills/
+    my-skill/
+      SKILL.md
+    another-skill/
+      SKILL.md
+```
+
+```bash
+npx -y @ai-agent-manager/cli@latest https://github.com/org/my-skills-repo \
+  --config .github/ai-skills.yml
+```
+
+For private repositories, set `GITHUB_TOKEN` to a personal access token with repo read access:
+
+```bash
+GITHUB_TOKEN=ghp_... npx -y @ai-agent-manager/cli@latest https://github.com/org/my-skills-repo \
+  --config .github/ai-skills.yml
+```
+
+To pin to a specific branch or tag, use the `/tree/<ref>` GitHub URL format:
+
+```bash
+npx -y @ai-agent-manager/cli@latest https://github.com/org/my-skills-repo/tree/v2.0 \
+  --config .github/ai-skills.yml
+```
+
+**GitHub Actions example:**
+
+```yaml
+- name: Install AI skills
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  run: |
+    npx -y @ai-agent-manager/cli@latest https://github.com/org/my-skills-repo \
+      --config .github/ai-skills.yml
+```
+
+#### Install from a published artefact (via discovery)
+
+Artefacts (versioned `.zip` skill packages) are consumed through a [discovery document](docs/discovery.md) — you add an `artefact` source entry pointing to the zip URL, and agentman downloads and installs it during discovery resolution. **Artefacts are untrusted third-party packages** — review the source before adding it to your discovery document. See [docs/discovery.md](docs/discovery.md) for the full guide.
+
+The version is resolved from the filename (`my-skill-1.2.0.zip`), the URL path, an embedded `manifest.json`, or — as a last resort — the content hash. The resolved version and source URL are pinned in the install record so the exact artefact can be reproduced and tracked later.
+
+Integrity is verified against a `.sha256` sidecar published next to the zip (e.g. `my-skill-1.2.0.zip.sha256`). If no sidecar is found the download proceeds with a warning; if the hash doesn't match, the download is rejected. For an out-of-band pin that doesn't trust the artefact server, set `artefact-sha256` in `ai-skills.yml` — it takes precedence over the sidecar.
+
+Artefact URLs must use `https://`. Plain `http://` is only accepted for localhost (local development against a mock server).
 
 #### Install from a bundle server
 

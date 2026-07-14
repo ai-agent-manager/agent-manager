@@ -120,6 +120,14 @@ describe('writeConfig', () => {
     const raw = await readFile(path.join(tempDir, 'config.json'), 'utf-8');
     expect(JSON.parse(raw)).toEqual({ installations: {} });
   });
+
+  it('leaves no temp files behind after writing', async () => {
+    await writeConfig({ installations: {} });
+
+    const { readdir } = await import('node:fs/promises');
+    const entries = await readdir(tempDir);
+    expect(entries.filter((e) => e.endsWith('.tmp'))).toEqual([]);
+  });
 });
 
 describe('recordInstall', () => {

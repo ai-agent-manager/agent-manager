@@ -73,8 +73,8 @@
           },
           "type": {
             "type": "string",
-            "enum": ["http", "git"],
-            "description": "How to fetch the source. 'http' downloads a bundle directly. 'git' clones a repository in Claude Code plugin marketplace format."
+            "enum": ["http", "git", "artefact"],
+            "description": "How to fetch the source. 'http' downloads a bundle directly. 'git' clones a repository in Claude Code plugin marketplace format. 'artefact' downloads a packaged skill zip."
           },
           "url": {
             "type": "string",

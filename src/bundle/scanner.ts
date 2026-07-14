@@ -7,6 +7,7 @@ import { Ajv2020 } from 'ajv/dist/2020.js';
 import type { ErrorObject } from 'ajv/dist/2020.js';
 import { parseFrontmatter, type AssetConfig } from '../lib/frontmatter.js';
 import type { AgentManifestEntry } from './manifest.js';
+import type { SkillSourcePin } from './skill-source.js';
 
 // ---------------------------------------------------------------------------
 // Schema validation setup
@@ -158,6 +159,8 @@ export interface RovoAgentConfigRaw {
 // ---------------------------------------------------------------------------
 
 export interface SkillInfo {
+  /** Resolved source pin — set for artefact and repo skills; undefined for bundle skills. */
+  sourcePin?: SkillSourcePin;
   /** Directory name (e.g., 'web-frontend-skill') */
   dirName: string;
   /** Absolute path to the skill directory */

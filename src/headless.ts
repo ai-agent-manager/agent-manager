@@ -16,6 +16,8 @@ export interface HeadlessConfig {
   scope: InstallScope;
   skills: string[];
   bundleVersion?: string;
+  /** Expected SHA-256 of the artefact zip — artefact sources only. */
+  artefactSha256?: string;
 }
 
 export async function parseHeadlessConfig(configPath: string): Promise<HeadlessConfig> {
@@ -45,11 +47,23 @@ export async function parseHeadlessConfig(configPath: string): Promise<HeadlessC
   const bundleVersion =
     parsed["bundle-version"] && typeof parsed["bundle-version"] === "string" ? parsed["bundle-version"] : undefined;
 
+  let artefactSha256: string | undefined;
+  if (parsed["artefact-sha256"] !== undefined) {
+    const value = String(parsed["artefact-sha256"]);
+    if (!/^[0-9a-f]{64}$/i.test(value)) {
+      throw new Error(
+        'ai-skills.yml: "artefact-sha256" must be a 64-character hex SHA-256 string'
+      );
+    }
+    artefactSha256 = value.toLowerCase();
+  }
+
   return {
     tools,
     scope,
     skills: parsed.skills as string[],
     bundleVersion,
+    artefactSha256,
   };
 }
 
@@ -82,10 +96,21 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
     console.log("[agentman] Discovery document found");
 
     console.log(`[agentman] Resolving ${source.discovery.sources.length} source(s) from discovery document...`);
-    const result = await resolveDiscoverySkills(source.discovery, undefined, (msg) => console.log(`[agentman] ${msg}`));
+    const result = await resolveDiscoverySkills(source.discovery, undefined, (msg) => console.log(`[agentman] ${msg}`), {
+      artefactSha256: config.artefactSha256,
+    });
 
-    for (const { source: failedSource, error } of result.errors) {
-      console.warn(`[agentman] WARNING: Failed to resolve source '${failedSource.name}': ${error}`);
+    for (const { source: failedSource, error, isIntegrity } of result.errors) {
+      if (isIntegrity) {
+        console.error(`[agentman] ERROR: Integrity check failed for '${failedSource.name}': ${error}`);
+      } else {
+        console.warn(`[agentman] WARNING: Failed to resolve source '${failedSource.name}': ${error}`);
+      }
+    }
+
+    const hasIntegrityError = result.errors.some((e) => e.isIntegrity);
+    if (hasIntegrityError) {
+      process.exit(1);
     }
 
     allSkills = result.skills;

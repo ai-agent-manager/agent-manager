@@ -21,6 +21,10 @@ config=()
 local_rules="$(git rev-parse --git-dir)/betterleaks-local.toml"
 [[ -f $local_rules ]] && config=(--config "$local_rules")
 
-betterleaks git . --pre-commit --staged --redact --no-banner "${config[@]}"
+if [[ ${#config[@]} -gt 0 ]]; then
+  betterleaks git . --pre-commit --staged --redact --no-banner "${config[@]}"
+else
+  betterleaks git . --pre-commit --staged --redact --no-banner
+fi
 
 npx oxlint

@@ -9,6 +9,7 @@ import {
   isBundleSource,
   resolveSkillSource,
   buildSourcePin,
+  describeSkillSource,
   type RepoSkillSource,
   type ArtefactSkillSource,
   type BundleSkillSource,
@@ -204,6 +205,22 @@ describe('resolveSkillSource — artefact URLs', () => {
       'https://github.com/org/repo/releases/download/v1.0/skill.zip',
     );
   });
+
+  it('rejects plain http artefact URLs', async () => {
+    await expect(resolveSkillSource('http://cdn.example.com/skill.zip')).rejects.toThrow(
+      'Artefact sources must use https',
+    );
+  });
+
+  it('allows http artefact URLs on localhost for development', async () => {
+    const result = await resolveSkillSource('http://localhost:8080/agents/my-skill-1.0.0.zip');
+    expect(result.type).toBe('artefact');
+  });
+
+  it('allows http artefact URLs on 127.0.0.1 for development', async () => {
+    const result = await resolveSkillSource('http://127.0.0.1:8080/my-skill.zip');
+    expect(result.type).toBe('artefact');
+  });
 });
 
 describe('resolveSkillSource — bundle (legacy) URLs', () => {
@@ -292,6 +309,20 @@ describe('buildSourcePin', () => {
     expect(pin.bundleVersion).toBeUndefined();
   });
 
+  it('preserves sha256 and version in an artefact pin', () => {
+    const source: ArtefactSkillSource = {
+      type: 'artefact',
+      artefactUrl: 'https://cdn.example.com/skills/my-skill/1.2.0/my-skill.zip',
+      sha256: 'a'.repeat(64),
+      version: '1.2.0',
+      installLayout: 'namespaced',
+    };
+    const pin = buildSourcePin(source);
+    expect(pin.sourceType).toBe('artefact');
+    expect(pin.sha256).toBe('a'.repeat(64));
+    expect(pin.artefactVersion).toBe('1.2.0');
+  });
+
   it('builds a pin for a bundle URL source with bundleVersion', async () => {
     const source = await resolveSkillSource('https://cdn.example.com/agents');
     const pin = buildSourcePin(source, '2026.05.01');
@@ -307,6 +338,73 @@ describe('buildSourcePin', () => {
     expect(pin.sourceType).toBe('bundle');
     expect(pin.bundleVersion).toBe('dev-202605010900');
     expect(pin.bundleBaseUrl).toBeUndefined();
+  });
+});
+
+// ── describeSkillSource ───────────────────────────────────────────────────────
+
+describe('describeSkillSource', () => {
+  it('describes a repo source with ref', () => {
+    const source: RepoSkillSource = {
+      type: 'repo',
+      repoUrl: 'https://github.com/org/repo',
+      ref: 'v1.2.0',
+      installLayout: 'namespaced',
+    };
+    expect(describeSkillSource(source)).toBe('repo: https://github.com/org/repo@v1.2.0');
+  });
+
+  it('describes a repo source with skillPath', () => {
+    const source: RepoSkillSource = {
+      type: 'repo',
+      repoUrl: 'https://github.com/org/repo',
+      ref: 'main',
+      skillPath: 'skills/my-skill',
+      installLayout: 'namespaced',
+    };
+    expect(describeSkillSource(source)).toBe('repo: https://github.com/org/repo@main (skills/my-skill)');
+  });
+
+  it('falls back to defaultBranch when ref is absent', () => {
+    const source: RepoSkillSource = {
+      type: 'repo',
+      repoUrl: 'https://github.com/org/repo',
+      defaultBranch: 'develop',
+      installLayout: 'namespaced',
+    };
+    expect(describeSkillSource(source)).toBe('repo: https://github.com/org/repo@develop');
+  });
+
+  it('describes an artefact source', () => {
+    const source: ArtefactSkillSource = {
+      type: 'artefact',
+      artefactUrl: 'https://cdn.example.com/skills/my-skill/1.0.0/skill.zip',
+      installLayout: 'namespaced',
+    };
+    expect(describeSkillSource(source)).toBe('artefact: https://cdn.example.com/skills/my-skill/1.0.0/skill.zip');
+  });
+
+  it('describes a bundle URL source', () => {
+    const source: BundleSkillSource = {
+      type: 'bundle',
+      baseUrl: 'https://cdn.example.com/agents',
+      installLayout: 'flat',
+    };
+    expect(describeSkillSource(source)).toBe('bundle: https://cdn.example.com/agents');
+  });
+
+  it('describes a bundle directory source', () => {
+    const source: BundleSkillSource = {
+      type: 'bundle',
+      dirPath: '/home/user/.agentman/bundles/2026.05.01',
+      installLayout: 'flat',
+    };
+    expect(describeSkillSource(source)).toBe('bundle: /home/user/.agentman/bundles/2026.05.01');
+  });
+
+  it('describes a bundle source with neither baseUrl nor dirPath as (local)', () => {
+    const source: BundleSkillSource = { type: 'bundle', installLayout: 'flat' };
+    expect(describeSkillSource(source)).toBe('bundle: (local)');
   });
 });
 

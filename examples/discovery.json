@@ -23,6 +23,12 @@
       "type": "http",
       "url": "https://skills.example.com/bundles/deployment-tools",
       "status": "community"
+    },
+    {
+      "name": "code-reviewer",
+      "type": "artefact",
+      "url": "https://cdn.example.com/skills/code-reviewer-1.0.0.zip",
+      "status": "community"
     }
   ]
 }

@@ -73,10 +73,14 @@ export abstract class SkillProvisioner implements Provisioner {
       const skillPath = path.join(skillsDir, entry.name);
       const version = await resolveSkillVersion(skillPath);
       const record = toolInstalls[entry.name];
+      // Repo/artefact installs have no bundle version — surface the version
+      // coordinate pinned at install time instead (artefact version or git ref).
+      const pinnedVersion = record?.sourcePin?.artefactVersion ?? record?.sourcePin?.ref;
+      const recordVer = record ? getRecordVersion(record) : undefined;
 
       installed.push({
         name: entry.name,
-        bundleVersion: (version ?? (record ? getRecordVersion(record) : undefined)) || 'unknown',
+        bundleVersion: (version ?? (recordVer || undefined) ?? pinnedVersion) || 'unknown',
         installedAt: record?.installedAt ?? 'unknown',
         method: (record?.method as 'symlink' | 'copy') ?? (version ? 'symlink' : 'copy'),
         path: skillPath,
@@ -102,19 +106,21 @@ export abstract class SkillProvisioner implements Provisioner {
           path: linkPath,
         });
 
+        const effectivePin = item.sourcePin ?? sourcePin;
+
         // Record in the appropriate config
         if (this.scope === 'repo' && this.repoRoot) {
           await recordRepoInstall(this.repoRoot, this.id, item.dirName, {
             installedAt: new Date().toISOString(),
             method: linkResult.method,
-            sourcePin,
+            sourcePin: effectivePin,
           }, bundleVersion || undefined);
         } else {
           await recordInstall(this.id, item.dirName, {
             bundleVersion: bundleVersion || undefined,
             installedAt: new Date().toISOString(),
             method: linkResult.method,
-            sourcePin,
+            sourcePin: effectivePin,
           });
         }
       } catch (error) {

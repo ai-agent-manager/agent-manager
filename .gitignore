@@ -19,3 +19,21 @@ chrome-extension/agentman.pem
 
 # Pre-built .crx asset — generated at publish time via `npm run build:chrome-extension`
 assets/agentman.crx
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ── Environment ───────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Test coverage ─────────────────────────────────────────────────────────────
+coverage/

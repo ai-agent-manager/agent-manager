@@ -28,7 +28,11 @@ while read -r _local_ref local_sha _remote_ref remote_sha; do
   else
     range="$remote_sha..$local_sha"
   fi
-  betterleaks git . --log-opts="$range" --redact --no-banner "${config[@]}"
+  if [[ ${#config[@]} -gt 0 ]]; then
+    betterleaks git . --log-opts="$range" --redact --no-banner "${config[@]}"
+  else
+    betterleaks git . --log-opts="$range" --redact --no-banner
+  fi
 done
 
 npm run typecheck
