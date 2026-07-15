@@ -7,29 +7,32 @@ This directory contains an [Imposter](https://docs.imposter.sh) mock that replic
 ```
 mocks/
 ├── .imposter.yaml          # Imposter engine and plugin config
-├── agents-config.yaml      # REST plugin routes — discovery doc + /agents/* files
+├── agents-config.yaml      # REST plugin routes — discovery doc + /agents/* + /artefacts/*
 ├── build-bundles.sh        # Script to rebuild bundle.zip after content changes
 ├── .well-known/
 │   └── agents/
 │       └── discovery.json  # Discovery document served at /.well-known/agents/discovery.json
-└── agents/
-    ├── index.json          # Version index — lists available bundle versions
-    └── 0.1.0/
-        ├── manifest.json   # Bundle manifest — agent IDs, names, tags, phases
-        ├── bundle.zip      # Downloadable bundle (built from this directory)
-        ├── bundle.zip.sha256
-        ├── react-component-generator/
-        │   ├── README.md         # Display metadata (frontmatter) + docs
-        │   └── SKILL.md          # agentskills.io skill definition
-        ├── api-endpoint-generator/
-        │   ├── README.md
-        │   └── SKILL.md
-        ├── agent-sprint-planner/
-        │   ├── README.md
-        │   └── rovo-agent.yaml   # Rovo agent definition for Playwright automation
-        └── agent-release-notes/
-            ├── README.md
-            └── rovo-agent.yaml
+├── agents/
+│   ├── index.json          # Version index — lists available bundle versions
+│   └── 0.1.0/
+│       ├── manifest.json   # Bundle manifest — agent IDs, names, tags, phases
+│       ├── bundle.zip      # Downloadable bundle (built from this directory)
+│       ├── bundle.zip.sha256
+│       ├── react-component-generator/
+│       │   ├── README.md         # Display metadata (frontmatter) + docs
+│       │   └── SKILL.md          # agentskills.io skill definition
+│       ├── api-endpoint-generator/
+│       │   ├── README.md
+│       │   └── SKILL.md
+│       ├── agent-sprint-planner/
+│       │   ├── README.md
+│       │   └── rovo-agent.yaml   # Rovo agent definition for Playwright automation
+│       └── agent-release-notes/
+│           ├── README.md
+│           └── rovo-agent.yaml
+└── artefacts/
+    ├── artefact-test.zip        # Sample artefact zip (contains my-artefact-skill)
+    └── artefact-test.zip.sha256 # Integrity sidecar
 ```
 
 ## Starting and stopping
