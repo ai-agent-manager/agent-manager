@@ -104,8 +104,8 @@ async function acquireDiscoverySkills(
             onAuthPrompt,
         );
         bearerToken = authResult.bearerToken;
-        if (!authResult.fromCache) {
-            warnings.push("Tokens stored at ~/.agentman/auth/ (filesystem, not keychain)");
+        if (!authResult.fromCache && authResult.backend === 'filesystem') {
+            warnings.push("Tokens stored at ~/.agentman/auth/ (OS keychain unavailable, using filesystem with restricted permissions)");
         }
     }
 

@@ -1,16 +1,19 @@
 /**
- * Token storage backed by the filesystem at ~/.agentman/auth/.
+ * Token storage with OS keychain as primary backend and filesystem fallback.
  *
- * Tokens are stored as JSON files keyed by the domain of the base URL.
- * File permissions are restricted to the owning user (0o600).
- *
- * NOTE: This is filesystem-based storage — not a system keychain.
- * A warning is emitted when tokens are first written.
+ * Uses @napi-rs/keyring for macOS Keychain, Windows Credential Manager, and
+ * Linux Secret Service (libsecret). Falls back to JSON files at
+ * ~/.agentman/auth/ (permissions 0o600) when the keychain is unavailable
+ * (e.g. headless CI, missing libsecret).
  */
 
 import { readFile, writeFile, mkdir, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { getAuthDir } from '../config/paths.js';
+
+const KEYRING_SERVICE = 'agentman';
+
+export type TokenBackend = 'keychain' | 'filesystem';
 
 export interface StoredTokens {
   /** The token sent as Bearer — ID token when available (required by Cognito authorisers), otherwise access token. */
@@ -24,20 +27,79 @@ export interface StoredTokens {
   clientId: string;
 }
 
-/**
- * Derive a stable filename from a base URL.
- * Uses the hostname (dots replaced with underscores) to avoid path issues.
- */
+function keychainUser(baseUrl: string): string {
+  return new URL(baseUrl).hostname;
+}
+
 function tokenFileName(baseUrl: string): string {
   const hostname = new URL(baseUrl).hostname.replace(/\./g, '_');
   return `${hostname}.json`;
 }
 
-/**
- * Load stored tokens for a given base URL.
- * Returns `null` if no tokens are stored.
- */
-export async function loadTokens(baseUrl: string): Promise<StoredTokens | null> {
+// ── Keychain helpers ──────────────────────────────────────────────────────
+
+let _keychainAvailable: boolean | undefined;
+
+function getKeyringEntry(baseUrl: string) {
+  // Cache the availability check so we only try require() once
+  if (_keychainAvailable === false) return null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { Entry } = require('@napi-rs/keyring');
+    _keychainAvailable = true;
+    return new Entry(KEYRING_SERVICE, keychainUser(baseUrl));
+  } catch {
+    _keychainAvailable = false;
+    return null;
+  }
+}
+
+function tryKeychainLoad(baseUrl: string): StoredTokens | null {
+  const entry = getKeyringEntry(baseUrl);
+  if (!entry) return null;
+  try {
+    const raw = entry.getPassword();
+    if (!raw) return null;
+    return JSON.parse(raw) as StoredTokens;
+  } catch {
+    return null;
+  }
+}
+
+function tryKeychainSave(baseUrl: string, tokens: StoredTokens): boolean {
+  const entry = getKeyringEntry(baseUrl);
+  if (!entry) return false;
+  try {
+    entry.setPassword(JSON.stringify(tokens));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function tryKeychainDelete(baseUrl: string): void {
+  const entry = getKeyringEntry(baseUrl);
+  if (!entry) return;
+  try {
+    entry.deletePassword();
+  } catch {
+    // Ignore — entry may not exist
+  }
+}
+
+/** Reset the cached keychain availability flag (for testing). */
+export function _resetKeychainCache(): void {
+  _keychainAvailable = undefined;
+}
+
+/** Force the keychain to be treated as unavailable (for testing). */
+export function _disableKeychain(): void {
+  _keychainAvailable = false;
+}
+
+// ── Filesystem helpers ────────────────────────────────────────────────────
+
+async function fsLoad(baseUrl: string): Promise<StoredTokens | null> {
   const filePath = path.join(getAuthDir(), tokenFileName(baseUrl));
   try {
     const raw = await readFile(filePath, 'utf-8');
@@ -47,32 +109,17 @@ export async function loadTokens(baseUrl: string): Promise<StoredTokens | null> 
   }
 }
 
-/**
- * Save tokens for a given base URL.
- * Creates the auth directory if it doesn't exist.
- * Restricts file permissions to owner-only (0o600).
- */
-export async function saveTokens(
-  baseUrl: string,
-  tokens: StoredTokens,
-): Promise<void> {
+async function fsSave(baseUrl: string, tokens: StoredTokens): Promise<void> {
   const dir = getAuthDir();
   await mkdir(dir, { recursive: true, mode: 0o700 });
-
   const filePath = path.join(dir, tokenFileName(baseUrl));
   await writeFile(filePath, JSON.stringify(tokens, null, 2), {
     encoding: 'utf-8',
     mode: 0o600,
   });
-
-  // TODO: Replace with OS keychain storage (macOS Keychain / Windows Credential Manager / libsecret)
-  // with filesystem as fallback. See issue #11.
 }
 
-/**
- * Delete stored tokens for a given base URL.
- */
-export async function deleteTokens(baseUrl: string): Promise<void> {
+async function fsDelete(baseUrl: string): Promise<void> {
   const filePath = path.join(getAuthDir(), tokenFileName(baseUrl));
   try {
     await unlink(filePath);
@@ -81,15 +128,34 @@ export async function deleteTokens(baseUrl: string): Promise<void> {
   }
 }
 
-/**
- * Check whether the stored access token has expired (or is about to
- * expire within the given grace period).
- */
+// ── Public API ────────────────────────────────────────────────────────────
+
+export async function loadTokens(baseUrl: string): Promise<StoredTokens | null> {
+  return tryKeychainLoad(baseUrl) ?? await fsLoad(baseUrl);
+}
+
+export async function saveTokens(
+  baseUrl: string,
+  tokens: StoredTokens,
+): Promise<TokenBackend> {
+  if (tryKeychainSave(baseUrl, tokens)) {
+    await fsDelete(baseUrl);
+    return 'keychain';
+  }
+  await fsSave(baseUrl, tokens);
+  return 'filesystem';
+}
+
+export async function deleteTokens(baseUrl: string): Promise<void> {
+  tryKeychainDelete(baseUrl);
+  await fsDelete(baseUrl);
+}
+
 export function isTokenExpired(
   tokens: StoredTokens,
   graceMs = 60_000,
 ): boolean {
-  if (!tokens.expiresAt) return false; // No expiry info — assume valid
+  if (!tokens.expiresAt) return false;
   const expiresAt = new Date(tokens.expiresAt).getTime();
   return Date.now() + graceMs >= expiresAt;
 }

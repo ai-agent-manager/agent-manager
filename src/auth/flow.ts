@@ -14,6 +14,7 @@ import {
   loadTokens,
   isTokenExpired,
   type StoredTokens,
+  type TokenBackend,
 } from './token-store.js';
 import type { DiscoveryAuth } from '../discovery/types.js';
 import { getPlatform } from '../lib/platform.js';
@@ -31,6 +32,8 @@ export interface AuthResult {
   bearerToken: string;
   /** Whether the token was obtained from cache (true) or a fresh login (false). */
   fromCache: boolean;
+  /** Where the token was persisted — 'keychain' (OS credential store) or 'filesystem' (~/.agentman/auth/). */
+  backend?: TokenBackend;
 }
 
 export class AuthFlowError extends Error {
@@ -81,8 +84,8 @@ export async function authenticate(
         cached.refreshToken,
       );
       const tokens = toStoredTokens(refreshed, auth);
-      await saveTokens(baseUrl, tokens);
-      return { bearerToken: tokens.bearerToken, fromCache: false };
+      const backend = await saveTokens(baseUrl, tokens);
+      return { bearerToken: tokens.bearerToken, fromCache: false, backend };
     } catch {
       // Refresh failed — fall through to interactive login
     }
@@ -133,9 +136,9 @@ async function interactiveLogin(
   );
 
   const tokens = toStoredTokens(tokenResponse, auth);
-  await saveTokens(baseUrl, tokens);
+  const backend = await saveTokens(baseUrl, tokens);
 
-  return { bearerToken: tokens.bearerToken, fromCache: false };
+  return { bearerToken: tokens.bearerToken, fromCache: false, backend };
 }
 
 /**
