@@ -13,7 +13,8 @@ import path from 'node:path';
 import { getAuthDir } from '../config/paths.js';
 
 export interface StoredTokens {
-  accessToken: string;
+  /** The token sent as Bearer — ID token when available (required by Cognito authorisers), otherwise access token. */
+  bearerToken: string;
   refreshToken?: string;
   /** ISO 8601 timestamp when the access token expires (if known). */
   expiresAt?: string;

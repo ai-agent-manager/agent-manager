@@ -92,7 +92,7 @@ async function acquireDiscoverySkills(
     setLoadingMessage: (message: string) => void,
     onAuthPrompt: (authorizeUrl: string) => void,
 ): Promise<{ skills: SkillInfo[]; rovoAgents: RovoAgentInfo[]; warnings: string[]; bundleVersion?: string }> {
-    let accessToken: string | undefined;
+    let bearerToken: string | undefined;
     const warnings: string[] = [];
 
     // Handle authentication if required
@@ -103,7 +103,7 @@ async function acquireDiscoverySkills(
             source.discovery.auth,
             onAuthPrompt,
         );
-        accessToken = authResult.accessToken;
+        bearerToken = authResult.bearerToken;
         if (!authResult.fromCache) {
             warnings.push("Tokens stored at ~/.agentman/auth/ (filesystem, not keychain)");
         }
@@ -112,7 +112,7 @@ async function acquireDiscoverySkills(
     setLoadingMessage("Resolving skills from discovery document...");
     const result = await resolveDiscoverySkills(
         source.discovery,
-        accessToken,
+        bearerToken,
         setLoadingMessage,
     );
 

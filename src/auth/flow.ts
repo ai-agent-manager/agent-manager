@@ -20,13 +20,15 @@ import { getPlatform } from '../lib/platform.js';
 
 export interface TokenResponse {
   access_token: string;
+  id_token?: string;
   refresh_token?: string;
   expires_in?: number;
   token_type: string;
 }
 
 export interface AuthResult {
-  accessToken: string;
+  /** The token to send as Bearer — prefers id_token (required by Cognito authorisers), falls back to access_token. */
+  bearerToken: string;
   /** Whether the token was obtained from cache (true) or a fresh login (false). */
   fromCache: boolean;
 }
@@ -64,7 +66,7 @@ export async function authenticate(
   // Check cached tokens first
   const cached = await loadTokens(baseUrl);
   if (cached && !isTokenExpired(cached)) {
-    return { accessToken: cached.accessToken, fromCache: true };
+    return { bearerToken: cached.bearerToken, fromCache: true };
   }
 
   // Fetch OIDC configuration
@@ -80,7 +82,7 @@ export async function authenticate(
       );
       const tokens = toStoredTokens(refreshed, auth);
       await saveTokens(baseUrl, tokens);
-      return { accessToken: tokens.accessToken, fromCache: false };
+      return { bearerToken: tokens.bearerToken, fromCache: false };
     } catch {
       // Refresh failed — fall through to interactive login
     }
@@ -133,7 +135,7 @@ async function interactiveLogin(
   const tokens = toStoredTokens(tokenResponse, auth);
   await saveTokens(baseUrl, tokens);
 
-  return { accessToken: tokens.accessToken, fromCache: false };
+  return { bearerToken: tokens.bearerToken, fromCache: false };
 }
 
 /**
@@ -206,7 +208,7 @@ function toStoredTokens(
   auth: DiscoveryAuth,
 ): StoredTokens {
   const tokens: StoredTokens = {
-    accessToken: response.access_token,
+    bearerToken: response.id_token ?? response.access_token,
     oidcDiscoveryUrl: auth.oidcDiscoveryUrl!,
     clientId: auth.clientId!,
   };

@@ -66,7 +66,7 @@ export async function resolveDiscoverySkills(
         case 'http': {
           onProgress?.(`Downloading source bundle: ${source.name}...`);
           // For HTTP sources, the URL is the base URL for the bundle index
-          const { zipPath, version } = await downloadBundle(source.url);
+          const { zipPath, version } = await downloadBundle(source.url, undefined, accessToken);
           const result = await extractBundle(zipPath);
           if (result.isNew) {
             await setCurrentBundle(result.manifest.version);

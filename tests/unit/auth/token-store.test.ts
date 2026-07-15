@@ -14,7 +14,7 @@ const { loadTokens, saveTokens, deleteTokens, isTokenExpired } = await import(
 );
 
 const sampleTokens: StoredTokens = {
-  accessToken: 'access-123',
+  bearerToken: 'access-123',
   refreshToken: 'refresh-456',
   expiresAt: new Date(Date.now() + 3600_000).toISOString(),
   oidcDiscoveryUrl: 'https://auth.example.com/.well-known/openid-configuration',
@@ -43,14 +43,14 @@ describe('token-store', () => {
       const filePath = path.join(tempDir, 'example_com.json');
       const raw = await readFile(filePath, 'utf-8');
       const parsed = JSON.parse(raw);
-      expect(parsed.accessToken).toBe('access-123');
+      expect(parsed.bearerToken).toBe('access-123');
     });
 
     it('uses hostname-based filenames (dots to underscores)', async () => {
       await saveTokens('https://api.sub.example.com/path', sampleTokens);
       const filePath = path.join(tempDir, 'api_sub_example_com.json');
       const raw = await readFile(filePath, 'utf-8');
-      expect(JSON.parse(raw).accessToken).toBe('access-123');
+      expect(JSON.parse(raw).bearerToken).toBe('access-123');
     });
   });
 

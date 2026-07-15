@@ -96,11 +96,11 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
     // sourcePin stays undefined for discovery installs — added in the namespaced-layout follow-up.
     console.log("[agentman] Discovery document found");
 
-    let accessToken: string | undefined;
+    let bearerToken: string | undefined;
     if (source.discovery.auth?.required) {
       const envToken = process.env['AGENTMAN_ACCESS_TOKEN'];
       if (envToken) {
-        accessToken = envToken;
+        bearerToken = envToken;
         console.log('[agentman] Using access token from AGENTMAN_ACCESS_TOKEN');
       } else {
         console.log('[agentman] Attempting cached token authentication...');
@@ -114,14 +114,14 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
             process.exit(1);
           },
         );
-        accessToken = authResult.accessToken;
+        bearerToken = authResult.bearerToken;
       }
     }
 
     console.log(`[agentman] Resolving ${source.discovery.sources.length} source(s) from discovery document...`);
     const result = await resolveDiscoverySkills(
       source.discovery,
-      accessToken,
+      bearerToken,
       (msg) => console.log(`[agentman] ${msg}`),
       { artefactSha256: config.artefactSha256 },
     );
