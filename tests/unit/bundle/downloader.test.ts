@@ -155,7 +155,7 @@ describe("fetchIndex", () => {
         expect(result.agents).toHaveLength(2);
         expect(result.agents[0].version).toBe("1.0.0");
         expect(result.agents[1].version).toBe("1.1.0");
-        expect(globalThis.fetch).toHaveBeenCalledWith("https://example.com/agents/index.json");
+        expect(globalThis.fetch).toHaveBeenCalledWith("https://example.com/agents/index.json", undefined);
     });
 
     it("throws on non-ok HTTP response", async () => {
@@ -319,7 +319,7 @@ describe("fetchBundleHash", () => {
 
         const result = await fetchBundleHash("https://example.com", "1.0.0");
         expect(result).toBe(expectedHash);
-        expect(globalThis.fetch).toHaveBeenCalledWith("https://example.com/agents/1.0.0/bundle.zip.sha256");
+        expect(globalThis.fetch).toHaveBeenCalledWith("https://example.com/agents/1.0.0/bundle.zip.sha256", undefined);
     });
 
     it("returns null when sidecar returns 404", async () => {
@@ -524,7 +524,7 @@ describe("downloadBundle", () => {
 
         // latest entry in mockIndex is 2.0.0
         expect(result.version).toBe("2.0.0");
-        expect(globalThis.fetch).toHaveBeenCalledWith("https://example.com/agents/index.json");
+        expect(globalThis.fetch).toHaveBeenCalledWith("https://example.com/agents/index.json", undefined);
     });
 
     it("uses the specified version and skips the index fetch", async () => {

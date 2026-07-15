@@ -21,6 +21,11 @@ export interface DownloadResult {
     sha256: string | null;
 }
 
+function authFetchOpts(bearerToken?: string): RequestInit | undefined {
+    if (!bearerToken) return undefined;
+    return { headers: { Authorization: `Bearer ${bearerToken}` } };
+}
+
 function stripTrailingSlashes(value: string): string {
     let end = value.length;
 
@@ -77,10 +82,10 @@ export class IntegrityError extends Error {
  *
  * Throws on other HTTP errors (500, network failures, etc.).
  */
-export async function fetchBundleHash(baseUrl: string, version: string): Promise<string | null> {
+export async function fetchBundleHash(baseUrl: string, version: string, bearerToken?: string): Promise<string | null> {
     const url = buildHashUrl(baseUrl, version);
 
-    const response = await fetch(url);
+    const response = await fetch(url, authFetchOpts(bearerToken));
 
     if (response.status === 404 || response.status === 403) {
         return null;
@@ -118,10 +123,10 @@ export async function verifyBundleHash(zipPath: string, expectedHash: string): P
 /**
  * Fetch the agents index.json to discover available bundle versions.
  */
-export async function fetchIndex(baseUrl: string): Promise<AgentsIndex> {
+export async function fetchIndex(baseUrl: string, bearerToken?: string): Promise<AgentsIndex> {
     const url = buildIndexUrl(baseUrl);
 
-    const response = await fetch(url);
+    const response = await fetch(url, authFetchOpts(bearerToken));
     if (!response.ok) {
         throw new Error(`Failed to fetch index: ${response.status} ${response.statusText} from ${url}`);
     }
@@ -162,7 +167,7 @@ export function getLatestVersion(index: AgentsIndex): string {
  * If the hash doesn't match, the downloaded ZIP is deleted and an
  * `IntegrityError` is thrown.
  */
-export async function downloadBundle(baseUrl: string, version?: string): Promise<DownloadResult> {
+export async function downloadBundle(baseUrl: string, version?: string, bearerToken?: string): Promise<DownloadResult> {
     const requestType = version ? "specific" : "latest";
     let targetVersion = version ?? "latest";
     const bundleEndpoint = getBundleEndpointTelemetryValue(baseUrl);
@@ -179,7 +184,7 @@ export async function downloadBundle(baseUrl: string, version?: string): Promise
 
     try {
         if (!version) {
-            const index = await fetchIndex(baseUrl);
+            const index = await fetchIndex(baseUrl, bearerToken);
             targetVersion = getLatestVersion(index);
         }
 
@@ -188,7 +193,7 @@ export async function downloadBundle(baseUrl: string, version?: string): Promise
         await mkdir(tempDir, { recursive: true });
 
         const zipPath = path.join(tempDir, `${targetVersion}.zip`);
-        const response = await fetch(url);
+        const response = await fetch(url, authFetchOpts(bearerToken));
         if (!response.ok) {
             throw new Error(`Failed to download bundle: ${response.status} ${response.statusText} from ${url}`);
         }
@@ -198,7 +203,7 @@ export async function downloadBundle(baseUrl: string, version?: string): Promise
         let sha256: string | null = null;
 
         try {
-            const expectedHash = await fetchBundleHash(baseUrl, targetVersion);
+            const expectedHash = await fetchBundleHash(baseUrl, targetVersion, bearerToken);
 
             if (expectedHash) {
                 await verifyBundleHash(zipPath, expectedHash);

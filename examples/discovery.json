@@ -1,6 +1,12 @@
 {
   "$schema": "https://raw.githubusercontent.com/ai-agent-manager/agent-manager/main/src/discovery/schema.json",
   "version": "1",
+  "auth": {
+    "required": true,
+    "oidcDiscoveryUrl": "https://auth.example.com/.well-known/openid-configuration",
+    "clientId": "agent-manager-abc123",
+    "scopes": ["openid", "skills:read"]
+  },
   "telemetry": {
     "url": "https://telemetry.example.com",
     "siteId": "acme-skills"

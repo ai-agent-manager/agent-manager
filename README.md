@@ -14,7 +14,7 @@ Agent Manager pulls a versioned bundle of skills and Rovo agent configs from a U
 npx -y @ai-agent-manager/cli@latest https://your-bundle-server.com
 ```
 
-That's it. It fetches the version index, downloads the latest bundle, caches it at `~/.agentman/`, and opens an interactive menu.
+That's it. It fetches your team's discovery document, authenticates (if required), downloads the latest bundle, caches it at `~/.agentman/`, and opens an interactive menu.
 
 ---
 
@@ -41,7 +41,7 @@ Agent Manager gives you a single source of truth for your team's agent skills â€
 npx -y @ai-agent-manager/cli@latest <base-url>
 ```
 
-Fetches `/agents/index.json` from your bundle server, downloads the latest versioned zip, and opens the TUI.
+Fetches `.well-known/agents/discovery.json` from your bundle server to discover available skills and authentication requirements, then downloads the latest bundle and opens the TUI.
 
 ### Headless (recommended for CI)
 
@@ -134,6 +134,16 @@ npx -y @ai-agent-manager/cli@latest https://bundles.example.com \
   --config .github/ai-skills.yml
 ```
 
+### Authentication
+
+If your bundle server requires authentication, Agent Manager runs an interactive OAuth2/OIDC flow on first use:
+
+1. A browser window opens to your provider's login page.
+2. After login, a local callback server receives the authorization code.
+3. Tokens are stored securely in `~/.agentman/auth/` and refreshed automatically when expired.
+
+Tokens are stored on the filesystem with restrictive permissions (`0600`). See [docs/discovery.md](docs/discovery.md) for the full auth flow.
+
 ### Force re-download
 
 Bypass the local cache and pull fresh content:
@@ -196,17 +206,19 @@ A `.agentman.json` file is written at the repo root tracking the pinned bundle v
 
 ## How It Works
 
-1. On first run, the bundle is downloaded and extracted to `~/.agentman/bundles/<version>/`.
-2. `~/.agentman/current` symlinks to the active version.
-3. Multiple bundle versions coexist on disk. Switch between them from the **Manage Versions** menu.
-4. Installing a skill symlinks the entire skill directory from the cache into the target tool's skills path.
-5. Installation state is tracked in `~/.agentman/config.json` (system-wide) or `.agentman.json` (repo-scoped).
+1. Agent Manager fetches a **discovery document** from `<base-url>/.well-known/agents/discovery.json` to learn about available skills and auth requirements.
+2. If the server requires authentication, an OAuth2/OIDC flow runs interactively (PKCE, browser-based login).
+3. The bundle is downloaded and extracted to `~/.agentman/bundles/<version>/`.
+4. `~/.agentman/current` symlinks to the active version.
+5. Multiple bundle versions coexist on disk. Switch between them from the **Manage Versions** menu.
+6. Installing a skill symlinks the entire skill directory from the cache into the target tool's skills path.
+7. Installation state is tracked in `~/.agentman/config.json` (system-wide) or `.agentman.json` (repo-scoped).
 
 ---
 
 ## Bundle Format
 
-The tool expects a version index at `<base-url>/agents/index.json` and versioned zips at `<base-url>/agents/<version>/bundle.zip`. See [docs/bundle-format.md](docs/bundle-format.md) for the full spec.
+The discovery document at `<base-url>/.well-known/agents/discovery.json` declares skill sources (git repos, HTTP bundles, or artefact zips). Versioned bundles are stored at `<base-url>/agents/<version>/bundle.zip`. See [docs/discovery.md](docs/discovery.md) for the discovery document spec and [docs/bundle-format.md](docs/bundle-format.md) for the zip contents.
 
 ---
 
