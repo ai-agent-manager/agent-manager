@@ -457,6 +457,14 @@ export function buildInstallKey(namespace: string | null, skillDirName: string):
 }
 
 /**
+ * Resolve a scanned skill to its install identity: "<namespace>/<skillId>" for
+ * namespaced sources, bare "<skillId>" for flat/bundle sources.
+ */
+export function deriveSkillInstallKey(skill: { sourcePin?: SkillSourcePin; dirName: string }): string {
+  return buildInstallKey(skill.sourcePin ? deriveInstallNamespace(skill.sourcePin) : null, skill.dirName);
+}
+
+/**
  * Flatten a namespace string into a safe single-segment filesystem token.
  * Replaces "/" and "." with "-" so "github.com/org/repo" becomes "github-com-org-repo".
  * Used to build the always-qualified link name: flattenNamespace(namespace) + "__" + skillId.

@@ -6,7 +6,7 @@ import { importLocalBundle } from './bundle/importer.js';
 import { scanBundle, type SkillInfo } from './bundle/scanner.js';
 import { setCurrentBundle } from './bundle/cache.js';
 import { resolveSource } from './bundle/source.js';
-import { buildSourcePin, buildInstallKey, deriveInstallNamespace, type SkillSourcePin } from './bundle/skill-source.js';
+import { buildSourcePin, deriveSkillInstallKey, type SkillSourcePin } from './bundle/skill-source.js';
 import { resolveDiscoverySkills } from './discovery/index.js';
 import { createSkillProvisioner, formatSupportedSkillToolIds } from './provisioners/registry.js';
 import type { InstallScope } from './config/scopes.js';
@@ -143,9 +143,7 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
   }
 
   // Key by qualified identity so same-named skills from different sources both survive.
-  const keyFor = (s: SkillInfo) =>
-    buildInstallKey(s.sourcePin ? deriveInstallNamespace(s.sourcePin) : null, s.dirName);
-  const availableSkills = new Map(allSkills.map((s) => [keyFor(s), s]));
+  const availableSkills = new Map(allSkills.map((s) => [deriveSkillInstallKey(s), s]));
 
   // Match requested skills (bare names from config resolved to qualified keys).
   const toInstall = [];
