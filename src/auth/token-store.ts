@@ -8,10 +8,11 @@
  */
 
 import { readFile, writeFile, mkdir, unlink } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { getAuthDir } from '../config/paths.js';
 
-const KEYRING_SERVICE = 'agentman';
+const KEYRING_SERVICE = 'agent-manager';
 
 export type TokenBackend = 'keychain' | 'filesystem';
 
@@ -41,11 +42,12 @@ function tokenFileName(baseUrl: string): string {
 let _keychainAvailable: boolean | undefined;
 
 function getKeyringEntry(baseUrl: string) {
-  // Cache the availability check so we only try require() once
   if (_keychainAvailable === false) return null;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { Entry } = require('@napi-rs/keyring');
+    // Use createRequire so the native addon resolves correctly under both
+    // CJS (node dist/) and ESM-via-tsx (npm run dev) module modes.
+    const esmRequire = createRequire(import.meta.url);
+    const { Entry } = esmRequire('@napi-rs/keyring');
     _keychainAvailable = true;
     return new Entry(KEYRING_SERVICE, keychainUser(baseUrl));
   } catch {
