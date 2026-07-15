@@ -24,6 +24,7 @@ function isSafeDirName(name: string): boolean {
 
   // Must not contain path separators, null bytes, or control chars
   if (/[/\\]/.test(name)) return false;
+  // oxlint-disable-next-line no-control-regex -- intentionally matches control characters for file-name sanitisation
   if (/[\x00-\x1f]/.test(name)) return false;
 
   // Must not be a relative path component

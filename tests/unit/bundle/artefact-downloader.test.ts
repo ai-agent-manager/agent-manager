@@ -1,15 +1,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import os from 'node:os';
 import {
   ARTEFACT_META_FILE,
+  assertZipWithinLimits,
   buildArtefactHashUrl,
   checkArtefactUpdate,
   downloadArtefact,
   fetchArtefactHash,
+  MAX_DOWNLOAD_BYTES,
+  MAX_EXTRACT_BYTES,
+  MAX_EXTRACT_ENTRIES,
   parseArtefactUrl,
+  removeEscapingSymlinks,
 } from '../../../src/bundle/artefact-downloader.js';
 import type { ArtefactSkillSource, SkillSourcePin } from '../../../src/bundle/skill-source.js';
 
@@ -45,7 +50,78 @@ vi.mock('extract-zip', () => ({ default: mockExtractZip }));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const ZIP_BYTES = new TextEncoder().encode('fake-zip-content');
+/**
+ * Build a minimal structurally-valid zip with one stored entry.
+ * declaredUncompressedSize is written into the central directory only —
+ * the actual file data is empty, mimicking a zip bomb's forged header.
+ */
+function makeZipBuffer(declaredUncompressedSize: number, entryCount = 1): Buffer {
+  const parts: Buffer[] = [];
+  const localOffsets: number[] = [];
+  let offset = 0;
+
+  const cdEntries: Buffer[] = [];
+
+  for (let i = 0; i < entryCount; i++) {
+    const fileName = Buffer.from(`file${i}.txt`);
+
+    const local = Buffer.alloc(30 + fileName.length);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0, 6);
+    local.writeUInt16LE(0, 8);
+    local.writeUInt16LE(0, 10);
+    local.writeUInt16LE(0, 12);
+    local.writeUInt32LE(0, 14);
+    local.writeUInt32LE(0, 18);
+    local.writeUInt32LE(0, 22);
+    local.writeUInt16LE(fileName.length, 26);
+    local.writeUInt16LE(0, 28);
+    fileName.copy(local, 30);
+
+    localOffsets.push(offset);
+    parts.push(local);
+    offset += local.length;
+
+    const cd = Buffer.alloc(46 + fileName.length);
+    cd.writeUInt32LE(0x02014b50, 0);
+    cd.writeUInt16LE(20, 4);
+    cd.writeUInt16LE(20, 6);
+    cd.writeUInt16LE(0, 8);
+    cd.writeUInt16LE(0, 10);
+    cd.writeUInt16LE(0, 12);
+    cd.writeUInt16LE(0, 14);
+    cd.writeUInt32LE(0, 16);
+    cd.writeUInt32LE(0, 20);
+    cd.writeUInt32LE(declaredUncompressedSize >>> 0, 24);
+    cd.writeUInt16LE(fileName.length, 28);
+    cd.writeUInt16LE(0, 30);
+    cd.writeUInt16LE(0, 32);
+    cd.writeUInt16LE(0, 34);
+    cd.writeUInt16LE(0, 36);
+    cd.writeUInt32LE(0, 38);
+    cd.writeUInt32LE(localOffsets[i], 42);
+    fileName.copy(cd, 46);
+    cdEntries.push(cd);
+  }
+
+  const cdBuf = Buffer.concat(cdEntries);
+
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(0, 4);
+  eocd.writeUInt16LE(0, 6);
+  eocd.writeUInt16LE(entryCount, 8);
+  eocd.writeUInt16LE(entryCount, 10);
+  eocd.writeUInt32LE(cdBuf.length, 12);
+  eocd.writeUInt32LE(offset, 16);
+  eocd.writeUInt16LE(0, 20);
+
+  return Buffer.concat([...parts, cdBuf, eocd]);
+}
+
+// A minimal valid zip (1 stored 0-byte entry) — real enough for yauzl to parse
+const ZIP_BYTES = new Uint8Array(makeZipBuffer(0, 1));
 const ZIP_SHA256 = createHash('sha256').update(ZIP_BYTES).digest('hex');
 
 function makeSource(overrides: Partial<ArtefactSkillSource> = {}): ArtefactSkillSource {
@@ -139,6 +215,12 @@ describe('buildArtefactHashUrl', () => {
   it('appends .sha256 to the artefact URL', () => {
     expect(buildArtefactHashUrl('https://cdn.example.com/my-skill-1.2.0.zip')).toBe(
       'https://cdn.example.com/my-skill-1.2.0.zip.sha256',
+    );
+  });
+
+  it('strips query string and fragment before appending .sha256', () => {
+    expect(buildArtefactHashUrl('https://cdn.example.com/my-skill.zip?token=abc#v1')).toBe(
+      'https://cdn.example.com/my-skill.zip.sha256',
     );
   });
 });
@@ -497,5 +579,159 @@ describe('checkArtefactUpdate', () => {
     };
 
     await expect(checkArtefactUpdate(pin)).rejects.toThrow('artefact source pin');
+  });
+});
+
+describe('enforceArtefactUrl', () => {
+  it('rejects plain http on non-loopback hosts', async () => {
+    const source: ArtefactSkillSource = {
+      type: 'artefact',
+      artefactUrl: 'http://cdn.example.com/my-skill-1.0.0.zip',
+      installLayout: 'namespaced',
+    };
+    await expect(downloadArtefact(source)).rejects.toThrow('Artefact URLs must use https');
+  });
+
+  it('allows http on localhost', async () => {
+    const source: ArtefactSkillSource = {
+      type: 'artefact',
+      artefactUrl: 'http://localhost:8080/my-skill-1.0.0.zip',
+      installLayout: 'namespaced',
+    };
+    // Will fail on fetch (no server), but should NOT throw the https error
+    await expect(downloadArtefact(source)).rejects.not.toThrow('Artefact URLs must use https');
+  });
+
+  it('allows https on any host', async () => {
+    const source: ArtefactSkillSource = {
+      type: 'artefact',
+      artefactUrl: 'https://cdn.example.com/my-skill-1.0.0.zip',
+      installLayout: 'namespaced',
+    };
+    // Will fail on fetch (mocked/no server), but should NOT throw the https error
+    await expect(downloadArtefact(source)).rejects.not.toThrow('Artefact URLs must use https');
+  });
+});
+
+describe('removeEscapingSymlinks', () => {
+  let tempDir: string;
+
+  beforeEach(async () => {
+    tempDir = path.join(os.tmpdir(), `symlink-test-${Date.now()}`);
+    await mkdir(tempDir, { recursive: true });
+  });
+
+  afterEach(async () => {
+    await rm(tempDir, { recursive: true, force: true });
+  });
+
+  it('removes symlinks pointing outside the root directory', async () => {
+    const skillDir = path.join(tempDir, 'my-skill');
+    await mkdir(skillDir);
+    await writeFile(path.join(skillDir, 'SKILL.md'), '# legit');
+    await symlink('/etc/passwd', path.join(skillDir, 'leak'));
+
+    const removed = await removeEscapingSymlinks(tempDir);
+    expect(removed).toHaveLength(1);
+    expect(removed[0]).toContain('leak');
+  });
+
+  it('keeps symlinks pointing within the root directory', async () => {
+    const target = path.join(tempDir, 'real-file.md');
+    await writeFile(target, '# real');
+    await symlink(target, path.join(tempDir, 'internal-link'));
+
+    const removed = await removeEscapingSymlinks(tempDir);
+    expect(removed).toHaveLength(0);
+  });
+
+  it('removes symlinks with dangling targets', async () => {
+    await symlink('/nonexistent/path/nowhere', path.join(tempDir, 'dangling'));
+
+    const removed = await removeEscapingSymlinks(tempDir);
+    expect(removed).toHaveLength(1);
+  });
+
+  it('recursively checks nested directories', async () => {
+    const nested = path.join(tempDir, 'a', 'b');
+    await mkdir(nested, { recursive: true });
+    await symlink('/etc/hosts', path.join(nested, 'escape'));
+
+    const removed = await removeEscapingSymlinks(tempDir);
+    expect(removed).toHaveLength(1);
+    expect(removed[0]).toContain(path.join('a', 'b', 'escape'));
+  });
+});
+
+describe('download size limits', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('rejects when Content-Length header exceeds MAX_DOWNLOAD_BYTES', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      headers: { get: (h: string) => (h === 'content-length' ? String(MAX_DOWNLOAD_BYTES + 1) : null) },
+      arrayBuffer: async () => new ArrayBuffer(0),
+    } as unknown as Response);
+
+    await expect(downloadArtefact(makeSource())).rejects.toThrow('Content-Length');
+  });
+
+  it('rejects when actual buffer size exceeds MAX_DOWNLOAD_BYTES', async () => {
+    const oversized = new ArrayBuffer(MAX_DOWNLOAD_BYTES + 1);
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      headers: { get: () => null },
+      arrayBuffer: async () => oversized,
+    } as unknown as Response);
+
+    await expect(downloadArtefact(makeSource())).rejects.toThrow('actual size');
+  });
+});
+
+// ── assertZipWithinLimits ─────────────────────────────────────────────────────
+
+describe('assertZipWithinLimits', () => {
+  let tempDir: string;
+
+  beforeEach(async () => {
+    tempDir = path.join(os.tmpdir(), `zip-limits-${Date.now()}`);
+    await mkdir(tempDir, { recursive: true });
+  });
+
+  afterEach(async () => {
+    await rm(tempDir, { recursive: true, force: true });
+  });
+
+  it('rejects before extraction when central directory declares uncompressed size above limit', async () => {
+    const zipPath = path.join(tempDir, 'bomb.zip');
+    await writeFile(zipPath, makeZipBuffer(MAX_EXTRACT_BYTES + 1));
+
+    const tempExtractDir = path.join(tempDir, 'extracted');
+
+    await expect(assertZipWithinLimits(zipPath)).rejects.toThrow('zip bomb');
+
+    // Nothing was written to disk — extraction never started
+    await expect(import('node:fs/promises').then(fs => fs.access(tempExtractDir))).rejects.toThrow();
+  });
+
+  it('rejects when central directory entry count exceeds limit', async () => {
+    const zipPath = path.join(tempDir, 'many-entries.zip');
+    await writeFile(zipPath, makeZipBuffer(0, MAX_EXTRACT_ENTRIES + 1));
+
+    await expect(assertZipWithinLimits(zipPath)).rejects.toThrow('zip bomb');
+  });
+
+  it('accepts a normal zip within limits', async () => {
+    const zipPath = path.join(tempDir, 'normal.zip');
+    // 0-byte stored entry — compressedSize == uncompressedSize == 0, well within limits
+    await writeFile(zipPath, makeZipBuffer(0, 1));
+
+    await expect(assertZipWithinLimits(zipPath)).resolves.toBeUndefined();
   });
 });

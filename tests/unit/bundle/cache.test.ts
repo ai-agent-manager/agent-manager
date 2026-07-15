@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, rm, readFile, writeFile, mkdir, lstat, readlink, unlink, symlink } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, writeFile, mkdir, lstat, unlink, symlink } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { vi } from 'vitest';
@@ -45,11 +45,11 @@ import {
   removeInstallRecord,
   setCurrentBundle,
   updateSkillVersion,
+  getRecordVersion,
   type AgentmanConfig,
 } from '../../../src/bundle/cache.js';
 import { scanBundle } from '../../../src/bundle/scanner.js';
-import { getHomeDir, getPlatform } from '../../../src/lib/platform.js';
-import { getAgentmanDir, getBundlesDir, getBundleVersionDir } from '../../../src/config/paths.js';
+import { getPlatform } from '../../../src/lib/platform.js';
 import { readRepoConfig, writeRepoConfig, type RepoAgentmanConfig } from '../../../src/bundle/repo-config.js';
 
 beforeEach(async () => {
@@ -87,11 +87,12 @@ describe('readConfig', () => {
     expect(config.installations['claude-code']['my-skill'].bundleVersion).toBe('abc123');
   });
 
-  it('throws when config file has invalid JSON instead of wiping install records', async () => {
+  it('returns default config when config file has invalid JSON', async () => {
     await mkdir(tempDir, { recursive: true });
     await writeFile(path.join(tempDir, 'config.json'), 'not valid json{{{');
 
-    await expect(readConfig()).rejects.toThrow('Config file is corrupted');
+    const config = await readConfig();
+    expect(config).toEqual({ installations: {} });
   });
 });
 
@@ -467,5 +468,27 @@ describe('setCurrentBundle', () => {
       path.join(tempDir, 'current'),
       'junction',
     );
+  });
+});
+
+describe('getRecordVersion', () => {
+  it('returns sourcePin.bundleVersion when pin is present', () => {
+    const record = { bundleVersion: 'legacy', installedAt: '', method: 'symlink' as const, sourcePin: { sourceType: 'bundle' as const, installLayout: 'flat' as const, bundleVersion: '2026.07.01' } };
+    expect(getRecordVersion(record)).toBe('2026.07.01');
+  });
+
+  it('returns bundleVersion when no sourcePin is present', () => {
+    const record = { bundleVersion: '2026.06.01', installedAt: '', method: 'symlink' as const };
+    expect(getRecordVersion(record)).toBe('2026.06.01');
+  });
+
+  it('returns empty string when sourcePin has no bundleVersion (repo/artefact shaped)', () => {
+    const record = { installedAt: '', method: 'symlink' as const, sourcePin: { sourceType: 'repo' as const, installLayout: 'namespaced' as const } };
+    expect(getRecordVersion(record)).toBe('');
+  });
+
+  it('returns empty string when neither sourcePin nor bundleVersion is present', () => {
+    const record = { installedAt: '', method: 'symlink' as const };
+    expect(getRecordVersion(record)).toBe('');
   });
 });

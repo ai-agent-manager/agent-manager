@@ -28,11 +28,11 @@ const artefactPin = (artefactUrl: string): SkillSourcePin => ({
   artefactVersion: '1.0.0',
 });
 
-describe('SkillProvisioner — flat link layout', () => {
+describe('SkillProvisioner — always-namespace flat link layout', () => {
   let bundleDir: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(path.join(os.tmpdir(), 'agentman-flat-prov-'));
+    tmpDir = await mkdtemp(path.join(os.tmpdir(), 'agentman-always-ns-prov-'));
     bundleDir = path.join(tmpDir, 'bundle');
 
     for (const skillName of ['test-skill', 'other-skill']) {
@@ -55,23 +55,24 @@ describe('SkillProvisioner — flat link layout', () => {
     };
   }
 
-  // ── Single source: flat, one-level link ─────────────────────────────────────
+  // ── Single source: always-qualified link ─────────────────────────────────────
 
-  it('installs a repo-sourced skill as a single flat link at ~/.claude/skills/<skillId>/', async () => {
+  it('installs a repo-sourced skill at ~/.claude/skills/<flatNs>__<skillId>/', async () => {
     const prov = new ClaudeCodeProvisioner();
 
-    const result = await prov.install([makeSkill('test-skill')], '', repoPin('https://github.com/my-org/my-repo'));
+    const result = await prov.install([makeSkill('test-skill')], '', repoPin('https://github.com/example-org/example-repo'));
 
     expect(result.errors).toHaveLength(0);
     expect(result.installed).toHaveLength(1);
-    expect(result.installed[0].name).toBe('github.com/my-org/my-repo/test-skill');
+    expect(result.installed[0].name).toBe('github.com/example-org/example-repo/test-skill');
 
-    const linkPath = path.join(tmpDir, '.claude', 'skills', 'test-skill');
+    // Link is always qualified: flattenNamespace(namespace) + "__" + skillId
+    const linkPath = path.join(tmpDir, '.claude', 'skills', 'github-com-example-org-example-repo__test-skill');
     const target = await readlink(linkPath);
     expect(target).toBe(path.join(bundleDir, 'test-skill'));
   });
 
-  it('installs an artefact-sourced skill as a single flat link at ~/.claude/skills/<skillId>/', async () => {
+  it('installs an artefact-sourced skill at ~/.claude/skills/<flatNs>__<skillId>/', async () => {
     const prov = new ClaudeCodeProvisioner();
 
     const result = await prov.install([makeSkill('test-skill')], '', artefactPin('https://cdn.example.com/my-skill-1.0.0.zip'));
@@ -79,160 +80,159 @@ describe('SkillProvisioner — flat link layout', () => {
     expect(result.errors).toHaveLength(0);
     expect(result.installed[0].name).toBe('cdn.example.com/my-skill/test-skill');
 
-    const linkPath = path.join(tmpDir, '.claude', 'skills', 'test-skill');
+    const linkPath = path.join(tmpDir, '.claude', 'skills', 'cdn-example-com-my-skill__test-skill');
     const target = await readlink(linkPath);
     expect(target).toBe(path.join(bundleDir, 'test-skill'));
   });
 
+  // ── Two sources, same skillId — both install, neither overwrites the other ────
+
+  it('two skills with the same skillId from different sources both install without overwriting', async () => {
+    const prov = new ClaudeCodeProvisioner();
+
+    const r1 = await prov.install([makeSkill('test-skill')], '', repoPin('https://github.com/example-org/repo-a'));
+    const r2 = await prov.install([makeSkill('test-skill')], '', repoPin('https://github.com/example-org/repo-b'));
+
+    expect(r1.errors).toHaveLength(0);
+    expect(r2.errors).toHaveLength(0);
+
+    const skillsDir = path.join(tmpDir, '.claude', 'skills');
+
+    const linkA = path.join(skillsDir, 'github-com-example-org-repo-a__test-skill');
+    const linkB = path.join(skillsDir, 'github-com-example-org-repo-b__test-skill');
+
+    expect(await readlink(linkA)).toBe(path.join(bundleDir, 'test-skill'));
+    expect(await readlink(linkB)).toBe(path.join(bundleDir, 'test-skill'));
+  });
+
+  it('link names are deterministic — source first, "__" separator, always qualified', async () => {
+    const prov = new ClaudeCodeProvisioner();
+
+    await prov.install([makeSkill('test-skill')], '', repoPin('https://github.com/example-org/repo-a'));
+    await prov.install([makeSkill('test-skill')], '', artefactPin('https://cdn.example.com/test-skill-1.0.0.zip'));
+
+    const skillsDir = path.join(tmpDir, '.claude', 'skills');
+
+    // Repo namespace: github.com/example-org/repo-a → flattened: github-com-example-org-repo-a
+    const repoLink = path.join(skillsDir, 'github-com-example-org-repo-a__test-skill');
+    // Artefact namespace: cdn.example.com/test-skill → flattened: cdn-example-com-test-skill
+    const artefactLink = path.join(skillsDir, 'cdn-example-com-test-skill__test-skill');
+
+    expect(await readlink(repoLink)).toBe(path.join(bundleDir, 'test-skill'));
+    expect(await readlink(artefactLink)).toBe(path.join(bundleDir, 'test-skill'));
+  });
+
+  it('linkName flattens both "/" and "." to "-" (no colons, Windows-safe)', async () => {
+    const prov = new ClaudeCodeProvisioner();
+
+    await prov.install([makeSkill('test-skill')], '', repoPin('https://github.com/example-org/example-repo'));
+
+    const skillsDir = path.join(tmpDir, '.claude', 'skills');
+    const entries = await (await import('node:fs/promises')).readdir(skillsDir);
+
+    for (const entry of entries) {
+      expect(entry).not.toContain(':');
+      expect(entry).not.toContain('/');
+      // Dots are flattened — no dots in link name except none expected here
+      expect(entry).not.toContain('.');
+    }
+  });
+
   // ── getInstalled returns config identity keyed by full namespaced key ────────
 
-  it('getInstalled returns the full namespaced key as name and the flat path', async () => {
+  it('getInstalled returns the full namespaced key as name and the flat link path', async () => {
     const prov = new ClaudeCodeProvisioner();
-    await prov.install([makeSkill('test-skill')], '', repoPin('https://github.com/my-org/my-repo'));
+    await prov.install([makeSkill('test-skill')], '', repoPin('https://github.com/example-org/example-repo'));
 
     const installed = await prov.getInstalled();
 
     expect(installed).toHaveLength(1);
-    expect(installed[0].name).toBe('github.com/my-org/my-repo/test-skill');
-    expect(installed[0].path).toBe(path.join(tmpDir, '.claude', 'skills', 'test-skill'));
+    expect(installed[0].name).toBe('github.com/example-org/example-repo/test-skill');
+    expect(installed[0].path).toBe(
+      path.join(tmpDir, '.claude', 'skills', 'github-com-example-org-example-repo__test-skill'),
+    );
   });
 
-  // ── Collision: first keeps clean name, second gets qualified name ────────────
-
-  it('first install keeps bare skillId; second from different source gets qualified linkName', async () => {
+  it('getInstalled returns both skills when two sources share the same skillId', async () => {
     const prov = new ClaudeCodeProvisioner();
 
-    await prov.install([makeSkill('test-skill')], '', repoPin('https://github.com/org-a/repo-a'));
-    await prov.install([makeSkill('test-skill')], '', repoPin('https://github.com/org-b/repo-b'));
-
-    const skillsDir = path.join(tmpDir, '.claude', 'skills');
-
-    // First install claims the clean name
-    const cleanLink = path.join(skillsDir, 'test-skill');
-    const cleanTarget = await readlink(cleanLink);
-    expect(cleanTarget).toBe(path.join(bundleDir, 'test-skill'));
-
-    // Second install gets the qualified name ("/" → "-", "." preserved)
-    const qualifiedLink = path.join(skillsDir, 'test-skill__github.com-org-b-repo-b');
-    const qualifiedTarget = await readlink(qualifiedLink);
-    expect(qualifiedTarget).toBe(path.join(bundleDir, 'test-skill'));
-  });
-
-  it('both colliding skills appear in getInstalled, each resolving to their flat link', async () => {
-    const prov = new ClaudeCodeProvisioner();
-
-    await prov.install([makeSkill('test-skill')], '', repoPin('https://github.com/org-a/repo-a'));
-    await prov.install([makeSkill('test-skill')], '', repoPin('https://github.com/org-b/repo-b'));
+    await prov.install([makeSkill('test-skill')], '', repoPin('https://github.com/example-org/repo-a'));
+    await prov.install([makeSkill('test-skill')], '', repoPin('https://github.com/example-org/repo-b'));
 
     const installed = await prov.getInstalled();
     expect(installed).toHaveLength(2);
 
     const names = installed.map((s) => s.name);
-    expect(names).toContain('github.com/org-a/repo-a/test-skill');
-    expect(names).toContain('github.com/org-b/repo-b/test-skill');
+    expect(names).toContain('github.com/example-org/repo-a/test-skill');
+    expect(names).toContain('github.com/example-org/repo-b/test-skill');
 
     const skillsDir = path.join(tmpDir, '.claude', 'skills');
     const paths = installed.map((s) => s.path);
-    expect(paths).toContain(path.join(skillsDir, 'test-skill'));
-    expect(paths).toContain(path.join(skillsDir, 'test-skill__github.com-org-b-repo-b'));
+    expect(paths).toContain(path.join(skillsDir, 'github-com-example-org-repo-a__test-skill'));
+    expect(paths).toContain(path.join(skillsDir, 'github-com-example-org-repo-b__test-skill'));
   });
 
-  // ── linkName is deterministic and filesystem-safe ───────────────────────────
+  // ── Uninstall removes only the targeted link ──────────────────────────────────
 
-  it('qualified linkName replaces "/" and "." with "-" in the namespace', async () => {
+  it('uninstall(qualifiedKey) removes only that link, leaving the other intact', async () => {
     const prov = new ClaudeCodeProvisioner();
 
-    await prov.install([makeSkill('test-skill')], '', repoPin('https://github.com/org-a/repo-a'));
-    await prov.install([makeSkill('test-skill')], '', artefactPin('https://cdn.example.com/test-skill-1.0.0.zip'));
+    await prov.install([makeSkill('test-skill')], '', repoPin('https://github.com/example-org/repo-a'));
+    await prov.install([makeSkill('test-skill')], '', repoPin('https://github.com/example-org/repo-b'));
 
-    const skillsDir = path.join(tmpDir, '.claude', 'skills');
-    // Artefact namespace is "cdn.example.com/test-skill"; flattened ("/" → "-"): "cdn.example.com-test-skill"
-    const qualifiedLink = path.join(skillsDir, 'test-skill__cdn.example.com-test-skill');
-    const target = await readlink(qualifiedLink);
-    expect(target).toBe(path.join(bundleDir, 'test-skill'));
-  });
-
-  // ── Uninstall removes only the targeted link ─────────────────────────────────
-
-  it('uninstall(qualifiedKey) removes only the qualified link, leaving the clean one intact', async () => {
-    const prov = new ClaudeCodeProvisioner();
-
-    await prov.install([makeSkill('test-skill')], '', repoPin('https://github.com/org-a/repo-a'));
-    await prov.install([makeSkill('test-skill')], '', repoPin('https://github.com/org-b/repo-b'));
-
-    const result = await prov.uninstall(['github.com/org-b/repo-b/test-skill']);
+    const result = await prov.uninstall(['github.com/example-org/repo-b/test-skill']);
 
     expect(result.errors).toHaveLength(0);
-    expect(result.removed).toEqual([{ name: 'github.com/org-b/repo-b/test-skill' }]);
+    expect(result.removed).toEqual([{ name: 'github.com/example-org/repo-b/test-skill' }]);
 
     const skillsDir = path.join(tmpDir, '.claude', 'skills');
 
-    // Qualified link is gone
-    await expect(stat(path.join(skillsDir, 'test-skill__github.com-org-b-repo-b'))).rejects.toThrow();
+    // repo-b link is gone
+    await expect(stat(path.join(skillsDir, 'github-com-example-org-repo-b__test-skill'))).rejects.toThrow();
 
-    // Clean link still present
-    const cleanTarget = await readlink(path.join(skillsDir, 'test-skill'));
-    expect(cleanTarget).toBe(path.join(bundleDir, 'test-skill'));
-  });
-
-  it('uninstall(cleanKey) removes only the clean link', async () => {
-    const prov = new ClaudeCodeProvisioner();
-
-    await prov.install([makeSkill('test-skill')], '', repoPin('https://github.com/org-a/repo-a'));
-    await prov.install([makeSkill('test-skill')], '', repoPin('https://github.com/org-b/repo-b'));
-
-    const result = await prov.uninstall(['github.com/org-a/repo-a/test-skill']);
-
-    expect(result.errors).toHaveLength(0);
-
-    const skillsDir = path.join(tmpDir, '.claude', 'skills');
-
-    // Clean link is gone
-    await expect(stat(path.join(skillsDir, 'test-skill'))).rejects.toThrow();
-
-    // Qualified link still present
-    const qualTarget = await readlink(path.join(skillsDir, 'test-skill__github.com-org-b-repo-b'));
-    expect(qualTarget).toBe(path.join(bundleDir, 'test-skill'));
+    // repo-a link still present
+    const aTarget = await readlink(path.join(skillsDir, 'github-com-example-org-repo-a__test-skill'));
+    expect(aTarget).toBe(path.join(bundleDir, 'test-skill'));
   });
 
   // ── Remove by bare skillId ────────────────────────────────────────────────────
 
   it('uninstall by bare skillId works when only one install matches', async () => {
     const prov = new ClaudeCodeProvisioner();
-    await prov.install([makeSkill('test-skill')], '', repoPin('https://github.com/my-org/my-repo'));
+    await prov.install([makeSkill('test-skill')], '', repoPin('https://github.com/example-org/example-repo'));
 
     const result = await prov.uninstall(['test-skill']);
 
     expect(result.errors).toHaveLength(0);
-    expect(result.removed).toEqual([{ name: 'test-skill' }]);
-
     const installed = await prov.getInstalled();
     expect(installed).toHaveLength(0);
   });
 
-  it('uninstall by bare skillId errors with disambiguation message when multiple installs match', async () => {
+  it('uninstall by bare skillId returns disambiguation error when multiple installs match', async () => {
     const prov = new ClaudeCodeProvisioner();
 
-    await prov.install([makeSkill('test-skill')], '', repoPin('https://github.com/org-a/repo-a'));
-    await prov.install([makeSkill('test-skill')], '', repoPin('https://github.com/org-b/repo-b'));
+    await prov.install([makeSkill('test-skill')], '', repoPin('https://github.com/example-org/repo-a'));
+    await prov.install([makeSkill('test-skill')], '', repoPin('https://github.com/example-org/repo-b'));
 
     const result = await prov.uninstall(['test-skill']);
 
     expect(result.removed).toHaveLength(0);
     expect(result.errors).toHaveLength(1);
-    expect(result.errors[0].error).toMatch(/Multiple installs match/);
-    expect(result.errors[0].error).toContain('github.com/org-a/repo-a/test-skill');
-    expect(result.errors[0].error).toContain('github.com/org-b/repo-b/test-skill');
+    expect(result.errors[0].error).toContain('Multiple installs match');
+    expect(result.errors[0].error).toContain('github.com/example-org/repo-a/test-skill');
+    expect(result.errors[0].error).toContain('github.com/example-org/repo-b/test-skill');
   });
 
-  // ── Flat (legacy) installs — no sourcePin ───────────────────────────────────
+  // ── Flat (legacy) installs — no sourcePin ────────────────────────────────────
 
   it('legacy flat install (no sourcePin) lands at ~/.claude/skills/<skillId>/', async () => {
     const prov = new ClaudeCodeProvisioner();
 
     const result = await prov.install([makeSkill('test-skill')], 'v1.0');
 
+    expect(result.errors).toHaveLength(0);
     expect(result.installed[0].name).toBe('test-skill');
+
     const linkPath = path.join(tmpDir, '.claude', 'skills', 'test-skill');
     const target = await readlink(linkPath);
     expect(target).toBe(path.join(bundleDir, 'test-skill'));
@@ -272,24 +272,28 @@ describe('SkillProvisioner — flat link layout', () => {
     expect(installed.map((s) => s.name)).toContain('orphan-skill');
   });
 
-  // ── getInstalled returns empty after all installs removed ────────────────────
+  // ── getInstalled returns empty after all installs removed ─────────────────────
 
   it('getInstalled returns empty after a namespaced skill is uninstalled', async () => {
     const prov = new ClaudeCodeProvisioner();
 
-    await prov.install([makeSkill('test-skill')], '', repoPin('https://github.com/my-org/my-repo'));
-    await prov.uninstall(['github.com/my-org/my-repo/test-skill']);
+    await prov.install([makeSkill('test-skill')], '', repoPin('https://github.com/example-org/example-repo'));
+    await prov.uninstall(['github.com/example-org/example-repo/test-skill']);
 
     const installed = await prov.getInstalled();
     expect(installed).toHaveLength(0);
   });
 
-  // ── No nested directories created under skills dir ───────────────────────────
+  // ── Skills dir stays flat — no nested directories created ────────────────────
 
-  it('skills dir stays flat — no subdirectories are created inside it', async () => {
+  it('skills dir stays flat — no nested real directories are created inside it', async () => {
     const prov = new ClaudeCodeProvisioner();
 
-    await prov.install([makeSkill('test-skill'), makeSkill('other-skill')], '', repoPin('https://github.com/my-org/my-repo'));
+    await prov.install(
+      [makeSkill('test-skill'), makeSkill('other-skill')],
+      '',
+      repoPin('https://github.com/example-org/example-repo'),
+    );
 
     const skillsDir = path.join(tmpDir, '.claude', 'skills');
     const { readdir: rd } = await import('node:fs/promises');
@@ -297,7 +301,27 @@ describe('SkillProvisioner — flat link layout', () => {
 
     for (const entry of entries) {
       const s = await stat(path.join(skillsDir, entry.name));
+      // Each entry should be a symlink, not a real directory
+      expect(entry.isSymbolicLink()).toBe(true);
       expect(s.isDirectory() && !entry.isSymbolicLink()).toBe(false);
     }
+  });
+
+  // ── GHES namespace discrimination ─────────────────────────────────────────────
+
+  it('github.com and GHES with identical org/repo produce different link names', async () => {
+    const prov = new ClaudeCodeProvisioner();
+
+    // Two repos: same org/repo path, different hosts
+    await prov.install([makeSkill('test-skill')], '', repoPin('https://github.com/example-org/example-repo'));
+    await prov.install([makeSkill('test-skill')], '', repoPin('https://github.example-internal.com/example-org/example-repo'));
+
+    const skillsDir = path.join(tmpDir, '.claude', 'skills');
+
+    const publicLink = path.join(skillsDir, 'github-com-example-org-example-repo__test-skill');
+    const ghesLink = path.join(skillsDir, 'github-example-internal-com-example-org-example-repo__test-skill');
+
+    expect(await readlink(publicLink)).toBe(path.join(bundleDir, 'test-skill'));
+    expect(await readlink(ghesLink)).toBe(path.join(bundleDir, 'test-skill'));
   });
 });

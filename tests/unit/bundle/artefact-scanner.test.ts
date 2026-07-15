@@ -124,4 +124,23 @@ describe('scanArtefactForSkills', () => {
       'No skills found in artefact',
     );
   });
+
+  it('throws a specific error mentioning rovo agents when artefact contains only rovo-agent.yaml', async () => {
+    const agentDir = path.join(extractDir, 'my-agent');
+    await mkdir(agentDir);
+    await writeFile(
+      path.join(agentDir, 'rovo-agent.yaml'),
+      [
+        'apiVersion: rovo.atlassian.com/v2-beta',
+        'kind: StudioAgent',
+        'name: my-agent',
+        'description: A rovo agent',
+        'instructions: You are a test agent.',
+      ].join('\n'),
+    );
+
+    await expect(scanArtefactForSkills(extractDir, makeSource())).rejects.toThrow(
+      'Rovo agents were found but artefact sources support skills only',
+    );
+  });
 });

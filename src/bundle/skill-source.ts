@@ -16,6 +16,9 @@
  * legacy path that maps to the 'bundle' source type with installLayout 'flat'.
  */
 
+import { stat } from 'node:fs/promises';
+import { resolve } from 'node:path';
+
 // ── Primitive types ───────────────────────────────────────────────────────────
 
 export type SkillSourceType = 'repo' | 'artefact' | 'bundle';
@@ -141,21 +144,9 @@ export function isBundleSource(s: SkillSource): s is BundleSkillSource {
  */
 export const GITHUB_HOSTS_DEFAULT: readonly string[] = ['github.com'];
 
-/**
- * Detect whether a URL points to a GitHub repository.
- * Matches https://<host>/<org>/<repo>[...] for each host in knownHosts.
- *
- * @param url        The URL string to check.
- * @param knownHosts List of GitHub hostnames to recognise. Defaults to GITHUB_HOSTS_DEFAULT.
- */
-export function isGithubRepoUrl(url: string, knownHosts: readonly string[] = GITHUB_HOSTS_DEFAULT): boolean {
-  try {
-    const parsed = new URL(url);
-    const segments = parsed.pathname.split('/').filter(Boolean);
-    return knownHosts.includes(parsed.hostname) && segments.length >= 2;
-  } catch {
-    return false;
-  }
+function isGithubRepoParsed(parsed: URL, knownHosts: readonly string[]): boolean {
+  const segments = parsed.pathname.split('/').filter(Boolean);
+  return knownHosts.includes(parsed.hostname) && segments.length >= 2;
 }
 
 /** Hosts considered loopback for the artefact https requirement. */
@@ -213,21 +204,25 @@ export interface ResolveSkillSourceOptions {
    * Set this to support GitHub Enterprise Server (GHES) deployments.
    * Example: ['github.com', 'github.acme-corp.com']
    */
-  githubHosts?: string[];
+  githubHosts?: readonly string[];
 }
 
 /**
  * Resolve a user-supplied input string into a typed SkillSource.
  *
  * Resolution rules (in priority order):
- *   1. https://<github-host>/<org>/<repo>[/tree/<ref>]  → repo source
- *   2. http(s) URL with .zip path                        → artefact source
+ *   1. http(s) URL with .zip path                        → artefact source
+ *   2. https://<github-host>/<org>/<repo>[/tree/<ref>]  → repo source
  *   3. Other http(s) URL                                 → bundle source (legacy url path)
  *   4. Local path that is a directory                    → bundle source (legacy directory path)
+ *
+ * Artefact is checked before repo so GitHub release-asset .zip URLs
+ * (github.com/org/repo/releases/download/v1.0/skill.zip) resolve correctly.
  *
  * GitHub URL path handling:
  *   /org/repo                   → ref defaults to options.defaultBranch ?? 'main'
  *   /org/repo/tree/<ref>        → ref pinned to <ref>
+ *   /org/repo/tree/<ref>/<path> → ref pinned, trailing path warned and ignored
  *   /org/repo/issues/5          → NOT treated as a pinned ref (non-tree path ignored)
  *
  * Throws descriptive errors for invalid inputs or non-existent local paths.
@@ -236,38 +231,15 @@ export async function resolveSkillSource(
   input: string,
   options: ResolveSkillSourceOptions = {},
 ): Promise<SkillSource> {
-  const knownHosts = options.githubHosts ?? (GITHUB_HOSTS_DEFAULT as string[]);
+  const knownHosts = options.githubHosts ?? GITHUB_HOSTS_DEFAULT;
 
   // ── URL inputs ──────────────────────────────────────────────────────────────
   if (/^https?:\/\//i.test(input)) {
     // Parse once — reused for all subsequent checks to avoid triple-parse.
     const parsed = new URL(input); // throws TypeError on invalid URL
 
-    // ── Repo source ──
-    const segments = parsed.pathname.split('/').filter(Boolean);
-    if (knownHosts.includes(parsed.hostname) && segments.length >= 2) {
-      const [org, repo, treeSegment, refFromPath] = segments;
-      const defaultBranch = options.defaultBranch ?? 'main';
-      // Only treat the 4th segment as a ref when the 3rd is literally 'tree'.
-      // Other path shapes (/issues/, /pulls/, /blob/) are not ref specifiers.
-      const ref = (treeSegment === 'tree' && refFromPath) ? refFromPath : defaultBranch;
-
-      const source: RepoSkillSource = {
-        type: 'repo',
-        repoUrl: `https://${parsed.hostname}/${org}/${repo}`,
-        defaultBranch,
-        ref,
-        installLayout: options.installLayout ?? 'namespaced',
-      };
-      if (options.skillPath) source.skillPath = options.skillPath;
-      return source;
-    }
-
-    // ── Artefact source ──
+    // ── Artefact source — checked before repo to catch GitHub release-asset .zip URLs ──
     if (parsed.pathname.toLowerCase().endsWith('.zip')) {
-      // Plain http would let a network attacker swap both the zip and its
-      // .sha256 sidecar, defeating integrity verification. Loopback hosts are
-      // exempt so local development against a mock server keeps working.
       if (parsed.protocol === 'http:' && !isLoopbackHost(parsed.hostname)) {
         throw new Error(
           `Artefact sources must use https: ${input}\n` +
@@ -281,6 +253,35 @@ export async function resolveSkillSource(
       };
     }
 
+    // ── Repo source ──
+    const segments = parsed.pathname.split('/').filter(Boolean);
+    if (isGithubRepoParsed(parsed, knownHosts)) {
+      const [org, repo, treeSegment, refFromPath] = segments;
+      const defaultBranch = options.defaultBranch ?? 'main';
+      // Only treat the 4th segment as a ref when the 3rd is literally 'tree'.
+      // Other path shapes (/issues/, /pulls/, /blob/) are not ref specifiers.
+      const ref = (treeSegment === 'tree' && refFromPath) ? refFromPath : defaultBranch;
+
+      // Warn when the URL has path segments after the ref — e.g. /tree/main/skills/my-skill.
+      // agentman uses a list-and-choose model, so the path is redundant, but silent loss is confusing.
+      if (treeSegment === 'tree' && segments.length > 4) {
+        console.warn(
+          `[agentman] The path after the ref in "${input}" is ignored. ` +
+          `Select the skill from the list after resolving the repo.`,
+        );
+      }
+
+      const source: RepoSkillSource = {
+        type: 'repo',
+        repoUrl: `${parsed.origin}/${org}/${repo}`,
+        defaultBranch,
+        ref,
+        installLayout: options.installLayout ?? 'namespaced',
+      };
+      if (options.skillPath) source.skillPath = options.skillPath;
+      return source;
+    }
+
     // ── Bundle source (legacy url path) ──
     return {
       type: 'bundle',
@@ -290,9 +291,6 @@ export async function resolveSkillSource(
   }
 
   // ── Local path inputs ───────────────────────────────────────────────────────
-  const { stat } = await import('node:fs/promises');
-  const { resolve } = await import('node:path');
-
   const dirPath = resolve(input);
 
   let stats;
@@ -417,22 +415,15 @@ export function deriveRepoNamespace(repoUrl: string): string {
  * Format: "<sanitised-host>/<artefact-name>"
  *
  * The artefact name is taken from the filename (without version suffix or .zip
- * extension) using the same extraction logic as parseArtefactUrl, so
- * "https://cdn.example.com/skills/my-skill/1.2.0/my-skill.zip" → "cdn.example.com/my-skill".
- *
- * Same-named artefacts on the same host intentionally share a namespace — they
- * represent the same logical skill package across versions. The source pin's
- * artefactVersion / sha256 fields provide version-level disambiguation.
+ * extension). Same-named artefacts on the same host share a namespace — they
+ * represent the same logical skill package across versions.
  */
 export function deriveArtefactNamespace(artefactUrl: string): string {
-  // Inline the name extraction from parseArtefactUrl to avoid a runtime
-  // circular-import risk (artefact-downloader imports from skill-source).
   const parsed = new URL(artefactUrl);
   const segments = parsed.pathname.split('/').filter(Boolean);
   const fileName = segments[segments.length - 1] ?? '';
   const base = fileName.replace(/\.zip$/i, '');
 
-  // Strip version suffix if present (mirrors parseArtefactUrl's sanitiseName)
   const suffixMatch = base.match(/^(.+?)[-_](v?\d+\.\d+\.\d+(?:[-+][\w.]+)?)$/);
   const rawName = suffixMatch ? suffixMatch[1] : base;
   const name = rawName.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^[-.]+|[-.]+$/g, '') || 'artefact';
@@ -457,7 +448,7 @@ export function deriveInstallNamespace(pin: SkillSourcePin): string | null {
 }
 
 /**
- * Build the install config key (and filesystem sub-path) for a skill.
+ * Build the install config key for a skill.
  * When namespace is non-null: "<namespace>/<skillDirName>"  (namespaced layout)
  * When namespace is null:      "<skillDirName>"             (flat layout)
  */
@@ -467,9 +458,9 @@ export function buildInstallKey(namespace: string | null, skillDirName: string):
 
 /**
  * Flatten a namespace string into a safe single-segment filesystem token.
- * Replaces "/" with "-" so "github.com/org/repo" becomes "github.com-org-repo".
- * Used to build the qualified link name when two skills share the same bare skillId.
+ * Replaces "/" and "." with "-" so "github.com/org/repo" becomes "github-com-org-repo".
+ * Used to build the always-qualified link name: flattenNamespace(namespace) + "__" + skillId.
  */
 export function flattenNamespace(namespace: string): string {
-  return namespace.replace(/\//g, '-');
+  return namespace.replace(/[/.]+/g, '-');
 }

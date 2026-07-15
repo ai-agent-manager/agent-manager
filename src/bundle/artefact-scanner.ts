@@ -1,4 +1,4 @@
-import { readdir, readFile, stat } from 'node:fs/promises';
+import { lstat, readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parseFrontmatter, type AssetConfig } from '../lib/frontmatter.js';
 import { parseArtefactUrl } from './artefact-downloader.js';
@@ -22,11 +22,10 @@ export interface ArtefactScanResult {
  *   3. <wrapper>/<skill-id>/SKILL.md        → single top-level wrapper directory
  *      containing skill directories (descended once)
  *
- * Delegates to scanBundle() for directory layouts so metadata resolution and
- * rovo-agent validation behave identically to bundle installs.
+ * Artefact sources are skills-only — rovo agents are not supported in artefact
+ * packages. Use an http bundle source for rovo agents.
  *
- * Throws a descriptive error when no SKILL.md can be found — the artefact is
- * not a supported skill package and must not be installed.
+ * Throws a descriptive error when no skills can be found.
  */
 export async function scanArtefactForSkills(
   extractDir: string,
@@ -36,6 +35,12 @@ export async function scanArtefactForSkills(
   const rootSkillMd = path.join(extractDir, 'SKILL.md');
   if (await isFile(rootSkillMd)) {
     const { name } = parseArtefactUrl(source.artefactUrl);
+    const siblings = await scanBundle(extractDir);
+    if (siblings.skills.length > 0) {
+      console.warn(
+        `Warning: SKILL.md at artefact root takes precedence — ${siblings.skills.length} skill director${siblings.skills.length === 1 ? 'y' : 'ies'} ignored.`,
+      );
+    }
     const meta = await readRootMeta(extractDir, rootSkillMd);
     return {
       skills: [{ dirName: name, dirPath: extractDir, skillMdPath: rootSkillMd, meta }],
@@ -48,6 +53,7 @@ export async function scanArtefactForSkills(
   if (rootContents.skills.length > 0) {
     return { skills: rootContents.skills, skillsDir: extractDir };
   }
+  const hasRovoAgentsAtRoot = rootContents.rovoAgents.length > 0;
 
   // 3. Single top-level wrapper directory containing skill directories
   const entries = await readdir(extractDir, { withFileTypes: true });
@@ -58,6 +64,20 @@ export async function scanArtefactForSkills(
     if (wrapped.skills.length > 0) {
       return { skills: wrapped.skills, skillsDir: wrapperDir };
     }
+    const hasRovoAgentsWrapped = wrapped.rovoAgents.length > 0;
+    if (hasRovoAgentsAtRoot || hasRovoAgentsWrapped) {
+      throw new Error(
+        `No skills found in artefact: ${source.artefactUrl}\n` +
+          `  Rovo agents were found but artefact sources support skills only.\n` +
+          `  Use an http bundle source for rovo agent packages.`,
+      );
+    }
+  } else if (hasRovoAgentsAtRoot) {
+    throw new Error(
+      `No skills found in artefact: ${source.artefactUrl}\n` +
+        `  Rovo agents were found but artefact sources support skills only.\n` +
+        `  Use an http bundle source for rovo agent packages.`,
+    );
   }
 
   throw new Error(
@@ -86,7 +106,8 @@ async function readRootMeta(extractDir: string, skillMdPath: string): Promise<As
 
 async function isFile(p: string): Promise<boolean> {
   try {
-    return (await stat(p)).isFile();
+    const s = await lstat(p);
+    return s.isFile() && !s.isSymbolicLink();
   } catch {
     return false;
   }

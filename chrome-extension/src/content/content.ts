@@ -54,6 +54,4 @@ if (!(window as any).__agentmanContentScriptLoaded) {
       return false;
     }
   );
-
-  console.log('[agentman] Content script loaded on', window.location.href);
 }

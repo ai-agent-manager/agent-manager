@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { BundleSource } from "./bundle/source.js";
-import type { SkillSource } from "./bundle/skill-source.js";
+import type { DiscoveryTelemetry } from "./discovery/types.js";
 
 const DEFAULT_TIMEOUT_MS = 1000;
 
@@ -44,15 +44,11 @@ export function getBundleEndpointTelemetryValue(baseUrl: string): string {
 }
 
 export function getBundleSourceTelemetryProperties(source: BundleSource): Record<string, TelemetryValue> {
-    if (source.type === "url") {
+    if (source.type === "url" || source.type === "discovery") {
         return {
             source: source.type,
             bundleEndpoint: getBundleEndpointTelemetryValue(source.baseUrl),
         };
-    }
-
-    if (source.type === "git") {
-        return { source: "git", bundleEndpoint: "git-repo" };
     }
 
     return {
@@ -61,27 +57,6 @@ export function getBundleSourceTelemetryProperties(source: BundleSource): Record
     };
 }
 
-export function getSkillSourceTelemetryProperties(source: SkillSource): Record<string, TelemetryValue> {
-    if (source.type === "repo") {
-        return {
-            source: "repo",
-            bundleEndpoint: source.repoUrl,
-        };
-    }
-    if (source.type === "artefact") {
-        return {
-            source: "artefact",
-            bundleEndpoint: source.artefactUrl,
-        };
-    }
-    // bundle source — map back to legacy telemetry shape
-    return {
-        source: source.baseUrl ? "url" : "directory",
-        bundleEndpoint: source.baseUrl
-            ? getBundleEndpointTelemetryValue(source.baseUrl)
-            : LOCAL_DIRECTORY_BUNDLE_ENDPOINT,
-    };
-}
 
 function isCiEnvironment(env: NodeJS.ProcessEnv): boolean {
     return Boolean(
@@ -130,9 +105,11 @@ export function resolveTelemetrySettings(
         stdinIsTTY: process.stdin.isTTY,
         stdoutIsTTY: process.stdout.isTTY,
     },
+    discoveryTelemetry?: DiscoveryTelemetry,
 ): TelemetrySettings {
-    const rawUrl = env.AGENTMAN_TELEMETRY_URL ?? env.AGENTMAN_TELEMETRY_ENDPOINT;
-    const siteId = env.AGENTMAN_TELEMETRY_SITE_ID;
+    // Env vars always take precedence over discovery config
+    const rawUrl = env.AGENTMAN_TELEMETRY_URL ?? env.AGENTMAN_TELEMETRY_ENDPOINT ?? discoveryTelemetry?.url;
+    const siteId = env.AGENTMAN_TELEMETRY_SITE_ID ?? discoveryTelemetry?.siteId;
     const timeoutMs = Number(env.AGENTMAN_TELEMETRY_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS);
 
     if (!rawUrl || !siteId || shouldDisableTelemetry(env, ttyState)) {

@@ -14,7 +14,7 @@ import { downloadBundle, fetchIndex, type IndexEntry } from '../bundle/downloade
 import { extractBundle } from '../bundle/extractor.js';
 import { readRepoConfig, type RepoAgentmanConfig } from '../bundle/repo-config.js';
 import type { BundleSource } from '../bundle/source.js';
-import { SKILL_TOOLS } from '../config/tools.js';
+import { getSkillTools } from '../config/tools.js';
 import { findRepoRoot } from '../lib/repo.js';
 import {
   getBundleSourceTelemetryProperties,
@@ -488,7 +488,7 @@ export function VersionManager({
 
     if (config) {
       for (const [toolId, skills] of Object.entries(config.installations)) {
-        const tool = SKILL_TOOLS.find((entry) => entry.id === toolId);
+        const tool = getSkillTools().find((entry) => entry.id === toolId);
         const toolName = tool?.name ?? toolId;
 
         for (const [skillName, record] of Object.entries(skills)) {
@@ -501,7 +501,7 @@ export function VersionManager({
 
     if (repoConfig) {
       for (const [toolId, skills] of Object.entries(repoConfig.installations)) {
-        const tool = SKILL_TOOLS.find((entry) => entry.id === toolId);
+        const tool = getSkillTools().find((entry) => entry.id === toolId);
         const toolName = tool?.name ?? toolId;
 
         for (const [skillName, record] of Object.entries(skills)) {

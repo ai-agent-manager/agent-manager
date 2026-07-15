@@ -51,12 +51,12 @@ Skip the menu entirely with a config file:
 npx -y @ai-agent-manager/cli@latest <source> --config .github/ai-skills.yml
 ```
 
-The `<source>` can be a **bundle URL**, a **GitHub repository URL**, a **published artefact** (a `.zip` URL), or a **local directory** — agentman detects the type automatically.
+The `<source>` can be a **bundle URL**, a **GitHub repository URL**, or a **local directory** — agentman detects the type automatically. Published artefacts (`.zip` URLs) are supported as sources within a [discovery document](docs/discovery.md).
 
 **Config format:**
 
 ```yaml
-tools: claude-code        # one or more: claude-code | windsurf | github-copilot | cursor
+tools: claude-code        # one or more: claude-code | windsurf | github-copilot | cursor | kiro
 scope: repo              # repo (default) | system
 skills:
   - my-skill-name
@@ -117,14 +117,9 @@ npx -y @ai-agent-manager/cli@latest https://github.com/org/my-skills-repo/tree/v
       --config .github/ai-skills.yml
 ```
 
-#### Install from a published artefact
+#### Install from a published artefact (via discovery)
 
-Point agentman at a published, versioned skill `.zip` (an artefact). Unlike a bundle, an artefact is a single packaged skill (or small set of skills) addressed by a direct URL:
-
-```bash
-npx -y @ai-agent-manager/cli@latest https://cdn.example.com/skills/my-skill-1.2.0.zip \
-  --config .github/ai-skills.yml
-```
+Artefacts (versioned `.zip` skill packages) are consumed through a [discovery document](docs/discovery.md) — you add an `artefact` source entry pointing to the zip URL, and agentman downloads and installs it during discovery resolution. **Artefacts are untrusted third-party packages** — review the source before adding it to your discovery document. See [docs/discovery.md](docs/discovery.md) for the full guide.
 
 The version is resolved from the filename (`my-skill-1.2.0.zip`), the URL path, an embedded `manifest.json`, or — as a last resort — the content hash. The resolved version and source URL are pinned in the install record so the exact artefact can be reproduced and tracked later.
 
@@ -182,12 +177,12 @@ Skills are installed as symlinks into each tool's native skills directory:
 
 | Tool | System-wide Path | Repo-scoped Path |
 |------|-----------------|-----------------|
+| Agents (Generic) | `~/.agents/skills/<skill>/` | `<repo>/.agents/skills/<skill>/` |
 | Claude Code | `~/.claude/skills/<skill>/` | `<repo>/.claude/skills/<skill>/` |
-| Windsurf | `~/.codeium/windsurf/skills/<skill>/` | `<repo>/.windsurf/skills/<skill>/` |
+| Cursor | `~/.cursor/skills/<skill>/` | `<repo>/.cursor/skills/<skill>/` |
 | GitHub Copilot | `~/.copilot/skills/<skill>/` | `<repo>/.github/copilot/skills/<skill>/` |
-| Cursor | `~/.agents/skills/<skill>/` | `<repo>/.cursor/skills/<skill>/` |
-
-> **Cursor note:** There is no official global filesystem skills path for Cursor. Skills install to `~/.agents/skills/` using the cross-client convention. You may need to configure Cursor to discover this location.
+| Kiro | `~/.kiro/skills/<skill>/` | `<repo>/.kiro/skills/<skill>/` |
+| Windsurf | `~/.codeium/windsurf/skills/<skill>/` | `<repo>/.windsurf/skills/<skill>/` |
 
 > **Windows note:** If symlink creation fails (requires admin rights or Developer Mode), the tool falls back to copying the skill directory instead.
 
@@ -212,6 +207,22 @@ A `.agentman.json` file is written at the repo root tracking the pinned bundle v
 ## Bundle Format
 
 The tool expects a version index at `<base-url>/agents/index.json` and versioned zips at `<base-url>/agents/<version>/bundle.zip`. See [docs/bundle-format.md](docs/bundle-format.md) for the full spec.
+
+---
+
+## Examples Folder
+
+The [examples/](examples/) directory contains sample assets used for reference, local testing, and smoke tests.
+
+- `examples/epic-elaboration-agent/` -- Example Rovo agent used by the live test helper script (`scripts/test-rovo-live.ts`).
+- `examples/story-build-readiness-agent/` -- Additional example Rovo agent manifest for authoring and testing patterns.
+- `examples/git-skill-importer/` -- End-to-end example for git skill discovery; exercised in CI.
+
+Important behavior:
+
+- These examples are repository-local fixtures. They are not automatically used when you run Agent Manager against a remote bundle URL.
+- In normal production usage, Agent Manager pulls agents from your configured bundle source (`<base-url>/agents/...`).
+- To use local examples directly, run Agent Manager with a local directory source instead of a remote URL.
 
 ---
 

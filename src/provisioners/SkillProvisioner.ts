@@ -5,7 +5,7 @@ import type { SkillInfo } from '../bundle/scanner.js';
 import type { InstallScope } from '../config/scopes.js';
 import { createLink, removeLink, resolveSkillVersion } from '../lib/symlink.js';
 import { ensureDir, pathExists } from '../lib/fs.js';
-import { recordInstall, removeInstallRecord, readConfig } from '../bundle/cache.js';
+import { recordInstall, removeInstallRecord, readConfig, getRecordVersion } from '../bundle/cache.js';
 import { recordRepoInstall, removeRepoInstallRecord, readRepoConfig } from '../bundle/repo-config.js';
 import { deriveInstallNamespace, buildInstallKey, flattenNamespace } from '../bundle/skill-source.js';
 import type { SkillSourcePin } from '../bundle/skill-source.js';
@@ -56,13 +56,18 @@ export abstract class SkillProvisioner implements Provisioner {
     }
   }
 
+  /** Subclasses return the tool's system-wide skills directory */
   abstract getSkillsDir(): string;
+
+  /** Subclasses return the tool's repo-level skills directory */
   abstract getRepoSkillsDir(repoRoot: string): string;
 
+  /** Optional note displayed in the TUI */
   getNote(): string | undefined {
     return undefined;
   }
 
+  /** Resolve the effective skills directory based on scope */
   getEffectiveSkillsDir(): string {
     if (this.scope === 'repo' && this.repoRoot) {
       return this.getRepoSkillsDir(this.repoRoot);
@@ -102,10 +107,11 @@ export abstract class SkillProvisioner implements Provisioner {
 
       const version = await resolveSkillVersion(skillPath);
       const pinnedVersion = record?.sourcePin?.artefactVersion ?? record?.sourcePin?.ref;
+      const recordVer = record ? getRecordVersion(record) : undefined;
 
       installed.push({
         name: key,
-        bundleVersion: version ?? record?.bundleVersion ?? pinnedVersion ?? 'unknown',
+        bundleVersion: (version ?? (recordVer || undefined) ?? pinnedVersion) || 'unknown',
         installedAt: record?.installedAt ?? 'unknown',
         method: (record?.method as 'symlink' | 'copy') ?? (version ? 'symlink' : 'copy'),
         path: skillPath,
@@ -137,22 +143,14 @@ export abstract class SkillProvisioner implements Provisioner {
     const skillsDir = this.getEffectiveSkillsDir();
     await ensureDir(skillsDir);
 
-    const namespace = sourcePin ? deriveInstallNamespace(sourcePin) : null;
     const result: InstallResult = { installed: [], errors: [] };
 
-    // Read existing records once to detect linkName collisions across all items.
-    let existingRecords: InstallRecordMap = {};
-    if (this.scope === 'repo' && this.repoRoot) {
-      const repoConfig = await readRepoConfig(this.repoRoot);
-      existingRecords = repoConfig?.installations[this.id] ?? {};
-    } else {
-      const config = await readConfig();
-      existingRecords = config.installations[this.id] ?? {};
-    }
-
     for (const item of items) {
+      const effectivePin = item.sourcePin ?? sourcePin;
+      const namespace = effectivePin ? deriveInstallNamespace(effectivePin) : null;
       const installKey = buildInstallKey(namespace, item.dirName);
-      const linkName = pickLinkName(item.dirName, namespace, installKey, existingRecords);
+      // Always qualify: source__skillId when namespaced, bare skillId for flat/legacy.
+      const linkName = namespace ? `${flattenNamespace(namespace)}__${item.dirName}` : item.dirName;
       const linkPath = path.join(skillsDir, linkName);
 
       try {
@@ -168,7 +166,7 @@ export abstract class SkillProvisioner implements Provisioner {
           await recordRepoInstall(this.repoRoot, this.id, installKey, {
             installedAt: new Date().toISOString(),
             method: linkResult.method,
-            sourcePin,
+            sourcePin: effectivePin,
             linkName,
           }, bundleVersion || undefined);
         } else {
@@ -176,13 +174,10 @@ export abstract class SkillProvisioner implements Provisioner {
             bundleVersion: bundleVersion || undefined,
             installedAt: new Date().toISOString(),
             method: linkResult.method,
-            sourcePin,
+            sourcePin: effectivePin,
             linkName,
           });
         }
-
-        // Keep existingRecords in sync so later items in this batch see the linkName we just chose.
-        existingRecords[installKey] = { linkName };
       } catch (error) {
         result.errors.push({
           name: installKey,
@@ -260,26 +255,4 @@ export abstract class SkillProvisioner implements Provisioner {
 
     return result;
   }
-}
-
-/**
- * Pick the flat link name for a skill being installed.
- * Clean rule: use bare skillId when no existing record already claims it as a linkName.
- * Collision rule: qualify with the flattened namespace when the bare id is taken by a different key.
- */
-function pickLinkName(
-  skillDirName: string,
-  namespace: string | null,
-  installKey: string,
-  existingRecords: InstallRecordMap,
-): string {
-  if (!namespace) return skillDirName;
-
-  const claimedBy = Object.entries(existingRecords).find(
-    ([key, rec]) => (rec.linkName ?? key.split('/').pop()) === skillDirName && key !== installKey,
-  );
-
-  if (!claimedBy) return skillDirName;
-
-  return `${skillDirName}__${flattenNamespace(namespace)}`;
 }
