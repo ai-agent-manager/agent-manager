@@ -118,6 +118,95 @@ describe('runHeadless', () => {
     vi.restoreAllMocks();
   });
 
+  it('exits non-zero when a requested skill name is ambiguous across sources', async () => {
+    const { resolveDiscoverySkills } = await import('../../src/discovery/index.js');
+    vi.mocked(resolveDiscoverySkills).mockResolvedValueOnce({
+      skills: [
+        {
+          dirName: 'my-skill',
+          dirPath: '/tmp/source-a/my-skill',
+          skillMdPath: '/tmp/source-a/my-skill/SKILL.md',
+          meta: null,
+          sourcePin: { sourceType: 'repo' as const, installLayout: 'namespaced' as const, repoUrl: 'https://github.com/example-org/repo-a' },
+        },
+        {
+          dirName: 'my-skill',
+          dirPath: '/tmp/source-b/my-skill',
+          skillMdPath: '/tmp/source-b/my-skill/SKILL.md',
+          meta: null,
+          sourcePin: { sourceType: 'repo' as const, installLayout: 'namespaced' as const, repoUrl: 'https://github.com/example-org/repo-b' },
+        },
+      ],
+      rovoAgents: [],
+      errors: [],
+      bundleVersion: undefined,
+    });
+
+    const configPath = path.join(tmpDir, 'ai-skills.yml');
+    await writeFile(configPath, 'tools: claude-code\nscope: repo\nskills:\n  - my-skill\n');
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((_code) => {
+      throw new Error('process.exit called');
+    });
+
+    await expect(
+      runHeadless('https://cdn.example.com/discovery', configPath, false),
+    ).rejects.toThrow('process.exit called');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('installs successfully when a qualified name is used to disambiguate', async () => {
+    const { resolveDiscoverySkills } = await import('../../src/discovery/index.js');
+    vi.mocked(resolveDiscoverySkills).mockResolvedValueOnce({
+      skills: [
+        {
+          dirName: 'my-skill',
+          dirPath: '/tmp/source-a/my-skill',
+          skillMdPath: '/tmp/source-a/my-skill/SKILL.md',
+          meta: null,
+          sourcePin: { sourceType: 'repo' as const, installLayout: 'namespaced' as const, repoUrl: 'https://github.com/example-org/repo-a' },
+        },
+        {
+          dirName: 'my-skill',
+          dirPath: '/tmp/source-b/my-skill',
+          skillMdPath: '/tmp/source-b/my-skill/SKILL.md',
+          meta: null,
+          sourcePin: { sourceType: 'repo' as const, installLayout: 'namespaced' as const, repoUrl: 'https://github.com/example-org/repo-b' },
+        },
+      ],
+      rovoAgents: [],
+      errors: [],
+      bundleVersion: undefined,
+    });
+
+    // Use the qualified key for repo-a to disambiguate
+    const configPath = path.join(tmpDir, 'ai-skills.yml');
+    await writeFile(
+      configPath,
+      'tools: claude-code\nscope: repo\nskills:\n  - github.com/example-org/repo-a/my-skill\n',
+    );
+
+    // Mock the provisioner so we don't need a real skills dir
+    vi.mock('../../src/provisioners/registry.js', () => ({
+      createSkillProvisioner: vi.fn(() => ({
+        install: vi.fn(async () => ({ installed: [{ name: 'github.com/example-org/repo-a/my-skill', method: 'symlink', path: '/tmp/skills/github-com-example-org-repo-a__my-skill' }], errors: [] })),
+      })),
+      formatSupportedSkillToolIds: vi.fn(() => 'claude-code'),
+    }));
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((_code) => {
+      throw new Error('process.exit called');
+    });
+
+    // Should NOT throw — qualified name resolves unambiguously via exact Map hit
+    await expect(
+      runHeadless('https://cdn.example.com/discovery', configPath, false),
+    ).resolves.toBeUndefined();
+
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+
   it('exits non-zero and does not install when an artefact fails integrity check', async () => {
     const { resolveDiscoverySkills } = await import('../../src/discovery/index.js');
     vi.mocked(resolveDiscoverySkills).mockResolvedValueOnce({

@@ -150,6 +150,7 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
   // Match requested skills (bare names from config resolved to qualified keys).
   const toInstall = [];
   const notFound = [];
+  const ambiguous: string[] = [];
 
   for (const skillName of config.skills) {
     if (availableSkills.has(skillName)) {
@@ -163,11 +164,12 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
     if (matches.length === 1) {
       toInstall.push(availableSkills.get(matches[0])!);
     } else if (matches.length > 1) {
-      console.warn(
-        `\n[agentman] WARNING: '${skillName}' is ambiguous — it matches multiple sources. Specify one of:\n` +
+      console.error(
+        `\n[agentman] ERROR: '${skillName}' is ambiguous — it matches multiple sources.\n` +
+          `  Use one of these qualified names in the config file instead:\n` +
           matches.map((m) => `  - ${m}`).join('\n'),
       );
-      notFound.push(skillName);
+      ambiguous.push(skillName);
     } else {
       notFound.push(skillName);
     }
@@ -187,7 +189,7 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
   }
 
   // Install for each tool in sequence
-  let hasErrors = false;
+  let hasErrors = ambiguous.length > 0;
 
   for (const toolId of config.tools) {
     console.log(`\n[agentman] Installing ${toInstall.length} skill(s) for ${toolId}...`);
