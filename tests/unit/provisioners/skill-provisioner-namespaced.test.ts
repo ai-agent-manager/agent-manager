@@ -67,7 +67,7 @@ describe('SkillProvisioner — always-namespace flat link layout', () => {
     expect(result.installed[0].name).toBe('github.com/example-org/example-repo/test-skill');
 
     // Link is always qualified: flattenNamespace(namespace) + "__" + skillId
-    const linkPath = path.join(tmpDir, '.claude', 'skills', 'github-com-example-org-example-repo__test-skill');
+    const linkPath = path.join(tmpDir, '.claude', 'skills', 'github.com~example-org~example-repo__test-skill');
     const target = await readlink(linkPath);
     expect(target).toBe(path.join(bundleDir, 'test-skill'));
   });
@@ -80,7 +80,7 @@ describe('SkillProvisioner — always-namespace flat link layout', () => {
     expect(result.errors).toHaveLength(0);
     expect(result.installed[0].name).toBe('cdn.example.com/my-skill/test-skill');
 
-    const linkPath = path.join(tmpDir, '.claude', 'skills', 'cdn-example-com-my-skill__test-skill');
+    const linkPath = path.join(tmpDir, '.claude', 'skills', 'cdn.example.com~my-skill__test-skill');
     const target = await readlink(linkPath);
     expect(target).toBe(path.join(bundleDir, 'test-skill'));
   });
@@ -90,19 +90,29 @@ describe('SkillProvisioner — always-namespace flat link layout', () => {
   it('two skills with the same skillId from different sources both install without overwriting', async () => {
     const prov = new ClaudeCodeProvisioner();
 
-    const r1 = await prov.install([makeSkill('test-skill')], '', repoPin('https://github.com/example-org/repo-a'));
-    const r2 = await prov.install([makeSkill('test-skill')], '', repoPin('https://github.com/example-org/repo-b'));
+    // Use distinct dirPaths so readlink assertions prove each link resolves to its OWN target.
+    const skillFromA = makeSkill('test-skill');
+    const skillFromB = {
+      dirName: 'test-skill',
+      dirPath: path.join(bundleDir, 'other-skill'),
+      skillMdPath: path.join(bundleDir, 'other-skill', 'SKILL.md'),
+      meta: null,
+    };
+
+    const r1 = await prov.install([skillFromA], '', repoPin('https://github.com/example-org/repo-a'));
+    const r2 = await prov.install([skillFromB], '', repoPin('https://github.com/example-org/repo-b'));
 
     expect(r1.errors).toHaveLength(0);
     expect(r2.errors).toHaveLength(0);
 
     const skillsDir = path.join(tmpDir, '.claude', 'skills');
 
-    const linkA = path.join(skillsDir, 'github-com-example-org-repo-a__test-skill');
-    const linkB = path.join(skillsDir, 'github-com-example-org-repo-b__test-skill');
+    const linkA = path.join(skillsDir, 'github.com~example-org~repo-a__test-skill');
+    const linkB = path.join(skillsDir, 'github.com~example-org~repo-b__test-skill');
 
+    // Each link resolves to its own distinct target — no silent overwrite.
     expect(await readlink(linkA)).toBe(path.join(bundleDir, 'test-skill'));
-    expect(await readlink(linkB)).toBe(path.join(bundleDir, 'test-skill'));
+    expect(await readlink(linkB)).toBe(path.join(bundleDir, 'other-skill'));
   });
 
   it('link names are deterministic — source first, "__" separator, always qualified', async () => {
@@ -113,16 +123,16 @@ describe('SkillProvisioner — always-namespace flat link layout', () => {
 
     const skillsDir = path.join(tmpDir, '.claude', 'skills');
 
-    // Repo namespace: github.com/example-org/repo-a → flattened: github-com-example-org-repo-a
-    const repoLink = path.join(skillsDir, 'github-com-example-org-repo-a__test-skill');
-    // Artefact namespace: cdn.example.com/test-skill → flattened: cdn-example-com-test-skill
-    const artefactLink = path.join(skillsDir, 'cdn-example-com-test-skill__test-skill');
+    // Repo namespace: github.com/example-org/repo-a → flattened: github.com~example-org~repo-a
+    const repoLink = path.join(skillsDir, 'github.com~example-org~repo-a__test-skill');
+    // Artefact namespace: cdn.example.com/test-skill → flattened: cdn.example.com~test-skill
+    const artefactLink = path.join(skillsDir, 'cdn.example.com~test-skill__test-skill');
 
     expect(await readlink(repoLink)).toBe(path.join(bundleDir, 'test-skill'));
     expect(await readlink(artefactLink)).toBe(path.join(bundleDir, 'test-skill'));
   });
 
-  it('linkName flattens both "/" and "." to "-" (no colons, Windows-safe)', async () => {
+  it('linkName leaves "-" and "." within segments unchanged — no colons or slashes (Windows-safe)', async () => {
     const prov = new ClaudeCodeProvisioner();
 
     await prov.install([makeSkill('test-skill')], '', repoPin('https://github.com/example-org/example-repo'));
@@ -130,11 +140,11 @@ describe('SkillProvisioner — always-namespace flat link layout', () => {
     const skillsDir = path.join(tmpDir, '.claude', 'skills');
     const entries = await (await import('node:fs/promises')).readdir(skillsDir);
 
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toBe('github.com~example-org~example-repo__test-skill');
     for (const entry of entries) {
       expect(entry).not.toContain(':');
       expect(entry).not.toContain('/');
-      // Dots are flattened — no dots in link name except none expected here
-      expect(entry).not.toContain('.');
     }
   });
 
@@ -149,7 +159,7 @@ describe('SkillProvisioner — always-namespace flat link layout', () => {
     expect(installed).toHaveLength(1);
     expect(installed[0].name).toBe('github.com/example-org/example-repo/test-skill');
     expect(installed[0].path).toBe(
-      path.join(tmpDir, '.claude', 'skills', 'github-com-example-org-example-repo__test-skill'),
+      path.join(tmpDir, '.claude', 'skills', 'github.com~example-org~example-repo__test-skill'),
     );
   });
 
@@ -168,8 +178,8 @@ describe('SkillProvisioner — always-namespace flat link layout', () => {
 
     const skillsDir = path.join(tmpDir, '.claude', 'skills');
     const paths = installed.map((s) => s.path);
-    expect(paths).toContain(path.join(skillsDir, 'github-com-example-org-repo-a__test-skill'));
-    expect(paths).toContain(path.join(skillsDir, 'github-com-example-org-repo-b__test-skill'));
+    expect(paths).toContain(path.join(skillsDir, 'github.com~example-org~repo-a__test-skill'));
+    expect(paths).toContain(path.join(skillsDir, 'github.com~example-org~repo-b__test-skill'));
   });
 
   // ── Uninstall removes only the targeted link ──────────────────────────────────
@@ -188,10 +198,10 @@ describe('SkillProvisioner — always-namespace flat link layout', () => {
     const skillsDir = path.join(tmpDir, '.claude', 'skills');
 
     // repo-b link is gone
-    await expect(stat(path.join(skillsDir, 'github-com-example-org-repo-b__test-skill'))).rejects.toThrow();
+    await expect(stat(path.join(skillsDir, 'github.com~example-org~repo-b__test-skill'))).rejects.toThrow();
 
     // repo-a link still present
-    const aTarget = await readlink(path.join(skillsDir, 'github-com-example-org-repo-a__test-skill'));
+    const aTarget = await readlink(path.join(skillsDir, 'github.com~example-org~repo-a__test-skill'));
     expect(aTarget).toBe(path.join(bundleDir, 'test-skill'));
   });
 
@@ -318,10 +328,82 @@ describe('SkillProvisioner — always-namespace flat link layout', () => {
 
     const skillsDir = path.join(tmpDir, '.claude', 'skills');
 
-    const publicLink = path.join(skillsDir, 'github-com-example-org-example-repo__test-skill');
-    const ghesLink = path.join(skillsDir, 'github-example-internal-com-example-org-example-repo__test-skill');
+    const publicLink = path.join(skillsDir, 'github.com~example-org~example-repo__test-skill');
+    const ghesLink = path.join(skillsDir, 'github.example-internal.com~example-org~example-repo__test-skill');
 
     expect(await readlink(publicLink)).toBe(path.join(bundleDir, 'test-skill'));
     expect(await readlink(ghesLink)).toBe(path.join(bundleDir, 'test-skill'));
+  });
+
+  // ── Collision regression ──────────────────────────────────────────────────────
+
+  it('repos that differ only by org/repo name containing "-" produce distinct link names', async () => {
+    // Under the old /[/.]+/g -> '-' encoding both would flatten to the same token.
+    // "github.com/acme/data-pipeline" and "github.com/acme-data/pipeline" are the
+    // canonical colliding pair from the review.
+    // The "~" separator makes the boundary unambiguous without escaping.
+    const bundleDirA = path.join(tmpDir, 'source-a');
+    const bundleDirB = path.join(tmpDir, 'source-b');
+    await mkdir(path.join(bundleDirA, 'my-skill'), { recursive: true });
+    await writeFile(path.join(bundleDirA, 'my-skill', 'SKILL.md'), '# my-skill from A');
+    await mkdir(path.join(bundleDirB, 'my-skill'), { recursive: true });
+    await writeFile(path.join(bundleDirB, 'my-skill', 'SKILL.md'), '# my-skill from B');
+
+    const prov = new ClaudeCodeProvisioner();
+    await prov.install(
+      [{ dirName: 'my-skill', dirPath: path.join(bundleDirA, 'my-skill'), skillMdPath: path.join(bundleDirA, 'my-skill', 'SKILL.md'), meta: null }],
+      '',
+      repoPin('https://github.com/acme/data-pipeline'),
+    );
+    await prov.install(
+      [{ dirName: 'my-skill', dirPath: path.join(bundleDirB, 'my-skill'), skillMdPath: path.join(bundleDirB, 'my-skill', 'SKILL.md'), meta: null }],
+      '',
+      repoPin('https://github.com/acme-data/pipeline'),
+    );
+
+    const skillsDir = path.join(tmpDir, '.claude', 'skills');
+
+    // Distinct link names — "~" makes the boundary unambiguous.
+    const linkA = path.join(skillsDir, 'github.com~acme~data-pipeline__my-skill');
+    const linkB = path.join(skillsDir, 'github.com~acme-data~pipeline__my-skill');
+
+    // Each resolves to its own target — no silent overwrite.
+    expect(await readlink(linkA)).toBe(path.join(bundleDirA, 'my-skill'));
+    expect(await readlink(linkB)).toBe(path.join(bundleDirB, 'my-skill'));
+  });
+
+  it('uninstalling one of the colliding pair leaves the other intact with no dangling record', async () => {
+    const bundleDirA = path.join(tmpDir, 'source-a');
+    const bundleDirB = path.join(tmpDir, 'source-b');
+    await mkdir(path.join(bundleDirA, 'my-skill'), { recursive: true });
+    await writeFile(path.join(bundleDirA, 'my-skill', 'SKILL.md'), '# my-skill from A');
+    await mkdir(path.join(bundleDirB, 'my-skill'), { recursive: true });
+    await writeFile(path.join(bundleDirB, 'my-skill', 'SKILL.md'), '# my-skill from B');
+
+    const prov = new ClaudeCodeProvisioner();
+    await prov.install(
+      [{ dirName: 'my-skill', dirPath: path.join(bundleDirA, 'my-skill'), skillMdPath: path.join(bundleDirA, 'my-skill', 'SKILL.md'), meta: null }],
+      '',
+      repoPin('https://github.com/acme/data-pipeline'),
+    );
+    await prov.install(
+      [{ dirName: 'my-skill', dirPath: path.join(bundleDirB, 'my-skill'), skillMdPath: path.join(bundleDirB, 'my-skill', 'SKILL.md'), meta: null }],
+      '',
+      repoPin('https://github.com/acme-data/pipeline'),
+    );
+
+    const result = await prov.uninstall(['github.com/acme-data/pipeline/my-skill']);
+    expect(result.errors).toHaveLength(0);
+    expect(result.removed).toEqual([{ name: 'github.com/acme-data/pipeline/my-skill' }]);
+
+    // The survivor's link and record are intact.
+    const skillsDir = path.join(tmpDir, '.claude', 'skills');
+    const survivorLink = path.join(skillsDir, 'github.com~acme~data-pipeline__my-skill');
+    expect(await readlink(survivorLink)).toBe(path.join(bundleDirA, 'my-skill'));
+
+    const installed = await prov.getInstalled();
+    const names = installed.map((s) => s.name);
+    expect(names).toContain('github.com/acme/data-pipeline/my-skill');
+    expect(names).not.toContain('github.com/acme-data/pipeline/my-skill');
   });
 });

@@ -147,13 +147,14 @@ export abstract class SkillProvisioner implements Provisioner {
 
     for (const item of items) {
       const effectivePin = item.sourcePin ?? sourcePin;
-      const namespace = effectivePin ? deriveInstallNamespace(effectivePin) : null;
-      const installKey = buildInstallKey(namespace, item.dirName);
-      // Always qualify: source__skillId when namespaced, bare skillId for flat/legacy.
-      const linkName = namespace ? `${flattenNamespace(namespace)}__${item.dirName}` : item.dirName;
-      const linkPath = path.join(skillsDir, linkName);
-
+      let installKey = item.dirName;
       try {
+        const namespace = effectivePin ? deriveInstallNamespace(effectivePin) : null;
+        installKey = buildInstallKey(namespace, item.dirName);
+        // Always qualify: source__skillId when namespaced, bare skillId for flat/legacy.
+        const linkName = namespace ? `${flattenNamespace(namespace)}__${item.dirName}` : item.dirName;
+        const linkPath = path.join(skillsDir, linkName);
+
         const linkResult = await createLink(item.dirPath, linkPath);
 
         result.installed.push({

@@ -177,11 +177,10 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
   const ambiguous: string[] = [];
 
   for (const skillName of config.skills) {
-    if (availableSkills.has(skillName)) {
-      toInstall.push(availableSkills.get(skillName)!);
-      continue;
-    }
-    // Resolve bare name by matching the last "/" segment of each key.
+    // The filter covers exact keys (flat installs) and bare names ending a qualified key.
+    // Running every request through the same path catches the case where a bare name
+    // matches both a flat key and a namespaced key — that must raise ambiguity, not
+    // silently pick the flat one.
     const matches = [...availableSkills.keys()].filter(
       (k) => k === skillName || k.endsWith('/' + skillName),
     );

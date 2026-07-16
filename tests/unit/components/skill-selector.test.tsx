@@ -505,4 +505,77 @@ describe("SkillSelector", () => {
       });
     });
   });
+
+  describe("namespaced skills — same dirName, different sources", () => {
+    it("renders both and uses distinct install keys so selection state stays independent", async () => {
+      const repoAPin = {
+        sourceType: "repo" as const,
+        installLayout: "namespaced" as const,
+        repoUrl: "https://github.com/example-org/repo-a",
+      };
+      const repoBPin = {
+        sourceType: "repo" as const,
+        installLayout: "namespaced" as const,
+        repoUrl: "https://github.com/example-org/repo-b",
+      };
+
+      const sameIdSkills: SkillInfo[] = [
+        {
+          dirName: "shared-skill",
+          dirPath: "/bundle/repo-a/shared-skill",
+          skillMdPath: "/bundle/repo-a/shared-skill/SKILL.md",
+          meta: { name: "Shared Skill (A)", description: "from repo-a", tags: [] },
+          sourcePin: repoAPin,
+        },
+        {
+          dirName: "shared-skill",
+          dirPath: "/bundle/repo-b/shared-skill",
+          skillMdPath: "/bundle/repo-b/shared-skill/SKILL.md",
+          meta: { name: "Shared Skill (B)", description: "from repo-b", tags: [] },
+          sourcePin: repoBPin,
+        },
+      ];
+
+      // Only repo-a's version is installed.
+      mockProvisioner.getInstalled.mockResolvedValue([
+        makeInstalled("github.com/example-org/repo-a/shared-skill", BUNDLE_VERSION),
+      ]);
+
+      const { lastFrame, stdin } = render(
+        <SkillSelector {...defaultProps} skills={sameIdSkills} />,
+      );
+
+      await vi.waitFor(() => {
+        expect(lastFrame()).toContain("Shared Skill (A)");
+        expect(lastFrame()).toContain("Shared Skill (B)");
+      });
+
+      const frame = lastFrame()!;
+      // repo-a is installed; repo-b is not — distinct status per key.
+      const lineA = frame.split("\n").find((l) => l.includes("Shared Skill (A)"))!;
+      const lineB = frame.split("\n").find((l) => l.includes("Shared Skill (B)"))!;
+      expect(lineA).toContain("[✓]");
+      expect(lineB).toContain("[ ]");
+
+      // Toggle repo-b; repo-a selection must be unaffected.
+      stdin.write("\u001B[B"); // cursor down to repo-b
+      await vi.waitFor(() => {
+        expect(
+          lastFrame()!.split("\n").find((l) => l.includes("Shared Skill (B)")),
+        ).toContain("❯");
+      });
+
+      // useInput's handler closure is rebound via a passive effect after the
+      // cursor state update commits — flush a tick so the next keypress is
+      // handled with the up-to-date cursor value (see the "Back option" test above).
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      stdin.write(" ");
+      await vi.waitFor(() => {
+        const f = lastFrame()!;
+        expect(f.split("\n").find((l) => l.includes("Shared Skill (B)"))).toContain("[✓]");
+        // repo-a remains checked independently.
+        expect(f.split("\n").find((l) => l.includes("Shared Skill (A)"))).toContain("[✓]");
+      });
+    });
+  });
 });

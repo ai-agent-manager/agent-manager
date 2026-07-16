@@ -83,6 +83,8 @@ describe('resolveDiscoverySkills', () => {
     const result = await resolveDiscoverySkills(doc);
     expect(result.skills).toHaveLength(1);
     expect(result.skills[0]!.dirName).toBe('git-skill-a');
+    expect(result.skills[0]!.sourcePin?.installLayout).toBe('namespaced');
+    expect(result.skills[0]!.sourcePin?.sourceType).toBe('repo');
     expect(result.errors).toHaveLength(0);
   });
 
@@ -97,6 +99,8 @@ describe('resolveDiscoverySkills', () => {
     const result = await resolveDiscoverySkills(doc);
     expect(result.skills).toHaveLength(1);
     expect(result.skills[0]!.dirName).toBe('http-skill-a');
+    expect(result.skills[0]!.sourcePin?.installLayout).toBe('flat');
+    expect(result.skills[0]!.sourcePin?.sourceType).toBe('bundle');
     expect(result.bundleVersion).toBe('1.0.0');
     expect(result.errors).toHaveLength(0);
   });

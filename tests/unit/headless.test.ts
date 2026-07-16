@@ -190,7 +190,7 @@ describe('runHeadless', () => {
     // Mock the provisioner so we don't need a real skills dir
     vi.mock('../../src/provisioners/registry.js', () => ({
       createSkillProvisioner: vi.fn(() => ({
-        install: vi.fn(async () => ({ installed: [{ name: 'github.com/example-org/repo-a/my-skill', method: 'symlink', path: '/tmp/skills/github-com-example-org-repo-a__my-skill' }], errors: [] })),
+        install: vi.fn(async () => ({ installed: [{ name: 'github.com/example-org/repo-a/my-skill', method: 'symlink', path: '/tmp/skills/github.com~example-org~repo-a__my-skill' }], errors: [] })),
       })),
       formatSupportedSkillToolIds: vi.fn(() => 'claude-code'),
     }));
@@ -219,6 +219,47 @@ describe('runHeadless', () => {
           isIntegrity: true,
         },
       ],
+      bundleVersion: undefined,
+    });
+
+    const configPath = path.join(tmpDir, 'ai-skills.yml');
+    await writeFile(configPath, 'tools: claude-code\nscope: repo\nskills:\n  - my-skill\n');
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((_code) => {
+      throw new Error('process.exit called');
+    });
+
+    await expect(
+      runHeadless('https://cdn.example.com/discovery', configPath, false),
+    ).rejects.toThrow('process.exit called');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('exits non-zero when a bare config entry matches both a flat and a namespaced skill', async () => {
+    // A flat (bundle/http) skill and a namespaced (repo) skill share the same bare id.
+    // The old fast-path (has(skillName)) would silently install the flat one; the fixed
+    // path runs both through the ambiguity check and must fail loudly.
+    const { resolveDiscoverySkills } = await import('../../src/discovery/index.js');
+    vi.mocked(resolveDiscoverySkills).mockResolvedValueOnce({
+      skills: [
+        {
+          dirName: 'my-skill',
+          dirPath: '/tmp/bundle/my-skill',
+          skillMdPath: '/tmp/bundle/my-skill/SKILL.md',
+          meta: null,
+          sourcePin: { sourceType: 'bundle' as const, installLayout: 'flat' as const, baseUrl: 'https://cdn.example.com/bundle' },
+        },
+        {
+          dirName: 'my-skill',
+          dirPath: '/tmp/repo/my-skill',
+          skillMdPath: '/tmp/repo/my-skill/SKILL.md',
+          meta: null,
+          sourcePin: { sourceType: 'repo' as const, installLayout: 'namespaced' as const, repoUrl: 'https://github.com/example-org/example-repo' },
+        },
+      ],
+      rovoAgents: [],
+      errors: [],
       bundleVersion: undefined,
     });
 

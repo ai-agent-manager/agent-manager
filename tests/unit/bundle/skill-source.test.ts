@@ -581,22 +581,30 @@ describe('buildInstallKey', () => {
 // ── flattenNamespace ──────────────────────────────────────────────────────────
 
 describe('flattenNamespace', () => {
-  it('replaces "/" with "-"', () => {
-    expect(flattenNamespace('github.com/org/repo')).toBe('github-com-org-repo');
+  it('replaces "/" with "~" (segment separator)', () => {
+    expect(flattenNamespace('github.com/org/repo')).toBe('github.com~org~repo');
   });
 
-  it('replaces "." with "-"', () => {
-    expect(flattenNamespace('cdn.example.com/my-skill')).toBe('cdn-example-com-my-skill');
+  it('preserves "." — dots are valid in filenames and are not a separator', () => {
+    expect(flattenNamespace('cdn.example.com/my-skill')).toBe('cdn.example.com~my-skill');
   });
 
-  it('replaces both "/" and "." in a mixed namespace', () => {
-    expect(flattenNamespace('github.example-internal.com/org/repo')).toBe('github-example-internal-com-org-repo');
+  it('leaves "-" within segments unchanged — sanitiseNamespaceSegment never emits "~"', () => {
+    expect(flattenNamespace('github.example-internal.com/org/repo')).toBe('github.example-internal.com~org~repo');
   });
 
-  it('produces a filesystem-safe token with no colons', () => {
+  it('is injective for the canonical colliding pair — old "-" encoding was not', () => {
+    const a = flattenNamespace('github.com/acme/data-pipeline');
+    const b = flattenNamespace('github.com/acme-data/pipeline');
+    expect(a).toBe('github.com~acme~data-pipeline');
+    expect(b).toBe('github.com~acme-data~pipeline');
+    expect(a).not.toBe(b);
+  });
+
+  it('produces a filesystem-safe token with no colons or slashes', () => {
     const result = flattenNamespace('github.com/example-org/example-repo');
+    expect(result).toBe('github.com~example-org~example-repo');
     expect(result).not.toContain(':');
     expect(result).not.toContain('/');
-    expect(result).not.toContain('.');
   });
 });

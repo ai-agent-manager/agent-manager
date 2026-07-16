@@ -205,7 +205,7 @@ Skills are installed as symlinks into each tool's native skills directory:
 The link name depends on the install source:
 
 - **Bundle (`http`) sources** — bare skill id: `my-skill/`
-- **Repo and artefact sources** — namespaced: `<source>__<skill-id>/` (e.g. `github-com-org-repo__my-skill/` or `cdn-example-com-my-skill__my-skill/`). The prefix is derived from the source URL and flattened to be filesystem-safe (`/` and `.` become `-`). This ensures skills from different sources never overwrite each other even when they share the same id.
+- **Repo and artefact sources** — namespaced: `<source>__<skill-id>/` (e.g. `github.com~example-org~example-repo__my-skill/` or `cdn.example.com~my-skill__my-skill/`). The prefix is derived from the source URL; its segments are joined with `~`, a character the sanitiser never emits, so each source maps to exactly one flat link name. This ensures skills from different sources never overwrite each other even when they share the same id.
 
 > **Windows note:** If symlink creation fails (requires admin rights or Developer Mode), the tool falls back to copying the skill directory instead.
 

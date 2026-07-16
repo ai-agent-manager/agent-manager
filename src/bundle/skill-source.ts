@@ -417,6 +417,10 @@ export function deriveRepoNamespace(repoUrl: string): string {
  * The artefact name is taken from the filename (without version suffix or .zip
  * extension). Same-named artefacts on the same host share a namespace — they
  * represent the same logical skill package across versions.
+ *
+ * Version-suffix stripping is intentional: `app-2.0.0.zip` and `app.zip` map to
+ * the same namespace so an upgrade overwrites the prior record. The rare false
+ * positive is a distinct product whose filename ends in a semver-shaped token.
  */
 export function deriveArtefactNamespace(artefactUrl: string): string {
   const parsed = new URL(artefactUrl);
@@ -428,7 +432,9 @@ export function deriveArtefactNamespace(artefactUrl: string): string {
   const rawName = suffixMatch ? suffixMatch[1] : base;
   const name = rawName.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^[-.]+|[-.]+$/g, '') || 'artefact';
 
-  return `${sanitiseNamespaceSegment(parsed.hostname)}/${name}`;
+  let host: string;
+  try { host = decodeURIComponent(parsed.hostname); } catch { host = parsed.hostname; }
+  return `${sanitiseNamespaceSegment(host)}/${name}`;
 }
 
 /**
@@ -466,9 +472,16 @@ export function deriveSkillInstallKey(skill: { sourcePin?: SkillSourcePin; dirNa
 
 /**
  * Flatten a namespace string into a safe single-segment filesystem token.
- * Replaces "/" and "." with "-" so "github.com/org/repo" becomes "github-com-org-repo".
- * Used to build the always-qualified link name: flattenNamespace(namespace) + "__" + skillId.
+ *
+ * Injectivity: split on "/" into segments, join with "~". sanitiseNamespaceSegment
+ * only ever emits characters from [a-z0-9._-], so "~" can never appear inside a
+ * segment — every "~" in the output is unambiguously a segment boundary, and the
+ * flat token maps one-to-one onto the structured namespace. "~" is legal on
+ * Windows/NTFS (the reserved set is `< > : " / \ | ? *`).
+ *
+ * Example: "github.com/acme/data-pipeline"  → "github.com~acme~data-pipeline"
+ *          "github.com/acme-data/pipeline"  → "github.com~acme-data~pipeline"
  */
 export function flattenNamespace(namespace: string): string {
-  return namespace.replace(/[/.]+/g, '-');
+  return namespace.split('/').join('~');
 }
