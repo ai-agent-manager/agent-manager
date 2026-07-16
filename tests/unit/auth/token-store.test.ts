@@ -26,6 +26,19 @@ const sampleTokens: StoredTokens = {
   clientId: 'test-client',
 };
 
+// Detect at module load time whether the native keychain addon is present.
+// Tests that require the OS keychain are skipped when it's unavailable (e.g. CI,
+// machines without @napi-rs/keyring installed).
+import { createRequire } from 'node:module';
+const _require = createRequire(import.meta.url);
+let keychainAvailable: boolean;
+try {
+  _require('@napi-rs/keyring');
+  keychainAvailable = true;
+} catch {
+  keychainAvailable = false;
+}
+
 describe('token-store', () => {
   beforeEach(async () => {
     tempDir = path.join(os.tmpdir(), `token-store-test-${Date.now()}`);
@@ -45,6 +58,7 @@ describe('token-store', () => {
 
   describe('keychain backend', () => {
     it('saves to and loads from the OS keychain', async () => {
+      if (!keychainAvailable) return;
       const backend = await saveTokens('https://example.com', sampleTokens);
       expect(backend).toBe('keychain');
 
@@ -53,6 +67,7 @@ describe('token-store', () => {
     });
 
     it('cleans up filesystem tokens when keychain save succeeds', async () => {
+      if (!keychainAvailable) return;
       // Write a filesystem token first
       const filePath = path.join(tempDir, 'example_com.json');
       const { writeFile } = await import('node:fs/promises');
@@ -64,6 +79,7 @@ describe('token-store', () => {
     });
 
     it('deletes from the OS keychain', async () => {
+      if (!keychainAvailable) return;
       await saveTokens('https://example.com', sampleTokens);
       await deleteTokens('https://example.com');
 
