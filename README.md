@@ -72,7 +72,15 @@ artefact-sha256: <hex>  # optional — artefact sources only, pins the expected 
 | `bundle-version` | No | Bundle sources only — pin to a specific version, or omit to track latest |
 | `artefact-sha256` | No | Artefact sources only — expected SHA-256 of the zip; the install fails if the download doesn't match |
 
-Unknown skill names log a warning and are skipped. If no valid skills are found, the tool exits non-zero.
+Skill names are matched against the skills resolved from all sources. Use the bare skill id when it's unambiguous. If two sources ship a skill with the same id, use the fully-qualified name instead:
+
+```yaml
+skills:
+  - github.com/example-org/example-repo/my-skill   # qualified: org + repo + skill id
+  - cdn.example.com/my-skill/my-skill               # qualified: host + artefact name + skill id
+```
+
+Unknown skill names log a warning and are skipped. Ambiguous bare names (matching skills from more than one source) log an error and cause the run to exit non-zero — use the qualified form to resolve the ambiguity. If no valid skills are found, the tool exits non-zero.
 
 #### Install from a GitHub repository
 
@@ -187,12 +195,17 @@ Skills are installed as symlinks into each tool's native skills directory:
 
 | Tool | System-wide Path | Repo-scoped Path |
 |------|-----------------|-----------------|
-| Agents (Generic) | `~/.agents/skills/<skill>/` | `<repo>/.agents/skills/<skill>/` |
-| Claude Code | `~/.claude/skills/<skill>/` | `<repo>/.claude/skills/<skill>/` |
-| Cursor | `~/.cursor/skills/<skill>/` | `<repo>/.cursor/skills/<skill>/` |
-| GitHub Copilot | `~/.copilot/skills/<skill>/` | `<repo>/.github/copilot/skills/<skill>/` |
-| Kiro | `~/.kiro/skills/<skill>/` | `<repo>/.kiro/skills/<skill>/` |
-| Windsurf | `~/.codeium/windsurf/skills/<skill>/` | `<repo>/.windsurf/skills/<skill>/` |
+| Agents (Generic) | `~/.agents/skills/<link>/` | `<repo>/.agents/skills/<link>/` |
+| Claude Code | `~/.claude/skills/<link>/` | `<repo>/.claude/skills/<link>/` |
+| Cursor | `~/.cursor/skills/<link>/` | `<repo>/.cursor/skills/<link>/` |
+| GitHub Copilot | `~/.copilot/skills/<link>/` | `<repo>/.github/copilot/skills/<link>/` |
+| Kiro | `~/.kiro/skills/<link>/` | `<repo>/.kiro/skills/<link>/` |
+| Windsurf | `~/.codeium/windsurf/skills/<link>/` | `<repo>/.windsurf/skills/<link>/` |
+
+The link name depends on the install source:
+
+- **Bundle (`http`) sources** — bare skill id: `my-skill/`
+- **Repo and artefact sources** — namespaced: `<source>__<skill-id>/` (e.g. `github-com-org-repo__my-skill/` or `cdn-example-com-my-skill__my-skill/`). The prefix is derived from the source URL and flattened to be filesystem-safe (`/` and `.` become `-`). This ensures skills from different sources never overwrite each other even when they share the same id.
 
 > **Windows note:** If symlink creation fails (requires admin rights or Developer Mode), the tool falls back to copying the skill directory instead.
 
