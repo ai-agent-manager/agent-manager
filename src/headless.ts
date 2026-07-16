@@ -8,6 +8,7 @@ import { setCurrentBundle } from './bundle/cache.js';
 import { resolveSource } from './bundle/source.js';
 import { buildSourcePin, deriveSkillInstallKey, type SkillSourcePin } from './bundle/skill-source.js';
 import { resolveDiscoverySkills } from './discovery/index.js';
+import { authenticate } from './auth/index.js';
 import { createSkillProvisioner, formatSupportedSkillToolIds } from './provisioners/registry.js';
 import type { InstallScope } from './config/scopes.js';
 
@@ -95,10 +96,35 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
     // sourcePin stays undefined for discovery installs — added in the namespaced-layout follow-up.
     console.log("[agentman] Discovery document found");
 
+    let bearerToken: string | undefined;
+    if (source.discovery.auth?.required) {
+      const envToken = process.env['AGENTMAN_ACCESS_TOKEN'];
+      if (envToken) {
+        bearerToken = envToken;
+        console.log('[agentman] Using access token from AGENTMAN_ACCESS_TOKEN');
+      } else {
+        console.log('[agentman] Attempting cached token authentication...');
+        const authResult = await authenticate(
+          source.baseUrl,
+          source.discovery.auth,
+          (url) => {
+            console.error(`\n[agentman] ERROR: Authentication required. Visit this URL to authorise:`);
+            console.error(`  ${url}\n`);
+            console.error(`  Or set AGENTMAN_ACCESS_TOKEN environment variable.\n`);
+            process.exit(1);
+          },
+        );
+        bearerToken = authResult.bearerToken;
+      }
+    }
+
     console.log(`[agentman] Resolving ${source.discovery.sources.length} source(s) from discovery document...`);
-    const result = await resolveDiscoverySkills(source.discovery, undefined, (msg) => console.log(`[agentman] ${msg}`), {
-      artefactSha256: config.artefactSha256,
-    });
+    const result = await resolveDiscoverySkills(
+      source.discovery,
+      bearerToken,
+      (msg) => console.log(`[agentman] ${msg}`),
+      { artefactSha256: config.artefactSha256 },
+    );
 
     for (const { source: failedSource, error, isIntegrity } of result.errors) {
       if (isIntegrity) {
