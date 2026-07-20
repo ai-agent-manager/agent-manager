@@ -292,4 +292,36 @@ describe('runHeadless', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
+
+  it('warns instead of silently dropping when two sources collapse onto one identity', async () => {
+    // Guards the bug class itself: if a namespace-derivation gap ever makes two distinct
+    // sources share an install key, the Map must not swallow one of them without a word.
+    const { resolveDiscoverySkills } = await import('../../src/discovery/index.js');
+    const samePin = { sourceType: 'repo' as const, installLayout: 'namespaced' as const, repoUrl: 'https://github.com/example-org/example-repo' };
+    vi.mocked(resolveDiscoverySkills).mockResolvedValueOnce({
+      skills: [
+        { dirName: 'my-skill', dirPath: '/tmp/source-a/my-skill', skillMdPath: '/tmp/source-a/my-skill/SKILL.md', meta: null, sourcePin: samePin },
+        { dirName: 'my-skill', dirPath: '/tmp/source-b/my-skill', skillMdPath: '/tmp/source-b/my-skill/SKILL.md', meta: null, sourcePin: samePin },
+      ],
+      rovoAgents: [],
+      errors: [],
+      bundleVersion: undefined,
+    });
+
+    const configPath = path.join(tmpDir, 'ai-skills.yml');
+    await writeFile(configPath, 'tools: claude-code\nscope: repo\nskills:\n  - my-skill\n');
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    installMock.mockClear();
+
+    await expect(
+      runHeadless('https://cdn.example.com/discovery', configPath, false),
+    ).resolves.toBeUndefined();
+
+    const warned = warnSpy.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(warned).toContain('two sources resolved to the same identity');
+    expect(warned).toContain('github.com/example-org/example-repo/my-skill');
+    expect(warned).toContain('/tmp/source-a/my-skill');
+    expect(warned).toContain('/tmp/source-b/my-skill');
+  });
 });

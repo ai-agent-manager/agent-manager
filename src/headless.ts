@@ -169,7 +169,21 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
   }
 
   // Key by qualified identity so same-named skills from different sources both survive.
-  const availableSkills = new Map(allSkills.map((s) => [deriveSkillInstallKey(s), s]));
+  // Two distinct sources collapsing onto one identity means a namespace-derivation gap;
+  // warn rather than let the Map drop one of them silently.
+  const availableSkills = new Map<string, (typeof allSkills)[number]>();
+  for (const skill of allSkills) {
+    const key = deriveSkillInstallKey(skill);
+    const previous = availableSkills.get(key);
+    if (previous && previous.dirPath !== skill.dirPath) {
+      console.warn(
+        `\n[agentman] WARNING: two sources resolved to the same identity '${key}'\n` +
+          `  ${previous.dirPath}\n  ${skill.dirPath}\n` +
+          `  Only the second will be installed.`,
+      );
+    }
+    availableSkills.set(key, skill);
+  }
 
   // Match requested skills (bare names from config resolved to qualified keys).
   const toInstall = [];

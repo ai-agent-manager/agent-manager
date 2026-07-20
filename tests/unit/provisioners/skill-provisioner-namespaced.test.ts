@@ -438,6 +438,47 @@ describe('SkillProvisioner — always-namespace flat link layout', () => {
     expect(names).not.toContain('github.com/acme-data/pipeline/my-skill');
   });
 
+  it('two repos nested under the same group/subgroup install side by side', async () => {
+    // Reproduces the live failure: deriveRepoNamespace previously kept only the first
+    // two path segments, so group/sub/repo-a and group/sub/repo-b shared one namespace,
+    // one install key and one link — the second install silently replaced the first.
+    const bundleDirA = path.join(tmpDir, 'nested-a');
+    const bundleDirB = path.join(tmpDir, 'nested-b');
+    await mkdir(path.join(bundleDirA, 'shared-skill'), { recursive: true });
+    await writeFile(path.join(bundleDirA, 'shared-skill', 'SKILL.md'), '# from repo-a');
+    await mkdir(path.join(bundleDirB, 'shared-skill'), { recursive: true });
+    await writeFile(path.join(bundleDirB, 'shared-skill', 'SKILL.md'), '# from repo-b');
+
+    const prov = new ClaudeCodeProvisioner();
+    const r1 = await prov.install(
+      [{ dirName: 'shared-skill', dirPath: path.join(bundleDirA, 'shared-skill'), skillMdPath: path.join(bundleDirA, 'shared-skill', 'SKILL.md'), meta: null }],
+      '',
+      repoPin('https://gitlab.example.com/group/sub/repo-a'),
+    );
+    const r2 = await prov.install(
+      [{ dirName: 'shared-skill', dirPath: path.join(bundleDirB, 'shared-skill'), skillMdPath: path.join(bundleDirB, 'shared-skill', 'SKILL.md'), meta: null }],
+      '',
+      repoPin('https://gitlab.example.com/group/sub/repo-b'),
+    );
+
+    expect(r1.errors).toHaveLength(0);
+    expect(r2.errors).toHaveLength(0);
+
+    const skillsDir = path.join(tmpDir, '.claude', 'skills');
+    const linkA = path.join(skillsDir, 'gitlab.example.com~group~sub~repo-a~shared-skill');
+    const linkB = path.join(skillsDir, 'gitlab.example.com~group~sub~repo-b~shared-skill');
+
+    // Each link resolves to its own repo's copy — neither was clobbered.
+    expect(await readlink(linkA)).toBe(path.join(bundleDirA, 'shared-skill'));
+    expect(await readlink(linkB)).toBe(path.join(bundleDirB, 'shared-skill'));
+
+    const installed = await prov.getInstalled();
+    const names = installed.map((s) => s.name);
+    expect(names).toContain('gitlab.example.com/group/sub/repo-a/shared-skill');
+    expect(names).toContain('gitlab.example.com/group/sub/repo-b/shared-skill');
+    expect(installed).toHaveLength(2);
+  });
+
   // ── dirName charset guard ─────────────────────────────────────────────────────
 
   it('throws when a namespaced skill dirName contains "~"', async () => {

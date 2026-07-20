@@ -16,6 +16,7 @@
  * legacy path that maps to the 'bundle' source type with installLayout 'flat'.
  */
 
+import { createHash } from 'node:crypto';
 import { stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
@@ -390,24 +391,49 @@ export function sanitiseNamespaceSegment(s: string): string {
 }
 
 /**
- * Derive the install namespace for a GitHub repository URL.
- * Format: "<sanitised-host>/<sanitised-org>/<sanitised-repo>"
+ * Path segments that begin a web-UI route rather than repo identity.
+ * GitHub/Gitea use /tree|blob|releases/…; GitLab nests all web routes under /-/.
+ */
+const REPO_ROUTE_MARKERS = new Set([
+  '-', 'tree', 'blob', 'commit', 'commits', 'releases',
+  'tags', 'archive', 'raw', 'src', 'browse', 'pull', 'pulls', 'issues',
+]);
+
+/**
+ * Derive the install namespace for a repository URL.
+ * Format: "<sanitised-host>/<sanitised-path-segments…>"
  *
  * The host is included so installs from GitHub Enterprise Server instances
  * never collide with github.com installs that share the same org/repo name.
+ *
+ * Every path segment is retained: on hosts that nest repositories (GitLab
+ * subgroups, Gitea orgs, Azure DevOps) the segments past the second ARE the
+ * repo identity, and dropping them made genuinely distinct repos share one
+ * namespace — hence one link name — so the second install silently replaced
+ * the first.
+ *
+ * Uses `host` rather than `hostname` so a non-default port stays distinct.
+ * TODO: deriveArtefactNamespace still uses `hostname` and so drops the port —
+ * align the two in a follow-up.
  */
 export function deriveRepoNamespace(repoUrl: string): string {
   const parsed = new URL(repoUrl);
-  const segments = parsed.pathname.split('/').filter(Boolean).map((s) => {
+  let segments = parsed.pathname.split('/').filter(Boolean).map((s) => {
     try { return decodeURIComponent(s); } catch { return s; }
   });
-  const org = segments[0] ?? 'unknown';
-  const repo = segments[1]?.replace(/\.git$/i, '') ?? 'unknown';
-  return [
-    sanitiseNamespaceSegment(parsed.hostname),
-    sanitiseNamespaceSegment(org),
-    sanitiseNamespaceSegment(repo),
-  ].join('/');
+
+  // /org/repo/tree/<ref> identifies the same repo as /org/repo.
+  const marker = segments.findIndex((s) => REPO_ROUTE_MARKERS.has(s.toLowerCase()));
+  if (marker > 0) segments = segments.slice(0, marker);
+
+  // Only the final segment carries a .git clone suffix.
+  if (segments.length > 0) {
+    segments[segments.length - 1] = segments[segments.length - 1].replace(/\.git$/i, '');
+  }
+
+  return [parsed.host || parsed.hostname, ...(segments.length > 0 ? segments : ['unknown'])]
+    .map(sanitiseNamespaceSegment)
+    .join('/');
 }
 
 /**
@@ -519,4 +545,34 @@ export function deriveSkillInstallKey(skill: { sourcePin?: SkillSourcePin; dirNa
  */
 export function flattenNamespace(namespace: string): string {
   return namespace.split('/').join('~');
+}
+
+/** Per-name filesystem limit is 255 bytes on APFS/ext4/NTFS — leave headroom. */
+const MAX_LINK_NAME = 200;
+
+/**
+ * Build the on-disk link name for a namespaced install: "<flatNamespace>~<skillId>".
+ *
+ * Every boundary uses "~", which neither operand can contain (sanitiseNamespaceSegment
+ * never emits it, and a skill dir name containing it is rejected at install time), so
+ * the link name maps one-to-one onto the install key.
+ *
+ * Deeply nested sources can push that past the filesystem's per-name limit. In that
+ * case the namespace prefix is truncated and a digest of the *full* namespace is
+ * re-attached, so the shortened form stays one-to-one with the install key while the
+ * readable prefix survives. Hashing only kicks in for the pathological case.
+ *
+ * Residual edge case: a skillDirName long enough to consume the whole budget on its own
+ * leaves nothing to truncate, so the result can still exceed MAX_LINK_NAME. Not reachable
+ * from a real scan — the dir name already exists on disk and so is itself under the
+ * filesystem limit — but the guarantee is best-effort rather than absolute.
+ */
+export function buildLinkName(namespace: string, skillDirName: string): string {
+  const flat = flattenNamespace(namespace);
+  const full = `${flat}~${skillDirName}`;
+  if (full.length <= MAX_LINK_NAME) return full;
+
+  const digest = createHash('sha256').update(namespace).digest('hex').slice(0, 10);
+  const budget = Math.max(MAX_LINK_NAME - skillDirName.length - digest.length - 2, 0);
+  return `${flat.slice(0, budget)}-${digest}~${skillDirName}`;
 }

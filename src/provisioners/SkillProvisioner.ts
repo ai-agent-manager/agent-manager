@@ -7,7 +7,7 @@ import { createLink, removeLink, resolveSkillVersion } from '../lib/symlink.js';
 import { ensureDir, pathExists } from '../lib/fs.js';
 import { recordInstall, removeInstallRecord, readConfig, getRecordVersion } from '../bundle/cache.js';
 import { recordRepoInstall, removeRepoInstallRecord, readRepoConfig } from '../bundle/repo-config.js';
-import { deriveInstallNamespace, buildInstallKey, flattenNamespace } from '../bundle/skill-source.js';
+import { deriveInstallNamespace, buildInstallKey, buildLinkName } from '../bundle/skill-source.js';
 import type { SkillSourcePin } from '../bundle/skill-source.js';
 
 type InstallRecordMap = Record<
@@ -183,7 +183,7 @@ export abstract class SkillProvisioner implements Provisioner {
               `namespace separator and cannot be used under the namespaced install layout.`,
             );
           }
-          linkName = `${flattenNamespace(namespace)}~${item.dirName}`;
+          linkName = buildLinkName(namespace, item.dirName);
 
           const linkOwner = linkNameToKey.get(linkName);
           if (linkOwner && linkOwner !== installKey) {
