@@ -7,14 +7,24 @@ describe("MainMenu", () => {
     const noop = vi.fn();
 
     describe("conditional items", () => {
-        it('shows "Install Agent Skills" when hasBundleContents is true', () => {
+        it('shows "Browse & Install Skills" when hasBundleContents is true', () => {
             const { lastFrame } = render(<MainMenu hasBundleContents={true} hasRovoAgents={false} onSelect={noop} />);
-            expect(lastFrame()).toContain("Install Agent Skills");
+            expect(lastFrame()).toContain("Browse & Install Skills");
         });
 
-        it('hides "Install Agent Skills" when hasBundleContents is false', () => {
+        it('hides "Browse & Install Skills" when hasBundleContents is false', () => {
             const { lastFrame } = render(<MainMenu hasBundleContents={false} hasRovoAgents={false} onSelect={noop} />);
-            expect(lastFrame()).not.toContain("Install Agent Skills");
+            expect(lastFrame()).not.toContain("Browse & Install Skills");
+        });
+
+        it('shows "Bulk Install by Tool" when hasBundleContents is true', () => {
+            const { lastFrame } = render(<MainMenu hasBundleContents={true} hasRovoAgents={false} onSelect={noop} />);
+            expect(lastFrame()).toContain("Bulk Install by Tool");
+        });
+
+        it('hides "Bulk Install by Tool" when hasBundleContents is false', () => {
+            const { lastFrame } = render(<MainMenu hasBundleContents={false} hasRovoAgents={false} onSelect={noop} />);
+            expect(lastFrame()).not.toContain("Bulk Install by Tool");
         });
 
         it('shows "Manage Skill Versions" when hasBundleContents is true', () => {
@@ -39,6 +49,16 @@ describe("MainMenu", () => {
     });
 
     describe("permanent items", () => {
+        it('always shows "Install from URL"', () => {
+            const { lastFrame } = render(<MainMenu hasBundleContents={false} hasRovoAgents={false} onSelect={noop} />);
+            expect(lastFrame()).toContain("Install from URL");
+        });
+
+        it('always shows "Manage Installed Skills"', () => {
+            const { lastFrame } = render(<MainMenu hasBundleContents={false} hasRovoAgents={false} onSelect={noop} />);
+            expect(lastFrame()).toContain("Manage Installed Skills");
+        });
+
         it('always shows "Manage Bundle Versions"', () => {
             const { lastFrame } = render(<MainMenu hasBundleContents={false} hasRovoAgents={false} onSelect={noop} />);
             expect(lastFrame()).toContain("Manage Bundle Versions");

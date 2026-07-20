@@ -3,7 +3,10 @@ import { Box, Text } from "ink";
 import SelectInput from "ink-select-input";
 
 export type MainMenuAction =
+    | "browse-skills"
+    | "url-install"
     | "install-skills"
+    | "manage-installed"
     | "manage-skill-versions"
     | "rovo-agents"
     | "manage-versions"
@@ -21,7 +24,11 @@ export function MainMenu({ hasBundleContents, hasRovoAgents, onSelect }: MainMen
         ...(hasBundleContents
             ? [
                   {
-                      label: "Install Agent Skills        Set up skills for your AI coding tools",
+                      label: "Browse & Install Skills     Search skills, inspect sources, install",
+                      value: "browse-skills" as MainMenuAction,
+                  },
+                  {
+                      label: "Bulk Install by Tool        Pick a tool, then select skills to sync",
                       value: "install-skills" as MainMenuAction,
                   },
                   {
@@ -30,6 +37,14 @@ export function MainMenu({ hasBundleContents, hasRovoAgents, onSelect }: MainMen
                   },
               ]
             : []),
+        {
+            label: "Install from URL            GitHub repo, artefact zip, or bundle URL",
+            value: "url-install" as MainMenuAction,
+        },
+        {
+            label: "Manage Installed Skills     Update, remove, or inspect installed skills",
+            value: "manage-installed" as MainMenuAction,
+        },
         ...(hasRovoAgents
             ? [
                   {

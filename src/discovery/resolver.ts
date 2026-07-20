@@ -15,11 +15,18 @@ import { downloadArtefact } from '../bundle/artefact-downloader.js';
 import { IntegrityError } from '../bundle/downloader.js';
 import { scanArtefactForSkills } from '../bundle/artefact-scanner.js';
 import { buildSourcePin, type ArtefactSkillSource, type BundleSkillSource } from '../bundle/skill-source.js';
-import type { DiscoveryDocument, DiscoverySource } from './types.js';
+import type { DiscoveryDocument, DiscoverySource, SourceType, SourceStatus } from './types.js';
+
+/** A skill resolved from a discovery source, tagged with catalogue metadata. */
+export interface ResolvedSkill extends SkillInfo {
+  sourceName: string;
+  sourceType: SourceType;
+  sourceStatus?: SourceStatus;
+}
 
 export interface ResolvedSources {
   /** All skills successfully resolved from the discovery document. */
-  skills: SkillInfo[];
+  skills: ResolvedSkill[];
   /** All rovo agents successfully resolved from the discovery document. */
   rovoAgents: RovoAgentInfo[];
   /** Sources that failed to resolve, with error details. */
@@ -55,12 +62,17 @@ export async function resolveDiscoverySkills(
   options?: ResolveDiscoveryOptions,
 ): Promise<ResolvedSources> {
   const artefactSha256 = options?.artefactSha256;
-  const allSkills: SkillInfo[] = [];
+  const allSkills: ResolvedSkill[] = [];
   const allRovoAgents: RovoAgentInfo[] = [];
   const errors: Array<{ source: DiscoverySource; error: string; isIntegrity: boolean }> = [];
   let bundleVersion: string | undefined;
 
   for (const source of discovery.sources) {
+    const sourceMeta = {
+      sourceName: source.name,
+      sourceType: source.type,
+      ...(source.status ? { sourceStatus: source.status } : {}),
+    };
     try {
       switch (source.type) {
         case 'http': {
@@ -75,7 +87,7 @@ export async function resolveDiscoverySkills(
 
           const contents = await scanBundle(result.bundleDir, result.manifest.agents);
           const httpPin = buildSourcePin({ type: 'bundle', baseUrl: source.url, installLayout: 'flat' } as BundleSkillSource, version);
-          allSkills.push(...contents.skills.map((skill) => ({ ...skill, sourcePin: httpPin })));
+          allSkills.push(...contents.skills.map((skill) => ({ ...skill, sourcePin: httpPin, ...sourceMeta })));
           allRovoAgents.push(...contents.rovoAgents);
           break;
         }
@@ -90,7 +102,7 @@ export async function resolveDiscoverySkills(
             repoUrl: source.url,
             installLayout: 'namespaced',
           });
-          allSkills.push(...gitSkills.map((skill) => ({ ...skill, sourcePin: gitPin })));
+          allSkills.push(...gitSkills.map((skill) => ({ ...skill, sourcePin: gitPin, ...sourceMeta })));
           break;
         }
 
@@ -110,7 +122,7 @@ export async function resolveDiscoverySkills(
           };
           const pin = buildSourcePin(resolvedSource);
           const scanResult = await scanArtefactForSkills(download.extractDir, resolvedSource);
-          allSkills.push(...scanResult.skills.map((skill) => ({ ...skill, sourcePin: pin })));
+          allSkills.push(...scanResult.skills.map((skill) => ({ ...skill, sourcePin: pin, ...sourceMeta })));
           break;
         }
       }

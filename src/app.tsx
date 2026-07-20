@@ -6,6 +6,9 @@ import { AuthPrompt } from "./components/AuthPrompt.js";
 import { ChromeExtensionInstall } from "./components/ChromeExtensionInstall.js";
 import { ChromeExtensionServer } from "./components/ChromeExtensionServer.js";
 import { MainMenu } from "./components/MainMenu.js";
+import { ManageFlow } from "./components/ManageFlow.js";
+import { SkillInstallFlow } from "./components/SkillInstallFlow.js";
+import { UrlInstallFlow } from "./components/UrlInstallFlow.js";
 import { RovoMenu } from "./components/RovoMenu.js";
 import { RovoMethodMenu } from "./components/RovoMethodMenu.js";
 import { ScopeSelector } from "./components/ScopeSelector.js";
@@ -22,7 +25,7 @@ import { extractBundle } from "./bundle/extractor.js";
 import { importLocalBundle } from "./bundle/importer.js";
 import type { BundleManifest } from "./bundle/manifest.js";
 import { readRepoConfig } from "./bundle/repo-config.js";
-import { scanBundle, type BundleContents, type RovoAgentInfo, type SkillInfo } from "./bundle/scanner.js";
+import { scanBundle, type BundleContents, type RovoAgentInfo } from "./bundle/scanner.js";
 import type { BundleSource } from "./bundle/source.js";
 import { getBundleVersionDir } from "./config/paths.js";
 import type { InstallScope } from "./config/scopes.js";
@@ -30,13 +33,16 @@ import type { StartupUpdateNotice } from "./lib/startup-update-checks.js";
 import { checkForStartupUpdates, shouldRunStartupUpdateChecks } from "./lib/startup-update-checks.js";
 import { getBundleSourceTelemetryProperties, trackTelemetryError, trackTelemetryEvent } from "./telemetry.js";
 import { featureFlags } from "./lib/feature-flags.js";
-import { resolveDiscoverySkills } from "./discovery/index.js";
+import { resolveDiscoverySkills, buildCatalogue, type ResolvedSkill } from "./discovery/index.js";
 import { authenticate, openInBrowser } from "./auth/index.js";
 
 export type Screen =
     | "loading"
     | "auth"
     | "main-menu"
+    | "skill-install"
+    | "url-install"
+    | "manage-installed"
     | "scope-selector"
     | "tool-selector"
     | "skill-selector"
@@ -91,7 +97,7 @@ async function acquireDiscoverySkills(
     source: Extract<BundleSource, { type: 'discovery' }>,
     setLoadingMessage: (message: string) => void,
     onAuthPrompt: (authorizeUrl: string) => void,
-): Promise<{ skills: SkillInfo[]; rovoAgents: RovoAgentInfo[]; warnings: string[]; bundleVersion?: string }> {
+): Promise<{ skills: ResolvedSkill[]; rovoAgents: RovoAgentInfo[]; warnings: string[]; bundleVersion?: string }> {
     let bearerToken: string | undefined;
     const warnings: string[] = [];
 
@@ -138,7 +144,7 @@ export function App({ source, forceUpdate }: AppProps) {
     const [repoBundleContents, setRepoBundleContents] = useState<BundleContents | null>(null);
     const [repoBundleVersion, setRepoBundleVersion] = useState<string | null>(null);
     const [authorizeUrl, setAuthorizeUrl] = useState<string | null>(null);
-    const [discoverySkills, setDiscoverySkills] = useState<SkillInfo[] | null>(null);
+    const [discoverySkills, setDiscoverySkills] = useState<ResolvedSkill[] | null>(null);
     const [discoveryBundleVersion, setDiscoveryBundleVersion] = useState<string | null>(null);
 
     const bundleTelemetryProps = getBundleSourceTelemetryProperties(source);
@@ -400,6 +406,17 @@ export function App({ source, forceUpdate }: AppProps) {
     const effectiveVersion =
         installScope === "repo" && repoBundleVersion ? repoBundleVersion : (manifest?.version ?? discoveryBundleVersion ?? "unknown");
 
+    // Discovery skills carry real source metadata; legacy bundle/directory
+    // skills get a synthesised bundle source so the skill-first flow still works.
+    const catalogueSkills: ResolvedSkill[] =
+        discoverySkills ??
+        (bundleContents?.skills ?? []).map((skill) => ({
+            ...skill,
+            sourceName: "bundle",
+            sourceType: "http" as const,
+        }));
+    const catalogueEntries = buildCatalogue(catalogueSkills);
+
     if (screen === "loading") {
         return (
             <Box flexDirection="column">
@@ -449,8 +466,17 @@ export function App({ source, forceUpdate }: AppProps) {
                     hasRovoAgents={!!bundleContents && bundleContents.rovoAgents.length > 0}
                     onSelect={(action) => {
                         switch (action) {
+                            case "browse-skills":
+                                setScreen("skill-install");
+                                break;
+                            case "url-install":
+                                setScreen("url-install");
+                                break;
                             case "install-skills":
                                 setScreen("scope-selector");
+                                break;
+                            case "manage-installed":
+                                setScreen("manage-installed");
                                 break;
                             case "manage-skill-versions":
                                 setScreen("skill-version-manager");
@@ -470,6 +496,18 @@ export function App({ source, forceUpdate }: AppProps) {
                     }}
                 />
             )}
+
+            {screen === "skill-install" && (
+                <SkillInstallFlow
+                    entries={catalogueEntries}
+                    bundleVersion={effectiveVersion}
+                    onBack={() => setScreen("main-menu")}
+                />
+            )}
+
+            {screen === "url-install" && <UrlInstallFlow onBack={() => setScreen("main-menu")} />}
+
+            {screen === "manage-installed" && <ManageFlow onBack={() => setScreen("main-menu")} />}
 
             {screen === "scope-selector" && (
                 <ScopeSelector onSelect={handleScopeSelect} onBack={() => setScreen("main-menu")} />
