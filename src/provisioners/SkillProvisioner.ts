@@ -27,9 +27,11 @@ type ResolveResult =
  * return the single match or signal ambiguity when more than one key matches.
  */
 function resolveInstallKey(name: string, records: InstallRecordMap): ResolveResult {
-  if (name in records) return { type: 'found', key: name };
-
+  // Run the exact key through the same bare-id matching as everything else, rather than
+  // returning early on it: an exact-key hit (typically a legacy bare-key record) can still
+  // be ambiguous when a namespaced record for a *different* source shares the same bare id.
   const matches = Object.keys(records).filter((k) => {
+    if (k === name) return true;
     const segments = k.split('/');
     return segments[segments.length - 1] === name;
   });
@@ -145,16 +147,75 @@ export abstract class SkillProvisioner implements Provisioner {
 
     const result: InstallResult = { installed: [], errors: [] };
 
+    let toolInstalls: InstallRecordMap = {};
+    if (this.scope === 'repo' && this.repoRoot) {
+      const repoConfig = await readRepoConfig(this.repoRoot);
+      toolInstalls = repoConfig?.installations[this.id] ?? {};
+    } else {
+      const config = await readConfig();
+      toolInstalls = config.installations[this.id] ?? {};
+    }
+
+    // Reverse index for the Fix-1 collision guard below: every linkName currently
+    // on record, mapped back to the install key that owns it.
+    const linkNameToKey = new Map<string, string>();
+    for (const [key, record] of Object.entries(toolInstalls)) {
+      const segments = key.split('/');
+      const bareId = segments[segments.length - 1];
+      linkNameToKey.set(record.linkName ?? bareId, key);
+    }
+
     for (const item of items) {
       const effectivePin = item.sourcePin ?? sourcePin;
       let installKey = item.dirName;
       try {
         const namespace = effectivePin ? deriveInstallNamespace(effectivePin) : null;
         installKey = buildInstallKey(namespace, item.dirName);
-        // Always qualify: source__skillId when namespaced, bare skillId for flat/legacy.
-        const linkName = namespace ? `${flattenNamespace(namespace)}__${item.dirName}` : item.dirName;
-        const linkPath = path.join(skillsDir, linkName);
 
+        let linkName: string;
+        if (namespace) {
+          // "~" is the sole namespace/dirName boundary character (flattenNamespace never
+          // emits it either), so a dirName containing "~" would break the one-to-one
+          // mapping between linkName and install key.
+          if (item.dirName.includes('~')) {
+            throw new Error(
+              `Skill directory name "${item.dirName}" contains "~", which is reserved as the ` +
+              `namespace separator and cannot be used under the namespaced install layout.`,
+            );
+          }
+          linkName = `${flattenNamespace(namespace)}~${item.dirName}`;
+
+          const linkOwner = linkNameToKey.get(linkName);
+          if (linkOwner && linkOwner !== installKey) {
+            throw new Error(
+              `Link name "${linkName}" is already used by install "${linkOwner}". Refusing to ` +
+              `silently replace it with "${installKey}".`,
+            );
+          }
+
+          // TODO: this will false-positive on a legitimate version-bump reinstall of the
+          // same non-release-style artefact (e.g. app-1.0.0.zip -> app-2.0.0.zip, same
+          // install key by design) once the artefact install/update flow is wired up.
+          // Harmless today because that flow isn't connected yet (see CLAUDE.md) — revisit
+          // when it is.
+          if (effectivePin?.sourceType === 'artefact' && namespace.split('/').length === 2) {
+            const existing = toolInstalls[installKey];
+            if (
+              existing?.sourcePin?.artefactUrl &&
+              existing.sourcePin.artefactUrl !== effectivePin.artefactUrl
+            ) {
+              throw new Error(
+                `Install key "${installKey}" already points at a different artefact URL ` +
+                `(${existing.sourcePin.artefactUrl}) than the one being installed ` +
+                `(${effectivePin.artefactUrl}).`,
+              );
+            }
+          }
+        } else {
+          linkName = item.dirName;
+        }
+
+        const linkPath = path.join(skillsDir, linkName);
         const linkResult = await createLink(item.dirPath, linkPath);
 
         result.installed.push({
@@ -178,6 +239,31 @@ export abstract class SkillProvisioner implements Provisioner {
             sourcePin: effectivePin,
             linkName,
           });
+        }
+
+        linkNameToKey.set(linkName, installKey);
+
+        // Migrate a pre-existing legacy bare-key install of the same source now that the
+        // namespaced install above has succeeded — only after, so a failure earlier in this
+        // iteration (e.g. the collision guards, or a disk error) never leaves the skill with
+        // neither the old install nor the new one working. The legacy linkName (bare dirName)
+        // is always distinct from the namespaced linkName, so this can't trip the collision
+        // guard above on this same run.
+        if (namespace) {
+          const legacy = toolInstalls[item.dirName];
+          if (legacy?.sourcePin && deriveInstallNamespace(legacy.sourcePin) === namespace) {
+            const legacyLinkName = legacy.linkName ?? item.dirName;
+            await removeLink(path.join(skillsDir, legacyLinkName));
+
+            if (this.scope === 'repo' && this.repoRoot) {
+              await removeRepoInstallRecord(this.repoRoot, this.id, item.dirName);
+            } else {
+              await removeInstallRecord(this.id, item.dirName);
+            }
+
+            delete toolInstalls[item.dirName];
+            linkNameToKey.delete(legacyLinkName);
+          }
         }
       } catch (error) {
         result.errors.push({

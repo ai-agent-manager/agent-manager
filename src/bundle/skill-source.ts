@@ -411,30 +411,65 @@ export function deriveRepoNamespace(repoUrl: string): string {
 }
 
 /**
- * Derive the install namespace for an artefact URL.
- * Format: "<sanitised-host>/<artefact-name>"
- *
- * The artefact name is taken from the filename (without version suffix or .zip
- * extension). Same-named artefacts on the same host share a namespace — they
- * represent the same logical skill package across versions.
+ * Matches a GitHub release-asset download path: /<owner>/<repo>/releases/download/<tag>/<file>.
+ * Host-agnostic on purpose, so it also recognises the same layout on GHES hosts.
+ */
+const GITHUB_RELEASE_ASSET_PATH = /^\/([^/]+)\/([^/]+)\/releases\/download\/([^/]+)\/([^/]+)$/i;
+
+/**
+ * Derive the artefact name segment from a filename: strips the .zip extension and
+ * any trailing semver-shaped version suffix, then sanitises to a safe segment.
  *
  * Version-suffix stripping is intentional: `app-2.0.0.zip` and `app.zip` map to
- * the same namespace so an upgrade overwrites the prior record. The rare false
+ * the same name so an upgrade overwrites the prior record. The rare false
  * positive is a distinct product whose filename ends in a semver-shaped token.
+ *
+ * Lowercased like every other namespace segment (see sanitiseNamespaceSegment):
+ * without this, `MyApp.zip` and `myapp.zip` would derive distinct install keys
+ * whose link paths still collide on case-insensitive filesystems (macOS, Windows)
+ * while both config records survived — a silent partial collision.
+ */
+function deriveArtefactNameSegment(fileName: string): string {
+  const base = fileName.toLowerCase().replace(/\.zip$/i, '');
+  const suffixMatch = base.match(/^(.+?)[-_](v?\d+\.\d+\.\d+(?:[-+][\w.]+)?)$/);
+  const rawName = suffixMatch ? suffixMatch[1] : base;
+  return rawName.replace(/[^a-z0-9._-]+/g, '-').replace(/^[-.]+|[-.]+$/g, '') || 'artefact';
+}
+
+/**
+ * Derive the install namespace for an artefact URL.
+ *
+ * GitHub release-asset URLs (the explicitly supported artefact pattern) keep the
+ * owner/repo path segments in the namespace: "<sanitised-host>/<owner>/<repo>/<artefact-name>".
+ * Without this, two different owners publishing a release asset with the same
+ * filename (e.g. "skills.zip") would derive the same namespace and silently
+ * collide — the discarded path *is* the tenant identity on a multi-tenant host.
+ *
+ * All other artefact URLs fall back to "<sanitised-host>/<artefact-name>". Same-named
+ * artefacts on the same host share a namespace — they represent the same logical
+ * skill package across versions. See deriveArtefactNameSegment for the version-suffix
+ * stripping rationale.
  */
 export function deriveArtefactNamespace(artefactUrl: string): string {
   const parsed = new URL(artefactUrl);
-  const segments = parsed.pathname.split('/').filter(Boolean);
-  const fileName = segments[segments.length - 1] ?? '';
-  const base = fileName.replace(/\.zip$/i, '');
-
-  const suffixMatch = base.match(/^(.+?)[-_](v?\d+\.\d+\.\d+(?:[-+][\w.]+)?)$/);
-  const rawName = suffixMatch ? suffixMatch[1] : base;
-  const name = rawName.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^[-.]+|[-.]+$/g, '') || 'artefact';
-
   let host: string;
   try { host = decodeURIComponent(parsed.hostname); } catch { host = parsed.hostname; }
-  return `${sanitiseNamespaceSegment(host)}/${name}`;
+  const hostSegment = sanitiseNamespaceSegment(host);
+
+  const releaseMatch = parsed.pathname.match(GITHUB_RELEASE_ASSET_PATH);
+  if (releaseMatch) {
+    const [, owner, repo, , fileName] = releaseMatch;
+    return [
+      hostSegment,
+      sanitiseNamespaceSegment(owner),
+      sanitiseNamespaceSegment(repo),
+      deriveArtefactNameSegment(fileName),
+    ].join('/');
+  }
+
+  const segments = parsed.pathname.split('/').filter(Boolean);
+  const fileName = segments[segments.length - 1] ?? '';
+  return `${hostSegment}/${deriveArtefactNameSegment(fileName)}`;
 }
 
 /**

@@ -57,8 +57,7 @@ describe('token-store', () => {
   // ── Keychain backend ──────────────────────────────────────────────────
 
   describe('keychain backend', () => {
-    it('saves to and loads from the OS keychain', async () => {
-      if (!keychainAvailable) return;
+    it.skipIf(!keychainAvailable)('saves to and loads from the OS keychain', async () => {
       const backend = await saveTokens('https://example.com', sampleTokens);
       expect(backend).toBe('keychain');
 
@@ -66,8 +65,7 @@ describe('token-store', () => {
       expect(loaded).toEqual(sampleTokens);
     });
 
-    it('cleans up filesystem tokens when keychain save succeeds', async () => {
-      if (!keychainAvailable) return;
+    it.skipIf(!keychainAvailable)('cleans up filesystem tokens when keychain save succeeds', async () => {
       // Write a filesystem token first
       const filePath = path.join(tempDir, 'example_com.json');
       const { writeFile } = await import('node:fs/promises');
@@ -78,8 +76,7 @@ describe('token-store', () => {
       await expect(readFile(filePath, 'utf-8')).rejects.toThrow();
     });
 
-    it('deletes from the OS keychain', async () => {
-      if (!keychainAvailable) return;
+    it.skipIf(!keychainAvailable)('deletes from the OS keychain', async () => {
       await saveTokens('https://example.com', sampleTokens);
       await deleteTokens('https://example.com');
 

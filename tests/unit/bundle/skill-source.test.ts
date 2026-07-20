@@ -513,6 +513,43 @@ describe('deriveArtefactNamespace', () => {
     const ns2 = deriveArtefactNamespace('https://cdn.example.com/my-skill-2.0.0.zip');
     expect(ns1).toBe(ns2);
   });
+
+  it('lowercases the artefact name segment — case-differing filenames collide intentionally', () => {
+    const ns1 = deriveArtefactNamespace('https://cdn.example.com/MyApp.zip');
+    const ns2 = deriveArtefactNamespace('https://cdn.example.com/myapp.zip');
+    expect(ns1).toBe(ns2);
+    expect(ns1).toBe('cdn.example.com/myapp');
+  });
+
+  // ── GitHub release-asset URLs keep owner/repo in the namespace ───────────────
+
+  it('keeps owner/repo for a GitHub release-asset URL', () => {
+    expect(
+      deriveArtefactNamespace('https://github.com/example-org/tools/releases/download/v1.0.0/skills.zip'),
+    ).toBe('github.com/example-org/tools/skills');
+  });
+
+  it('two different owners publishing the same release-asset filename get distinct namespaces', () => {
+    const ns1 = deriveArtefactNamespace('https://github.com/alice/tools/releases/download/v1.0.0/skills.zip');
+    const ns2 = deriveArtefactNamespace('https://github.com/mallory/other/releases/download/v2.0.0/skills.zip');
+    expect(ns1).not.toBe(ns2);
+    expect(ns1).toBe('github.com/alice/tools/skills');
+    expect(ns2).toBe('github.com/mallory/other/skills');
+  });
+
+  it('the same owner/repo across different release tags shares one namespace (version upgrade)', () => {
+    const ns1 = deriveArtefactNamespace('https://github.com/alice/tools/releases/download/v1.0.0/skills.zip');
+    const ns2 = deriveArtefactNamespace('https://github.com/alice/tools/releases/download/v2.0.0/skills.zip');
+    expect(ns1).toBe(ns2);
+  });
+
+  it('recognises the release-asset path shape on a non-github (e.g. GHES) host too', () => {
+    expect(
+      deriveArtefactNamespace(
+        'https://github.example-internal.com/example-org/tools/releases/download/v1.0.0/skills.zip',
+      ),
+    ).toBe('github.example-internal.com/example-org/tools/skills');
+  });
 });
 
 // ── deriveInstallNamespace ────────────────────────────────────────────────────

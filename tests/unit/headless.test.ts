@@ -18,6 +18,21 @@ vi.mock('../../src/discovery/index.js', () => ({
   resolveDiscoverySkills: vi.fn(),
 }));
 
+// Hoisted so tests can assert on install's actual call arguments, not just that it fired.
+const { installMock } = vi.hoisted(() => ({
+  installMock: vi.fn(async () => ({
+    installed: [{ name: 'github.com/example-org/repo-a/my-skill', method: 'symlink' as const, path: '/tmp/skills/github.com~example-org~repo-a~my-skill' }],
+    errors: [],
+  })),
+}));
+
+vi.mock('../../src/provisioners/registry.js', () => ({
+  createSkillProvisioner: vi.fn(() => ({
+    install: installMock,
+  })),
+  formatSupportedSkillToolIds: vi.fn(() => 'claude-code'),
+}));
+
 describe('parseHeadlessConfig', () => {
   let tmpDir: string;
 
@@ -187,13 +202,7 @@ describe('runHeadless', () => {
       'tools: claude-code\nscope: repo\nskills:\n  - github.com/example-org/repo-a/my-skill\n',
     );
 
-    // Mock the provisioner so we don't need a real skills dir
-    vi.mock('../../src/provisioners/registry.js', () => ({
-      createSkillProvisioner: vi.fn(() => ({
-        install: vi.fn(async () => ({ installed: [{ name: 'github.com/example-org/repo-a/my-skill', method: 'symlink', path: '/tmp/skills/github.com~example-org~repo-a__my-skill' }], errors: [] })),
-      })),
-      formatSupportedSkillToolIds: vi.fn(() => 'claude-code'),
-    }));
+    installMock.mockClear();
 
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation((_code) => {
       throw new Error('process.exit called');
@@ -205,6 +214,13 @@ describe('runHeadless', () => {
     ).resolves.toBeUndefined();
 
     expect(exitSpy).not.toHaveBeenCalled();
+
+    // A matcher bug resolving to repo-b's skill would still make install() get called —
+    // assert on the actual item installed, not just that install() fired.
+    expect(installMock).toHaveBeenCalledTimes(1);
+    const [installedItems] = installMock.mock.calls[0];
+    expect(installedItems).toHaveLength(1);
+    expect(installedItems[0].dirPath).toBe('/tmp/source-a/my-skill');
   });
 
   it('exits non-zero and does not install when an artefact fails integrity check', async () => {
