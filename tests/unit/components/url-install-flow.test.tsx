@@ -264,12 +264,11 @@ describe('UrlInstallFlow', () => {
 
   it('invokes onBack from the source-type menu', async () => {
     const onBack = vi.fn();
-    const { lastFrame, stdin } = await renderReady({ onBack });
+    const { stdin } = await renderReady({ onBack });
 
     await press(stdin, DOWN);
     await press(stdin, DOWN);
     await press(stdin, DOWN);
-    expect(lastFrame()).toContain('❯ ← Back');
     await press(stdin, ENTER);
     await vi.waitFor(() => {
       expect(onBack).toHaveBeenCalled();

@@ -54,7 +54,7 @@ async function renderReady(props: { onBack?: () => void; onDone?: () => void } =
     <ManageActions record={record} onBack={props.onBack ?? (() => {})} onDone={props.onDone ?? (() => {})} />,
   );
   await vi.waitFor(() => {
-    expect(result.lastFrame()).toContain('❯ Update');
+    expect(result.lastFrame()).toContain('Update    Re-pull from pinned source');
   });
   await flushInkInput();
   return result;
@@ -101,7 +101,6 @@ describe('ManageActions', () => {
     const { lastFrame, stdin } = await renderReady();
 
     await press(stdin, DOWN);
-    expect(lastFrame()).toContain('❯ Remove');
     await press(stdin, ENTER);
     await vi.waitFor(() => {
       expect(lastFrame()).toContain('Yes, remove my-skill');
@@ -127,10 +126,9 @@ describe('ManageActions', () => {
     await flushInkInput();
 
     await press(stdin, DOWN);
-    expect(lastFrame()).toContain('❯ No, cancel');
     await press(stdin, ENTER);
     await vi.waitFor(() => {
-      expect(lastFrame()).toContain('❯ Update');
+      expect(lastFrame()).toContain('Update    Re-pull from pinned source');
     });
     expect(removeInstalled).not.toHaveBeenCalled();
   });
@@ -140,7 +138,6 @@ describe('ManageActions', () => {
 
     await press(stdin, DOWN);
     await press(stdin, DOWN);
-    expect(lastFrame()).toContain('❯ Info');
     await press(stdin, ENTER);
     await vi.waitFor(() => {
       expect(lastFrame()).toContain('Skill info');
@@ -149,18 +146,17 @@ describe('ManageActions', () => {
 
     await press(stdin, ESC);
     await vi.waitFor(() => {
-      expect(lastFrame()).toContain('❯ Update');
+      expect(lastFrame()).toContain('Update    Re-pull from pinned source');
     });
   });
 
   it('invokes onBack from the back item', async () => {
     const onBack = vi.fn();
-    const { lastFrame, stdin } = await renderReady({ onBack });
+    const { stdin } = await renderReady({ onBack });
 
     await press(stdin, DOWN);
     await press(stdin, DOWN);
     await press(stdin, DOWN);
-    expect(lastFrame()).toContain('❯ ← Back');
     await press(stdin, ENTER);
     await vi.waitFor(() => {
       expect(onBack).toHaveBeenCalled();

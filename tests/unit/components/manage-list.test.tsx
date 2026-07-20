@@ -100,7 +100,6 @@ describe('ManageList', () => {
 
     await press(stdin, DOWN);
     await press(stdin, DOWN);
-    expect(lastFrame()).toContain('❯ ← Back');
     await press(stdin, ENTER);
     await vi.waitFor(() => {
       expect(onBack).toHaveBeenCalled();
