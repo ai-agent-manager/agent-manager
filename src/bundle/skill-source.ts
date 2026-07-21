@@ -415,6 +415,11 @@ const REPO_ROUTE_MARKERS = new Set([
  * Uses `host` rather than `hostname` so a non-default port stays distinct.
  * TODO: deriveArtefactNamespace still uses `hostname` and so drops the port —
  * align the two in a follow-up.
+ *
+ * Route markers are only honoured from position 2 on (see below). Residual edge:
+ * a genuinely nested repo (GitLab subgroup) whose own name is a marker word, e.g.
+ * a bare web URL group/sub/tree, is truncated to group/sub. Narrow, and clone URLs
+ * (the discovery `git` source form) carry a .git suffix that dodges the marker set.
  */
 export function deriveRepoNamespace(repoUrl: string): string {
   const parsed = new URL(repoUrl);
@@ -422,9 +427,12 @@ export function deriveRepoNamespace(repoUrl: string): string {
     try { return decodeURIComponent(s); } catch { return s; }
   });
 
-  // /org/repo/tree/<ref> identifies the same repo as /org/repo.
-  const marker = segments.findIndex((s) => REPO_ROUTE_MARKERS.has(s.toLowerCase()));
-  if (marker > 0) segments = segments.slice(0, marker);
+  // /org/repo/tree/<ref> identifies the same repo as /org/repo. Only look for a
+  // route marker from position 2 on: the first two segments (org + repo) are always
+  // identity, never a route, so a repo literally named a marker word — e.g.
+  // chromium/src or chromium/tree — must not be truncated down to just its org.
+  const marker = segments.findIndex((s, i) => i >= 2 && REPO_ROUTE_MARKERS.has(s.toLowerCase()));
+  if (marker >= 2) segments = segments.slice(0, marker);
 
   // Only the final segment carries a .git clone suffix.
   if (segments.length > 0) {

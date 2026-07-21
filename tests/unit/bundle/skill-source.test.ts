@@ -503,6 +503,29 @@ describe('deriveRepoNamespace', () => {
     );
   });
 
+  it('does not truncate a repo whose name happens to be a route-marker word', () => {
+    // chromium/src and chromium/tree are distinct real repos; "src" and "tree" are
+    // also web-route verbs. Truncating them to just the org collapsed both onto
+    // "github.com/chromium" — the same silent collision this whole change prevents.
+    const src = deriveRepoNamespace('https://github.com/chromium/src');
+    const tree = deriveRepoNamespace('https://github.com/chromium/tree');
+    expect(src).toBe('github.com/chromium/src');
+    expect(tree).toBe('github.com/chromium/tree');
+    expect(src).not.toBe(tree);
+  });
+
+  it('still truncates a real /tree/<ref> route on a repo named after a marker word', () => {
+    // The repo IS named "src", yet the trailing /tree/main is a genuine route and
+    // must still collapse to the repo — the position-2 floor handles both at once.
+    expect(deriveRepoNamespace('https://github.com/chromium/src/tree/main')).toBe(
+      'github.com/chromium/src',
+    );
+  });
+
+  it('truncates a marker route page that sits as the last path segment', () => {
+    expect(deriveRepoNamespace('https://github.com/org/repo/releases')).toBe('github.com/org/repo');
+  });
+
   it('keeps a non-default port distinct from the default-port host', () => {
     const ported = deriveRepoNamespace('https://github.acme-corp.com:8443/my-org/my-repo');
     const plain = deriveRepoNamespace('https://github.acme-corp.com/my-org/my-repo');
