@@ -33,8 +33,8 @@ vi.mock("../../../src/provisioners/ClaudeCodeProvisioner.js", () => ({
     return mockProvisioner;
   }),
 }));
-vi.mock("../../../src/provisioners/WindsurfProvisioner.js", () => ({
-  WindsurfProvisioner: vi.fn(function MockWindsurfProvisioner() {
+vi.mock("../../../src/provisioners/DevinDesktopProvisioner.js", () => ({
+  DevinDesktopProvisioner: vi.fn(function MockDevinDesktopProvisioner() {
     return mockProvisioner;
   }),
 }));
