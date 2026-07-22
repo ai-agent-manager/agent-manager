@@ -1,5 +1,11 @@
 {
   "version": "1",
+  "api": {
+    "baseUrl": "http://localhost:8080",
+    "features": {
+      "projects": true
+    }
+  },
   "sources": [
     {
       "name": "mock-bundle",

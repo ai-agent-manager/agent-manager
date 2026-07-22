@@ -1,0 +1,36 @@
+# Imposter mock for the backend REST API subset used by Agent Manager.
+#
+# Only GET /projects and GET /projects/{projectId} — matching
+# src/api/projects.ts. Named examples cover proj-alpha / proj-beta.
+#
+# Start:  imposter up             (from mocks/)
+# Spec UI: http://localhost:8080/_spec
+# Stop:   imposter down -a
+
+plugin: openapi
+specFile: backend-api.yaml
+
+cors:
+  allowOrigins: all
+
+isPickFirstIfNoneMatch: true
+
+resources:
+  - path: /projects/{projectId}
+    method: GET
+    pathParams:
+      projectId: proj-alpha
+    response:
+      exampleName: alpha
+
+  - path: /projects/{projectId}
+    method: GET
+    pathParams:
+      projectId: proj-beta
+    response:
+      exampleName: beta
+
+  - path: /projects/{projectId}
+    method: GET
+    response:
+      statusCode: 404

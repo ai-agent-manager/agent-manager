@@ -1,0 +1,197 @@
+openapi: 3.0.3
+info:
+  title: Backend API
+  description: >
+    Subset of the authenticated backend REST API used by Agent Manager
+    (My Projects): list and fetch projects only.
+  version: "1.0.0"
+
+servers:
+  - url: http://localhost:8080
+    description: Local Imposter mock (same host as discovery / agent content)
+
+tags:
+  - name: projects
+
+paths:
+  /projects:
+    get:
+      tags: [projects]
+      operationId: listProjects
+      summary: List projects the authenticated user can access
+      responses:
+        "200":
+          description: Accessible projects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Project"
+              examples:
+                default:
+                  $ref: "#/components/examples/ProjectList"
+
+  /projects/{projectId}:
+    parameters:
+      - $ref: "#/components/parameters/projectId"
+    get:
+      tags: [projects]
+      operationId: getProject
+      summary: Get a single project
+      responses:
+        "200":
+          description: Project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+              examples:
+                alpha:
+                  $ref: "#/components/examples/ProjectAlpha"
+                beta:
+                  $ref: "#/components/examples/ProjectBeta"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+components:
+  parameters:
+    projectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        type: string
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+          example:
+            message: Not found
+
+  schemas:
+    ErrorBody:
+      type: object
+      properties:
+        message:
+          type: string
+
+    Project:
+      type: object
+      required:
+        - id
+        - teamId
+        - name
+        - toolIds
+        - adminEmails
+        - restrictAgents
+        - restrictSkills
+        - allowedAgentIds
+        - allowedSkillIds
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        teamId:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        toolIds:
+          type: array
+          items:
+            type: string
+        adminEmails:
+          type: array
+          items:
+            type: string
+            format: email
+        restrictAgents:
+          type: boolean
+          description: When true, only allowedAgentIds may be used
+        restrictSkills:
+          type: boolean
+          description: When true, only allowedSkillIds may be used
+        allowedAgentIds:
+          type: array
+          items:
+            type: string
+          description: Catalogue agent directory names
+        allowedSkillIds:
+          type: array
+          items:
+            type: string
+          description: Catalogue skill directory names
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+  examples:
+    ProjectAlpha:
+      summary: Unrestricted agents; skills limited to react-component-generator
+      value:
+        id: proj-alpha
+        teamId: team-personal-1
+        name: Alpha
+        description: Personal project with restricted skills
+        toolIds: [claude-code, cursor]
+        adminEmails: [developer@example.com]
+        restrictAgents: false
+        restrictSkills: true
+        allowedAgentIds: []
+        allowedSkillIds: [react-component-generator]
+        createdAt: "2026-01-01T00:00:00.000Z"
+        updatedAt: "2026-07-01T00:00:00.000Z"
+
+    ProjectBeta:
+      summary: Agents limited to sprint planner; skills unrestricted
+      value:
+        id: proj-beta
+        teamId: team-platform
+        name: Beta
+        description: Platform project with restricted agents
+        toolIds: [claude-code, atlassian-rovo]
+        adminEmails: [owner@example.com]
+        restrictAgents: true
+        restrictSkills: false
+        allowedAgentIds: [agent-sprint-planner]
+        allowedSkillIds: []
+        createdAt: "2026-02-01T00:00:00.000Z"
+        updatedAt: "2026-07-01T00:00:00.000Z"
+
+    ProjectList:
+      summary: Projects visible to the mock user
+      value:
+        - id: proj-alpha
+          teamId: team-personal-1
+          name: Alpha
+          description: Personal project with restricted skills
+          toolIds: [claude-code, cursor]
+          adminEmails: [developer@example.com]
+          restrictAgents: false
+          restrictSkills: true
+          allowedAgentIds: []
+          allowedSkillIds: [react-component-generator]
+          createdAt: "2026-01-01T00:00:00.000Z"
+          updatedAt: "2026-07-01T00:00:00.000Z"
+        - id: proj-beta
+          teamId: team-platform
+          name: Beta
+          description: Platform project with restricted agents
+          toolIds: [claude-code, atlassian-rovo]
+          adminEmails: [owner@example.com]
+          restrictAgents: true
+          restrictSkills: false
+          allowedAgentIds: [agent-sprint-planner]
+          allowedSkillIds: []
+          createdAt: "2026-02-01T00:00:00.000Z"
+          updatedAt: "2026-07-01T00:00:00.000Z"

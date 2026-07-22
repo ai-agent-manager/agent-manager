@@ -172,6 +172,83 @@ describe('fetchDiscoveryDocument', () => {
     );
   });
 
+  it('returns a document with api.baseUrl and features.projects', async () => {
+    const docWithApi: DiscoveryDocument = {
+      ...validDocumentWithAuth,
+      api: {
+        baseUrl: 'https://api.example.com',
+        features: { projects: true },
+      },
+    };
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => docWithApi,
+    });
+
+    const result = await fetchDiscoveryDocument('https://example.com');
+    expect(result.api?.baseUrl).toBe('https://api.example.com');
+    expect(result.api?.features?.projects).toBe(true);
+  });
+
+  it('rejects an invalid api.baseUrl', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ...validDocument,
+        api: { baseUrl: 'not-a-uri' },
+      }),
+    });
+
+    await expect(
+      fetchDiscoveryDocument('https://example.com'),
+    ).rejects.toThrow('validation failed');
+  });
+
+  it('accepts api without a features block', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ...validDocument,
+        api: { baseUrl: 'https://api.example.com' },
+      }),
+    });
+
+    const result = await fetchDiscoveryDocument('https://example.com');
+    expect(result.api?.baseUrl).toBe('https://api.example.com');
+    expect(result.api?.features).toBeUndefined();
+  });
+
+  it('rejects unknown api.features keys', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ...validDocument,
+        api: {
+          baseUrl: 'https://api.example.com',
+          features: { projects: true, teams: true },
+        },
+      }),
+    });
+
+    await expect(
+      fetchDiscoveryDocument('https://example.com'),
+    ).rejects.toThrow('validation failed');
+  });
+
+  it('rejects the legacy top-level apiBaseUrl field', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ...validDocument,
+        apiBaseUrl: 'https://api.example.com',
+      }),
+    });
+
+    await expect(
+      fetchDiscoveryDocument('https://example.com'),
+    ).rejects.toThrow('validation failed');
+  });
+
   it('throws DiscoveryError on network failure', async () => {
     mockFetch.mockRejectedValueOnce(new Error('Network error'));
 

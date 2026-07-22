@@ -69,9 +69,28 @@ export interface DiscoveryTelemetry {
   siteId: string;
 }
 
+/** Feature flags for the authenticated backend API. Only list flags Agent Manager uses. */
+export interface DiscoveryApiFeatures {
+  /** When true, My Projects is available (requires auth + a resolved API base URL). */
+  projects?: boolean;
+}
+
+/** Authenticated backend API configuration from the discovery document. */
+export interface DiscoveryApi {
+  /**
+   * Base URL of the authenticated REST API.
+   * Can be overridden by the `API_BASE_URL` environment variable.
+   */
+  baseUrl: string;
+  /** Optional feature flags. Omit or set `projects: false` to hide My Projects. */
+  features?: DiscoveryApiFeatures;
+}
+
 export interface DiscoveryDocument {
   /** Schema version. Must be "1". */
   version: '1';
+  /** Authenticated backend API configuration. Omit if no API is available. */
+  api?: DiscoveryApi;
   /** Authentication configuration. Omit if no auth required. */
   auth?: DiscoveryAuth;
   /** Telemetry configuration. Omit to leave telemetry unconfigured. */

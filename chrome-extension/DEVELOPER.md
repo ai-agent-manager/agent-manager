@@ -336,7 +336,7 @@ Chrome content scripts do not support ES module imports. esbuild bundles all dep
 **Prerequisites:**
 1. Start Agent Manager CLI with feature flag:
    ```bash
-   AGENTMAN_CHROME_EXTENSION=1 npx -y @ai-agent-manager/cli@latest https://bootstrap.example.com
+   AGENTMAN_CHROME_EXTENSION=1 npx -y @ai-agent-manager/cli@latest https://skills.example.com
    ```
 2. Select **Provision Rovo Agents → Chrome Extension**
 3. Note the auth token from terminal

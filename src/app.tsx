@@ -8,6 +8,7 @@ import { ChromeExtensionInstall } from "./components/ChromeExtensionInstall.js";
 import { ChromeExtensionServer } from "./components/ChromeExtensionServer.js";
 import { MainMenu } from "./components/MainMenu.js";
 import { MaintenanceMenu } from "./components/MaintenanceMenu.js";
+import { ProjectsMenu } from "./components/ProjectsMenu.js";
 import { SettingsScreen } from "./components/SettingsScreen.js";
 import { ManageFlow } from "./components/ManageFlow.js";
 import { SkillInstallFlow } from "./components/SkillInstallFlow.js";
@@ -38,12 +39,20 @@ import { getBundleSourceTelemetryProperties, setTelemetryDisabledByConfig, track
 import { featureFlags } from "./lib/feature-flags.js";
 import { resolveDiscoverySkills, buildUnifiedCatalogue, type ResolvedSkill } from "./discovery/index.js";
 import { buildPinForDirectorySource, buildSourcePin, type BundleSkillSource } from "./bundle/skill-source.js";
+import {
+    canAccessMyProjects,
+    filterAgentsForProject,
+    filterSkillsForProject,
+    resolveApiBaseUrl,
+    type Project,
+} from "./api/index.js";
 import { authenticate, openInBrowser, createDiscoveryAccessTokenProvider } from "./auth/index.js";
 
 export type Screen =
     | "loading"
     | "auth"
     | "main-menu"
+    | "my-projects"
     | "maintenance-menu"
     | "settings"
     | "skill-install"
@@ -111,6 +120,7 @@ async function acquireDiscoverySkills(
     bundleVersion?: string;
     manifest?: BundleManifest;
     bundleDir?: string;
+    bearerToken?: string;
 }> {
     let bearerToken: string | undefined;
     const warnings: string[] = [];
@@ -147,6 +157,7 @@ async function acquireDiscoverySkills(
         bundleVersion: result.bundleVersion,
         manifest: result.manifest,
         bundleDir: result.bundleDir,
+        bearerToken,
     };
 }
 
@@ -171,8 +182,35 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
     // Set when a Rovo agent is picked from the unified catalogue; scopes the Rovo
     // flow to that one agent. Null when Rovo is entered via the standalone menu.
     const [selectedRovoAgent, setSelectedRovoAgent] = useState<RovoAgentInfo | null>(null);
+    const [bearerToken, setBearerToken] = useState<string | null>(null);
+    /** When set, skill/agent install flows are filtered by the project's allowlists. */
+    const [projectContext, setProjectContext] = useState<Project | null>(null);
+    /** Re-open this project detail after returning from a project-scoped install. */
+    const [resumeProjectId, setResumeProjectId] = useState<string | null>(null);
 
     const bundleTelemetryProps: Record<string, TelemetryValue> = source ? getBundleSourceTelemetryProperties(source) : {};
+
+    const returnToProjects = useCallback(() => {
+        setResumeProjectId(projectContext?.id ?? null);
+        setProjectContext(null);
+        setSelectedRovoAgent(null);
+        setScreen("my-projects");
+    }, [projectContext]);
+
+    const returnToMainMenu = useCallback(() => {
+        setResumeProjectId(null);
+        setProjectContext(null);
+        setSelectedRovoAgent(null);
+        setScreen("main-menu");
+    }, []);
+
+    const leaveInstallFlow = useCallback(() => {
+        if (projectContext) {
+            returnToProjects();
+            return;
+        }
+        returnToMainMenu();
+    }, [projectContext, returnToProjects, returnToMainMenu]);
 
     const startBundleUpdateCheck = () => {
         // Startup notices (which trigger this) are only ever populated once a
@@ -296,6 +334,7 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
                         bundleVersion: discoveredVersion,
                         manifest: discoveredManifest,
                         bundleDir: discoveredBundleDir,
+                        bearerToken: token,
                     } = await acquireDiscoverySkills(
                         source,
                         setLoadingMessage,
@@ -311,6 +350,7 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
                     if (discoveredManifest) setManifest(discoveredManifest);
                     if (discoveredBundleDir) setBundleDir(discoveredBundleDir);
                     setBundleContents({ skills, rovoAgents });
+                    setBearerToken(token ?? null);
                     setScreen("main-menu");
                     return;
                 }
@@ -496,7 +536,26 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
             sourceName: "bundle",
             sourceType: "http" as const,
         }));
-    const catalogueEntries = buildUnifiedCatalogue(catalogueSkills, bundleContents?.rovoAgents ?? []);
+    const projectSkills = projectContext
+        ? (filterSkillsForProject(catalogueSkills, projectContext) as ResolvedSkill[])
+        : catalogueSkills;
+    const projectRovoAgents = projectContext
+        ? filterAgentsForProject(bundleContents?.rovoAgents ?? [], projectContext)
+        : (bundleContents?.rovoAgents ?? []);
+    const catalogueEntries = buildUnifiedCatalogue(projectSkills, projectRovoAgents);
+
+    const apiBaseUrl =
+        source?.type === "discovery"
+            ? resolveApiBaseUrl(source.discovery.api?.baseUrl)
+            : undefined;
+    const hasProjectsAccess =
+        source?.type === "discovery" &&
+        canAccessMyProjects({
+            authRequired: source.discovery.auth?.required,
+            features: source.discovery.api?.features,
+            apiBaseUrl,
+            bearerToken,
+        });
 
     if (screen === "loading") {
         return (
@@ -544,8 +603,15 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
             {screen === "main-menu" && (
                 <MainMenu
                     hasBundleContents={!!bundleContents}
+                    hasProjectsAccess={!!hasProjectsAccess}
                     onSelect={(action) => {
+                        setProjectContext(null);
+                        setResumeProjectId(null);
+                        setSelectedRovoAgent(null);
                         switch (action) {
+                            case "my-projects":
+                                setScreen("my-projects");
+                                break;
                             case "search-install":
                                 setScreen("skill-install");
                                 break;
@@ -561,6 +627,29 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
                             case "exit":
                                 process.exit(0);
                         }
+                    }}
+                />
+            )}
+
+            {screen === "my-projects" && apiBaseUrl && bearerToken && (
+                <ProjectsMenu
+                    apiBaseUrl={apiBaseUrl}
+                    bearerToken={bearerToken}
+                    hasSkills={catalogueSkills.length > 0}
+                    hasRovoAgents={(bundleContents?.rovoAgents.length ?? 0) > 0}
+                    initialProjectId={resumeProjectId}
+                    onBack={returnToMainMenu}
+                    onInstallSkills={(project) => {
+                        setResumeProjectId(null);
+                        setSelectedRovoAgent(null);
+                        setProjectContext(project);
+                        setScreen("skill-install");
+                    }}
+                    onProvisionAgents={(project) => {
+                        setResumeProjectId(null);
+                        setSelectedRovoAgent(null);
+                        setProjectContext(project);
+                        setScreen(featureFlags.chromeExtension ? "rovo-method" : "rovo-menu");
                     }}
                 />
             )}
@@ -602,7 +691,7 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
                         setSelectedRovoAgent(agent);
                         setScreen(featureFlags.chromeExtension ? "rovo-method" : "rovo-menu");
                     }}
-                    onBack={() => setScreen("main-menu")}
+                    onBack={leaveInstallFlow}
                 />
             )}
 
@@ -701,21 +790,44 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
                             setScreen("rovo-menu");
                         }
                     }}
-                    onBack={() => setScreen("skill-install")}
+                    onBack={() => {
+                        if (projectContext && !selectedRovoAgent) {
+                            leaveInstallFlow();
+                            return;
+                        }
+                        setScreen("skill-install");
+                    }}
                 />
             )}
 
             {screen === "rovo-menu" && bundleContents && (
                 <RovoMenu
-                    rovoAgents={selectedRovoAgent ? [selectedRovoAgent] : bundleContents.rovoAgents}
+                    rovoAgents={
+                        selectedRovoAgent
+                            ? [selectedRovoAgent]
+                            : projectRovoAgents
+                    }
                     bundleTelemetryProps={bundleTelemetryProps}
-                    onBack={() => setScreen(featureFlags.chromeExtension ? "rovo-method" : "skill-install")}
+                    onBack={() => {
+                        if (featureFlags.chromeExtension) {
+                            setScreen("rovo-method");
+                            return;
+                        }
+                        if (projectContext && !selectedRovoAgent) {
+                            leaveInstallFlow();
+                            return;
+                        }
+                        setScreen("skill-install");
+                    }}
                 />
             )}
 
             {screen === "chrome-extension" && bundleContents && manifest && (
                 <ChromeExtensionServer
-                    bundleContents={bundleContents}
+                    bundleContents={{
+                        skills: projectSkills,
+                        rovoAgents: projectRovoAgents,
+                    }}
                     manifest={manifest}
                     bundleDir={bundleDir}
                     onBack={() => setScreen("rovo-method")}
@@ -743,7 +855,11 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
             )}
 
             {screen === "chrome-extension-install" && (
-                <ChromeExtensionInstall onBack={() => setScreen(featureFlags.chromeExtension ? "rovo-method" : "skill-install")} />
+                <ChromeExtensionInstall
+                    onBack={() =>
+                        setScreen(featureFlags.chromeExtension ? "rovo-method" : "skill-install")
+                    }
+                />
             )}
         </Box>
     );

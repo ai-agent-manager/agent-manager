@@ -1,6 +1,12 @@
 {
   "$schema": "https://raw.githubusercontent.com/ai-agent-manager/agent-manager/main/src/discovery/schema.json",
   "version": "1",
+  "api": {
+    "baseUrl": "https://api.example.com",
+    "features": {
+      "projects": true
+    }
+  },
   "auth": {
     "required": true,
     "oidcDiscoveryUrl": "https://auth.example.com/.well-known/openid-configuration",

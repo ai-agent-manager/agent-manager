@@ -11,6 +11,30 @@
       "const": "1",
       "description": "Schema version"
     },
+    "api": {
+      "type": "object",
+      "description": "Authenticated backend API configuration. Omit if no API is available.",
+      "required": ["baseUrl"],
+      "properties": {
+        "baseUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "Base URL of the authenticated REST API (e.g. https://api.example.com). Can be overridden by API_BASE_URL."
+        },
+        "features": {
+          "type": "object",
+          "description": "Feature flags for API-backed UI. Only flags consumed by Agent Manager are defined here.",
+          "properties": {
+            "projects": {
+              "type": "boolean",
+              "description": "When true, enable My Projects (requires auth and a resolved API base URL)."
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
     "auth": {
       "type": "object",
       "description": "Authentication configuration. Omit entirely if no authentication is required.",
