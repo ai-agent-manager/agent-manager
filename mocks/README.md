@@ -7,14 +7,14 @@ This directory contains an [Imposter](https://docs.imposter.sh) mock that replic
 ```
 mocks/
 ├── .imposter.yaml          # Imposter engine and plugin config
-├── agents-config.yaml      # REST plugin routes — discovery doc + /agents/* + /artefacts/*
+├── agents-config.yaml      # REST plugin routes — discovery, /agents/*, /artefacts/*
 ├── build-bundles.sh        # Script to rebuild bundle.zip after content changes
 ├── .well-known/
 │   └── agents/
 │       └── discovery.json  # Discovery document served at /.well-known/agents/discovery.json
 ├── agents/
 │   ├── index.json          # Version index — lists available bundle versions
-│   └── 0.1.0/
+│   └── 0.1.1/
 │       ├── manifest.json   # Bundle manifest — agent IDs, names, tags, phases
 │       ├── bundle.zip      # Downloadable bundle (built from this directory)
 │       ├── bundle.zip.sha256
@@ -45,7 +45,7 @@ imposter up             # starts on http://localhost:8080
 imposter down -a        # stop all running Imposter instances
 ```
 
-The mock serves the discovery document at `/.well-known/agents/discovery.json` and all files under `/agents/` with permissive CORS, so the CLI and any browser-based frontend can reach it without cross-origin errors.
+The mock serves the discovery document at `/.well-known/agents/discovery.json`, all files under `/agents/`, and artefact zips under `/artefacts/`, with permissive CORS so the CLI and any browser-based frontend can reach it without cross-origin errors.
 
 Point the CLI at the mock:
 
@@ -57,7 +57,7 @@ npm run dev -- http://localhost:8080
 
 ## How the mock works
 
-`.imposter.yaml` configures Imposter's native engine. `agents-config.yaml` defines two REST plugin rules:
+`.imposter.yaml` configures Imposter's native engine. `agents-config.yaml` defines three REST plugin rules:
 
 ```yaml
 plugin: rest
@@ -71,9 +71,14 @@ resources:
     method: GET
     response:
       dir: agents
+
+  - path: /artefacts/*
+    method: GET
+    response:
+      dir: artefacts
 ```
 
-The discovery rule returns `.well-known/agents/discovery.json` verbatim, so `GET /.well-known/agents/discovery.json` gives the CLI its list of skills. The wildcard rule maps the URL path to a file under `agents/`. So `GET /agents/index.json` returns `agents/index.json`, and `GET /agents/0.1.0/bundle.zip` returns the binary zip.
+The discovery rule returns `.well-known/agents/discovery.json` verbatim, so `GET /.well-known/agents/discovery.json` gives the CLI its list of sources. The `/agents/*` wildcard maps to files under `agents/` (e.g. `GET /agents/0.1.1/bundle.zip`). The `/artefacts/*` wildcard maps to files under `artefacts/` (e.g. `GET /artefacts/artefact-test.zip`), matching the community artefact source in the discovery document.
 
 ## Adding or updating a bundle version
 
