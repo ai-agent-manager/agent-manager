@@ -72,7 +72,15 @@ artefact-sha256: <hex>  # optional — artefact sources only, pins the expected 
 | `bundle-version` | No | Bundle sources only — pin to a specific version, or omit to track latest |
 | `artefact-sha256` | No | Artefact sources only — expected SHA-256 of the zip; the install fails if the download doesn't match |
 
-Unknown skill names log a warning and are skipped. If no valid skills are found, the tool exits non-zero.
+Skill names are matched against the skills resolved from all sources. Use the bare skill id when it's unambiguous. If two sources ship a skill with the same id, use the fully-qualified name instead:
+
+```yaml
+skills:
+  - github.com/example-org/example-repo/my-skill   # qualified: org + repo + skill id
+  - cdn.example.com/my-skill/my-skill               # qualified: host + artefact name + skill id
+```
+
+Unknown skill names log a warning and are skipped. Ambiguous bare names (matching skills from more than one source) log an error and cause the run to exit non-zero — use the qualified form to resolve the ambiguity. If no valid skills are found, the tool exits non-zero.
 
 #### Install from a GitHub repository
 
@@ -193,6 +201,11 @@ Skills are installed as symlinks into each tool's native skills directory:
 | GitHub Copilot | `~/.copilot/skills/<skill>/` | `<repo>/.github/copilot/skills/<skill>/` |
 | Kiro | `~/.kiro/skills/<skill>/` | `<repo>/.kiro/skills/<skill>/` |
 | Devin Desktop (formerly Windsurf) | `~/.codeium/windsurf/skills/<skill>/` | `<repo>/.windsurf/skills/<skill>/` |
+
+The link name depends on the install source:
+
+- **Bundle (`http`) sources** — bare skill id: `my-skill/`
+- **Repo and artefact sources** — namespaced: `<source>~<skill-id>/` (e.g. `github.com~example-org~example-repo~my-skill/` or `cdn.example.com~my-skill~my-skill/`). The prefix is derived from the source URL; every boundary — between namespace segments, and between the namespace and the skill id — is joined with `~`, a character the sanitiser never emits, so each `(source, skill-id)` pair maps to exactly one flat link name. This ensures skills from different repo/artefact sources never overwrite each other even when they share the same id. Bundle and local-directory sources remain flat (bare `<skill-id>/`) by design and are out of scope for this guarantee — same-id skills from those sources can still collide.
 
 > **Windows note:** If symlink creation fails (requires admin rights or Developer Mode), the tool falls back to copying the skill directory instead.
 

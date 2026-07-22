@@ -4,6 +4,7 @@ import type { SkillInfo } from "../bundle/scanner.js";
 import type { InstallScope } from "../config/scopes.js";
 import type { InstalledSkill, UninstallResult } from "../provisioners/types.js";
 import { createSkillProvisioner } from "../provisioners/registry.js";
+import { deriveSkillInstallKey } from "../bundle/skill-source.js";
 import type { TelemetryValue } from "../telemetry.js";
 import { trackTelemetryError, trackTelemetryEvent } from "../telemetry.js";
 import { LoadingSpinner } from "./Spinner.js";
@@ -90,12 +91,13 @@ export function SkillSelector({
 
     if (input === " " && cursor < skills.length) {
       const skill = skills[cursor];
+      const installKey = deriveSkillInstallKey(skill);
       setSelected((previous) => {
         const next = new Set(previous);
-        if (next.has(skill.dirName)) {
-          next.delete(skill.dirName);
+        if (next.has(installKey)) {
+          next.delete(installKey);
         } else {
-          next.add(skill.dirName);
+          next.add(installKey);
         }
         return next;
       });
@@ -111,7 +113,7 @@ export function SkillSelector({
       setInstalling(true);
 
       (async () => {
-        const toInstall = skills.filter((skill) => selected.has(skill.dirName));
+        const toInstall = skills.filter((skill) => selected.has(deriveSkillInstallKey(skill)));
         const toUninstall = installed
           .filter((installedSkill) => !selected.has(installedSkill.name))
           .map((installedSkill) => installedSkill.name);
@@ -138,11 +140,11 @@ export function SkillSelector({
         }
 
         const newInstalls = toInstall.filter(
-          (skill) => !installed.find((installedSkill) => installedSkill.name === skill.dirName),
+          (skill) => !installed.find((installedSkill) => installedSkill.name === deriveSkillInstallKey(skill)),
         );
 
         const skipped = toInstall.filter((skill) => {
-          const existingInstall = installed.find((installedSkill) => installedSkill.name === skill.dirName);
+          const existingInstall = installed.find((installedSkill) => installedSkill.name === deriveSkillInstallKey(skill));
           return Boolean(existingInstall && existingInstall.bundleVersion !== bundleVersion);
         }).length;
 
@@ -251,14 +253,15 @@ export function SkillSelector({
       {note && scope === "system" && <Text color="yellow"> {note}</Text>}
       <Text> </Text>
       {skills.map((skill, index) => {
-        const isSelected = selected.has(skill.dirName);
+        const installKey = deriveSkillInstallKey(skill);
+        const isSelected = selected.has(installKey);
         const isCursor = index === cursor;
-        const status = getStatus(skill.dirName);
+        const status = getStatus(installKey);
         const displayName = skill.meta?.name ?? skill.dirName;
         const description = skill.meta?.description ?? "";
 
         return (
-          <Text key={skill.dirName}>
+          <Text key={installKey}>
             {isCursor ? "  ❯ " : "    "}
             {isSelected ? "[✓]" : "[ ]"} {displayName.padEnd(28)}
             <Text dimColor>{description.slice(0, 40).padEnd(40)}</Text>

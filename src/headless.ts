@@ -6,7 +6,7 @@ import { importLocalBundle } from './bundle/importer.js';
 import { scanBundle, type SkillInfo } from './bundle/scanner.js';
 import { setCurrentBundle } from './bundle/cache.js';
 import { resolveSource } from './bundle/source.js';
-import { buildSourcePin, type SkillSourcePin } from './bundle/skill-source.js';
+import { buildSourcePin, deriveSkillInstallKey, type SkillSourcePin } from './bundle/skill-source.js';
 import { resolveDiscoverySkills } from './discovery/index.js';
 import { authenticate } from './auth/index.js';
 import { createSkillProvisioner, formatSupportedSkillToolIds } from './provisioners/registry.js';
@@ -168,16 +168,45 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
     allSkills = contents.skills;
   }
 
-  const availableSkills = new Map(allSkills.map((s) => [s.dirName, s]));
+  // Key by qualified identity so same-named skills from different sources both survive.
+  // Two distinct sources collapsing onto one identity means a namespace-derivation gap;
+  // warn rather than let the Map drop one of them silently.
+  const availableSkills = new Map<string, (typeof allSkills)[number]>();
+  for (const skill of allSkills) {
+    const key = deriveSkillInstallKey(skill);
+    const previous = availableSkills.get(key);
+    if (previous && previous.dirPath !== skill.dirPath) {
+      console.warn(
+        `\n[agentman] WARNING: two sources resolved to the same identity '${key}'\n` +
+          `  ${previous.dirPath}\n  ${skill.dirPath}\n` +
+          `  Only the second will be installed.`,
+      );
+    }
+    availableSkills.set(key, skill);
+  }
 
-  // Match requested skills
+  // Match requested skills (bare names from config resolved to qualified keys).
   const toInstall = [];
   const notFound = [];
+  const ambiguous: string[] = [];
 
   for (const skillName of config.skills) {
-    const skill = availableSkills.get(skillName);
-    if (skill) {
-      toInstall.push(skill);
+    // The filter covers exact keys (flat installs) and bare names ending a qualified key.
+    // Running every request through the same path catches the case where a bare name
+    // matches both a flat key and a namespaced key — that must raise ambiguity, not
+    // silently pick the flat one.
+    const matches = [...availableSkills.keys()].filter(
+      (k) => k === skillName || k.endsWith('/' + skillName),
+    );
+    if (matches.length === 1) {
+      toInstall.push(availableSkills.get(matches[0])!);
+    } else if (matches.length > 1) {
+      console.error(
+        `\n[agentman] ERROR: '${skillName}' is ambiguous — it matches multiple sources.\n` +
+          `  Use one of these qualified names in the config file instead:\n` +
+          matches.map((m) => `  - ${m}`).join('\n'),
+      );
+      ambiguous.push(skillName);
     } else {
       notFound.push(skillName);
     }
@@ -197,7 +226,7 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
   }
 
   // Install for each tool in sequence
-  let hasErrors = false;
+  let hasErrors = ambiguous.length > 0;
 
   for (const toolId of config.tools) {
     console.log(`\n[agentman] Installing ${toInstall.length} skill(s) for ${toolId}...`);

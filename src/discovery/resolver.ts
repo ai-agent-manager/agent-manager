@@ -14,7 +14,7 @@ import { importGitSkills } from './git-importer.js';
 import { downloadArtefact } from '../bundle/artefact-downloader.js';
 import { IntegrityError } from '../bundle/downloader.js';
 import { scanArtefactForSkills } from '../bundle/artefact-scanner.js';
-import { buildSourcePin, type ArtefactSkillSource } from '../bundle/skill-source.js';
+import { buildSourcePin, type ArtefactSkillSource, type BundleSkillSource } from '../bundle/skill-source.js';
 import type { DiscoveryDocument, DiscoverySource } from './types.js';
 
 export interface ResolvedSources {
@@ -74,7 +74,8 @@ export async function resolveDiscoverySkills(
           bundleVersion = version;
 
           const contents = await scanBundle(result.bundleDir, result.manifest.agents);
-          allSkills.push(...contents.skills);
+          const httpPin = buildSourcePin({ type: 'bundle', baseUrl: source.url, installLayout: 'flat' } as BundleSkillSource, version);
+          allSkills.push(...contents.skills.map((skill) => ({ ...skill, sourcePin: httpPin })));
           allRovoAgents.push(...contents.rovoAgents);
           break;
         }
@@ -82,7 +83,14 @@ export async function resolveDiscoverySkills(
         case 'git': {
           onProgress?.(`Cloning source repository: ${source.name}...`);
           const { skills: gitSkills } = await importGitSkills(source.url, source.name);
-          allSkills.push(...gitSkills);
+          // No ref pinned: the importer shallow-clones and doesn't surface the
+          // resolved commit, so ref stays undefined here.
+          const gitPin = buildSourcePin({
+            type: 'repo',
+            repoUrl: source.url,
+            installLayout: 'namespaced',
+          });
+          allSkills.push(...gitSkills.map((skill) => ({ ...skill, sourcePin: gitPin })));
           break;
         }
 
