@@ -72,8 +72,10 @@ export function buildPinForDirectorySource(dirPath: string, bundleVersion: strin
   return buildSourcePin({ type: 'bundle', dirPath, installLayout: 'flat' }, bundleVersion);
 }
 
+// TODO(#39): wire _forceUpdate into the headless acquisition path so `agentman <url> --update`
+// bypasses the cached bundle in extractBundle (src/bundle/extractor.ts:33-37).
 // See https://github.com/ai-agent-manager/agent-manager/issues/39
-export async function runHeadless(sourceInput: string, configPath: string, forceUpdate: boolean): Promise<void> {
+export async function runHeadless(sourceInput: string, configPath: string, _forceUpdate: boolean): Promise<void> {
   const config = await parseHeadlessConfig(configPath);
   const repoRoot = process.cwd();
 
@@ -121,7 +123,7 @@ export async function runHeadless(sourceInput: string, configPath: string, force
       source.discovery,
       bearerToken,
       (msg) => console.log(`[agentman] ${msg}`),
-      { artefactSha256: config.artefactSha256, forceUpdate },
+      { artefactSha256: config.artefactSha256 },
     );
 
     for (const { source: failedSource, error, isIntegrity } of result.errors) {
@@ -147,7 +149,7 @@ export async function runHeadless(sourceInput: string, configPath: string, force
       console.log("[agentman] Downloading bundle...");
       const { zipPath } = await downloadBundle(source.baseUrl, config.bundleVersion);
       console.log("[agentman] Extracting bundle...");
-      const result = await extractBundle(zipPath, { forceUpdate });
+      const result = await extractBundle(zipPath);
       bundleDir = result.bundleDir;
       bundleVersion = result.manifest.version;
       if (result.isNew) {

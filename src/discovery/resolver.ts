@@ -38,8 +38,6 @@ export interface ResolvedSources {
 export interface ResolveDiscoveryOptions {
   /** SHA-256 pin for artefact sources — overrides sidecar lookup when set. */
   artefactSha256?: string;
-  /** Force re-extraction of HTTP bundles even when a matching content hash is cached. */
-  forceUpdate?: boolean;
 }
 
 /**
@@ -69,7 +67,7 @@ export async function resolveDiscoverySkills(
           onProgress?.(`Downloading source bundle: ${source.name}...`);
           // For HTTP sources, the URL is the base URL for the bundle index
           const { zipPath, version } = await downloadBundle(source.url, undefined, accessToken);
-          const result = await extractBundle(zipPath, { forceUpdate: options?.forceUpdate });
+          const result = await extractBundle(zipPath);
           if (result.isNew) {
             await setCurrentBundle(result.manifest.version);
           }
