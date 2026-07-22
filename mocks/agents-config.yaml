@@ -27,3 +27,11 @@ resources:
       dir: agents
       delay:
         exact: 2000
+
+  # --- Serve artefact zips from the artefacts/ directory -------------------
+  - path: /artefacts/*
+    method: GET
+    response:
+      dir: artefacts
+      delay:
+        exact: 500

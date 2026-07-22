@@ -16,6 +16,7 @@
  * legacy path that maps to the 'bundle' source type with installLayout 'flat'.
  */
 
+import { createHash } from 'node:crypto';
 import { stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
@@ -374,3 +375,212 @@ export function describeSkillSource(source: SkillSource): string {
     : `bundle: ${source.dirPath ?? '(local)'}`;
 }
 
+// ── Namespace derivation ──────────────────────────────────────────────────────
+
+/**
+ * Sanitise a single namespace path segment for safe use as a filesystem directory name.
+ * Lowercases, replaces any character outside [a-z0-9._-] with '-', and strips
+ * leading/trailing hyphens. Returns 'unknown' for empty inputs.
+ */
+export function sanitiseNamespaceSegment(s: string): string {
+  const cleaned = s
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^[-]+|[-]+$/g, '');
+  return cleaned || 'unknown';
+}
+
+/**
+ * Path segments that begin a web-UI route rather than repo identity.
+ * GitHub/Gitea use /tree|blob|releases/…; GitLab nests all web routes under /-/.
+ */
+const REPO_ROUTE_MARKERS = new Set([
+  '-', 'tree', 'blob', 'commit', 'commits', 'releases',
+  'tags', 'archive', 'raw', 'src', 'browse', 'pull', 'pulls', 'issues',
+]);
+
+/**
+ * Derive the install namespace for a repository URL.
+ * Format: "<sanitised-host>/<sanitised-path-segments…>"
+ *
+ * The host is included so installs from GitHub Enterprise Server instances
+ * never collide with github.com installs that share the same org/repo name.
+ *
+ * Every path segment is retained: on hosts that nest repositories (GitLab
+ * subgroups, Gitea orgs, Azure DevOps) the segments past the second ARE the
+ * repo identity, and dropping them made genuinely distinct repos share one
+ * namespace — hence one link name — so the second install silently replaced
+ * the first.
+ *
+ * Uses `host` rather than `hostname` so a non-default port stays distinct.
+ * TODO: deriveArtefactNamespace still uses `hostname` and so drops the port —
+ * align the two in a follow-up.
+ *
+ * Route markers are only honoured from position 2 on (see below). Residual edge:
+ * a genuinely nested repo (GitLab subgroup) whose own name is a marker word, e.g.
+ * a bare web URL group/sub/tree, is truncated to group/sub. Narrow, and clone URLs
+ * (the discovery `git` source form) carry a .git suffix that dodges the marker set.
+ */
+export function deriveRepoNamespace(repoUrl: string): string {
+  const parsed = new URL(repoUrl);
+  let segments = parsed.pathname.split('/').filter(Boolean).map((s) => {
+    try { return decodeURIComponent(s); } catch { return s; }
+  });
+
+  // /org/repo/tree/<ref> identifies the same repo as /org/repo. Only look for a
+  // route marker from position 2 on: the first two segments (org + repo) are always
+  // identity, never a route, so a repo literally named a marker word — e.g.
+  // chromium/src or chromium/tree — must not be truncated down to just its org.
+  const marker = segments.findIndex((s, i) => i >= 2 && REPO_ROUTE_MARKERS.has(s.toLowerCase()));
+  if (marker >= 2) segments = segments.slice(0, marker);
+
+  // Only the final segment carries a .git clone suffix.
+  if (segments.length > 0) {
+    segments[segments.length - 1] = segments[segments.length - 1].replace(/\.git$/i, '');
+  }
+
+  return [parsed.host || parsed.hostname, ...(segments.length > 0 ? segments : ['unknown'])]
+    .map(sanitiseNamespaceSegment)
+    .join('/');
+}
+
+/**
+ * Matches a GitHub release-asset download path: /<owner>/<repo>/releases/download/<tag>/<file>.
+ * Host-agnostic on purpose, so it also recognises the same layout on GHES hosts.
+ */
+const GITHUB_RELEASE_ASSET_PATH = /^\/([^/]+)\/([^/]+)\/releases\/download\/([^/]+)\/([^/]+)$/i;
+
+/**
+ * Derive the artefact name segment from a filename: strips the .zip extension and
+ * any trailing semver-shaped version suffix, then sanitises to a safe segment.
+ *
+ * Version-suffix stripping is intentional: `app-2.0.0.zip` and `app.zip` map to
+ * the same name so an upgrade overwrites the prior record. The rare false
+ * positive is a distinct product whose filename ends in a semver-shaped token.
+ *
+ * Lowercased like every other namespace segment (see sanitiseNamespaceSegment):
+ * without this, `MyApp.zip` and `myapp.zip` would derive distinct install keys
+ * whose link paths still collide on case-insensitive filesystems (macOS, Windows)
+ * while both config records survived — a silent partial collision.
+ */
+function deriveArtefactNameSegment(fileName: string): string {
+  const base = fileName.toLowerCase().replace(/\.zip$/i, '');
+  const suffixMatch = base.match(/^(.+?)[-_](v?\d+\.\d+\.\d+(?:[-+][\w.]+)?)$/);
+  const rawName = suffixMatch ? suffixMatch[1] : base;
+  return rawName.replace(/[^a-z0-9._-]+/g, '-').replace(/^[-.]+|[-.]+$/g, '') || 'artefact';
+}
+
+/**
+ * Derive the install namespace for an artefact URL.
+ *
+ * GitHub release-asset URLs (the explicitly supported artefact pattern) keep the
+ * owner/repo path segments in the namespace: "<sanitised-host>/<owner>/<repo>/<artefact-name>".
+ * Without this, two different owners publishing a release asset with the same
+ * filename (e.g. "skills.zip") would derive the same namespace and silently
+ * collide — the discarded path *is* the tenant identity on a multi-tenant host.
+ *
+ * All other artefact URLs fall back to "<sanitised-host>/<artefact-name>". Same-named
+ * artefacts on the same host share a namespace — they represent the same logical
+ * skill package across versions. See deriveArtefactNameSegment for the version-suffix
+ * stripping rationale.
+ */
+export function deriveArtefactNamespace(artefactUrl: string): string {
+  const parsed = new URL(artefactUrl);
+  let host: string;
+  try { host = decodeURIComponent(parsed.hostname); } catch { host = parsed.hostname; }
+  const hostSegment = sanitiseNamespaceSegment(host);
+
+  const releaseMatch = parsed.pathname.match(GITHUB_RELEASE_ASSET_PATH);
+  if (releaseMatch) {
+    const [, owner, repo, , fileName] = releaseMatch;
+    return [
+      hostSegment,
+      sanitiseNamespaceSegment(owner),
+      sanitiseNamespaceSegment(repo),
+      deriveArtefactNameSegment(fileName),
+    ].join('/');
+  }
+
+  const segments = parsed.pathname.split('/').filter(Boolean);
+  const fileName = segments[segments.length - 1] ?? '';
+  return `${hostSegment}/${deriveArtefactNameSegment(fileName)}`;
+}
+
+/**
+ * Derive the install namespace from a persisted SkillSourcePin.
+ * Returns null for flat layouts (bundle sources and any source where
+ * installLayout is explicitly set to 'flat').
+ */
+export function deriveInstallNamespace(pin: SkillSourcePin): string | null {
+  if (pin.installLayout !== 'namespaced') return null;
+  if (pin.sourceType === 'repo' && pin.repoUrl) {
+    return deriveRepoNamespace(pin.repoUrl);
+  }
+  if (pin.sourceType === 'artefact' && pin.artefactUrl) {
+    return deriveArtefactNamespace(pin.artefactUrl);
+  }
+  return null;
+}
+
+/**
+ * Build the install config key for a skill.
+ * When namespace is non-null: "<namespace>/<skillDirName>"  (namespaced layout)
+ * When namespace is null:      "<skillDirName>"             (flat layout)
+ */
+export function buildInstallKey(namespace: string | null, skillDirName: string): string {
+  return namespace ? `${namespace}/${skillDirName}` : skillDirName;
+}
+
+/**
+ * Resolve a scanned skill to its install identity: "<namespace>/<skillId>" for
+ * namespaced sources, bare "<skillId>" for flat/bundle sources.
+ */
+export function deriveSkillInstallKey(skill: { sourcePin?: SkillSourcePin; dirName: string }): string {
+  return buildInstallKey(skill.sourcePin ? deriveInstallNamespace(skill.sourcePin) : null, skill.dirName);
+}
+
+/**
+ * Flatten a namespace string into a safe single-segment filesystem token.
+ *
+ * Injectivity: split on "/" into segments, join with "~". sanitiseNamespaceSegment
+ * only ever emits characters from [a-z0-9._-], so "~" can never appear inside a
+ * segment — every "~" in the output is unambiguously a segment boundary, and the
+ * flat token maps one-to-one onto the structured namespace. "~" is legal on
+ * Windows/NTFS (the reserved set is `< > : " / \ | ? *`).
+ *
+ * Example: "github.com/acme/data-pipeline"  → "github.com~acme~data-pipeline"
+ *          "github.com/acme-data/pipeline"  → "github.com~acme-data~pipeline"
+ */
+export function flattenNamespace(namespace: string): string {
+  return namespace.split('/').join('~');
+}
+
+/** Per-name filesystem limit is 255 bytes on APFS/ext4/NTFS — leave headroom. */
+const MAX_LINK_NAME = 200;
+
+/**
+ * Build the on-disk link name for a namespaced install: "<flatNamespace>~<skillId>".
+ *
+ * Every boundary uses "~", which neither operand can contain (sanitiseNamespaceSegment
+ * never emits it, and a skill dir name containing it is rejected at install time), so
+ * the link name maps one-to-one onto the install key.
+ *
+ * Deeply nested sources can push that past the filesystem's per-name limit. In that
+ * case the namespace prefix is truncated and a digest of the *full* namespace is
+ * re-attached, so the shortened form stays one-to-one with the install key while the
+ * readable prefix survives. Hashing only kicks in for the pathological case.
+ *
+ * Residual edge case: a skillDirName long enough to consume the whole budget on its own
+ * leaves nothing to truncate, so the result can still exceed MAX_LINK_NAME. Not reachable
+ * from a real scan — the dir name already exists on disk and so is itself under the
+ * filesystem limit — but the guarantee is best-effort rather than absolute.
+ */
+export function buildLinkName(namespace: string, skillDirName: string): string {
+  const flat = flattenNamespace(namespace);
+  const full = `${flat}~${skillDirName}`;
+  if (full.length <= MAX_LINK_NAME) return full;
+
+  const digest = createHash('sha256').update(namespace).digest('hex').slice(0, 10);
+  const budget = Math.max(MAX_LINK_NAME - skillDirName.length - digest.length - 2, 0);
+  return `${flat.slice(0, budget)}-${digest}~${skillDirName}`;
+}

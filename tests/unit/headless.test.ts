@@ -18,6 +18,21 @@ vi.mock('../../src/discovery/index.js', () => ({
   resolveDiscoverySkills: vi.fn(),
 }));
 
+// Hoisted so tests can assert on install's actual call arguments, not just that it fired.
+const { installMock } = vi.hoisted(() => ({
+  installMock: vi.fn(async () => ({
+    installed: [{ name: 'github.com/example-org/repo-a/my-skill', method: 'symlink' as const, path: '/tmp/skills/github.com~example-org~repo-a~my-skill' }],
+    errors: [],
+  })),
+}));
+
+vi.mock('../../src/provisioners/registry.js', () => ({
+  createSkillProvisioner: vi.fn(() => ({
+    install: installMock,
+  })),
+  formatSupportedSkillToolIds: vi.fn(() => 'claude-code'),
+}));
+
 describe('parseHeadlessConfig', () => {
   let tmpDir: string;
 
@@ -118,6 +133,96 @@ describe('runHeadless', () => {
     vi.restoreAllMocks();
   });
 
+  it('exits non-zero when a requested skill name is ambiguous across sources', async () => {
+    const { resolveDiscoverySkills } = await import('../../src/discovery/index.js');
+    vi.mocked(resolveDiscoverySkills).mockResolvedValueOnce({
+      skills: [
+        {
+          dirName: 'my-skill',
+          dirPath: '/tmp/source-a/my-skill',
+          skillMdPath: '/tmp/source-a/my-skill/SKILL.md',
+          meta: null,
+          sourcePin: { sourceType: 'repo' as const, installLayout: 'namespaced' as const, repoUrl: 'https://github.com/example-org/repo-a' },
+        },
+        {
+          dirName: 'my-skill',
+          dirPath: '/tmp/source-b/my-skill',
+          skillMdPath: '/tmp/source-b/my-skill/SKILL.md',
+          meta: null,
+          sourcePin: { sourceType: 'repo' as const, installLayout: 'namespaced' as const, repoUrl: 'https://github.com/example-org/repo-b' },
+        },
+      ],
+      rovoAgents: [],
+      errors: [],
+      bundleVersion: undefined,
+    });
+
+    const configPath = path.join(tmpDir, 'ai-skills.yml');
+    await writeFile(configPath, 'tools: claude-code\nscope: repo\nskills:\n  - my-skill\n');
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((_code) => {
+      throw new Error('process.exit called');
+    });
+
+    await expect(
+      runHeadless('https://cdn.example.com/discovery', configPath, false),
+    ).rejects.toThrow('process.exit called');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('installs successfully when a qualified name is used to disambiguate', async () => {
+    const { resolveDiscoverySkills } = await import('../../src/discovery/index.js');
+    vi.mocked(resolveDiscoverySkills).mockResolvedValueOnce({
+      skills: [
+        {
+          dirName: 'my-skill',
+          dirPath: '/tmp/source-a/my-skill',
+          skillMdPath: '/tmp/source-a/my-skill/SKILL.md',
+          meta: null,
+          sourcePin: { sourceType: 'repo' as const, installLayout: 'namespaced' as const, repoUrl: 'https://github.com/example-org/repo-a' },
+        },
+        {
+          dirName: 'my-skill',
+          dirPath: '/tmp/source-b/my-skill',
+          skillMdPath: '/tmp/source-b/my-skill/SKILL.md',
+          meta: null,
+          sourcePin: { sourceType: 'repo' as const, installLayout: 'namespaced' as const, repoUrl: 'https://github.com/example-org/repo-b' },
+        },
+      ],
+      rovoAgents: [],
+      errors: [],
+      bundleVersion: undefined,
+    });
+
+    // Use the qualified key for repo-a to disambiguate
+    const configPath = path.join(tmpDir, 'ai-skills.yml');
+    await writeFile(
+      configPath,
+      'tools: claude-code\nscope: repo\nskills:\n  - github.com/example-org/repo-a/my-skill\n',
+    );
+
+    installMock.mockClear();
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((_code) => {
+      throw new Error('process.exit called');
+    });
+
+    // Should NOT throw — qualified name resolves unambiguously via exact Map hit
+    await expect(
+      runHeadless('https://cdn.example.com/discovery', configPath, false),
+    ).resolves.toBeUndefined();
+
+    expect(exitSpy).not.toHaveBeenCalled();
+
+    // A matcher bug resolving to repo-b's skill would still make install() get called —
+    // assert on the actual item installed, not just that install() fired.
+    expect(installMock).toHaveBeenCalledTimes(1);
+    const [installedItems] = installMock.mock.calls[0];
+    expect(installedItems).toHaveLength(1);
+    expect(installedItems[0].dirPath).toBe('/tmp/source-a/my-skill');
+  });
+
   it('exits non-zero and does not install when an artefact fails integrity check', async () => {
     const { resolveDiscoverySkills } = await import('../../src/discovery/index.js');
     vi.mocked(resolveDiscoverySkills).mockResolvedValueOnce({
@@ -145,5 +250,78 @@ describe('runHeadless', () => {
     ).rejects.toThrow('process.exit called');
 
     expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('exits non-zero when a bare config entry matches both a flat and a namespaced skill', async () => {
+    // A flat (bundle/http) skill and a namespaced (repo) skill share the same bare id.
+    // The old fast-path (has(skillName)) would silently install the flat one; the fixed
+    // path runs both through the ambiguity check and must fail loudly.
+    const { resolveDiscoverySkills } = await import('../../src/discovery/index.js');
+    vi.mocked(resolveDiscoverySkills).mockResolvedValueOnce({
+      skills: [
+        {
+          dirName: 'my-skill',
+          dirPath: '/tmp/bundle/my-skill',
+          skillMdPath: '/tmp/bundle/my-skill/SKILL.md',
+          meta: null,
+          sourcePin: { sourceType: 'bundle' as const, installLayout: 'flat' as const, baseUrl: 'https://cdn.example.com/bundle' },
+        },
+        {
+          dirName: 'my-skill',
+          dirPath: '/tmp/repo/my-skill',
+          skillMdPath: '/tmp/repo/my-skill/SKILL.md',
+          meta: null,
+          sourcePin: { sourceType: 'repo' as const, installLayout: 'namespaced' as const, repoUrl: 'https://github.com/example-org/example-repo' },
+        },
+      ],
+      rovoAgents: [],
+      errors: [],
+      bundleVersion: undefined,
+    });
+
+    const configPath = path.join(tmpDir, 'ai-skills.yml');
+    await writeFile(configPath, 'tools: claude-code\nscope: repo\nskills:\n  - my-skill\n');
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((_code) => {
+      throw new Error('process.exit called');
+    });
+
+    await expect(
+      runHeadless('https://cdn.example.com/discovery', configPath, false),
+    ).rejects.toThrow('process.exit called');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('warns instead of silently dropping when two sources collapse onto one identity', async () => {
+    // Guards the bug class itself: if a namespace-derivation gap ever makes two distinct
+    // sources share an install key, the Map must not swallow one of them without a word.
+    const { resolveDiscoverySkills } = await import('../../src/discovery/index.js');
+    const samePin = { sourceType: 'repo' as const, installLayout: 'namespaced' as const, repoUrl: 'https://github.com/example-org/example-repo' };
+    vi.mocked(resolveDiscoverySkills).mockResolvedValueOnce({
+      skills: [
+        { dirName: 'my-skill', dirPath: '/tmp/source-a/my-skill', skillMdPath: '/tmp/source-a/my-skill/SKILL.md', meta: null, sourcePin: samePin },
+        { dirName: 'my-skill', dirPath: '/tmp/source-b/my-skill', skillMdPath: '/tmp/source-b/my-skill/SKILL.md', meta: null, sourcePin: samePin },
+      ],
+      rovoAgents: [],
+      errors: [],
+      bundleVersion: undefined,
+    });
+
+    const configPath = path.join(tmpDir, 'ai-skills.yml');
+    await writeFile(configPath, 'tools: claude-code\nscope: repo\nskills:\n  - my-skill\n');
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    installMock.mockClear();
+
+    await expect(
+      runHeadless('https://cdn.example.com/discovery', configPath, false),
+    ).resolves.toBeUndefined();
+
+    const warned = warnSpy.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(warned).toContain('two sources resolved to the same identity');
+    expect(warned).toContain('github.com/example-org/example-repo/my-skill');
+    expect(warned).toContain('/tmp/source-a/my-skill');
+    expect(warned).toContain('/tmp/source-b/my-skill');
   });
 });
