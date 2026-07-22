@@ -4,8 +4,9 @@ This directory contains an [Imposter](https://docs.imposter.sh) mock that replic
 
 1. The **agent content CDN** (discovery document, bundles, artefacts)
 2. The **authenticated backend REST API** used by My Projects (`GET /projects`, `GET /projects/{id}`)
+3. A local **OIDC authorization server** (Imposter `oidc-server` plugin) for login + PKCE
 
-Both run on the same host so local development can work fully offline.
+All three run on the same host so local development can work fully offline, including the interactive OAuth flow.
 
 ## Directory structure
 
@@ -15,10 +16,11 @@ mocks/
 ├── agents-config.yaml          # REST plugin — discovery, /agents/*, /artefacts/*
 ├── backend-api.yaml            # OpenAPI 3 — GET /projects (Agent Manager subset)
 ├── backend-api-config.yaml     # OpenAPI plugin — serves that subset from the spec
+├── oidc-server-config.yaml     # oidc-server plugin — local IdP for CLI login
 ├── build-bundles.sh            # Rebuild bundle.zip after content changes
 ├── .well-known/
 │   └── agents/
-│       └── discovery.json      # Discovery document (includes api.baseUrl + features)
+│       └── discovery.json      # Discovery document (api + auth + sources)
 ├── agents/
 │   ├── index.json              # Version index — lists available bundle versions
 │   └── 0.1.1/
@@ -44,7 +46,7 @@ mocks/
 
 ## Starting and stopping
 
-Requires the [Imposter CLI](https://docs.imposter.sh/run_imposter_cli/) to be installed.
+Requires the [Imposter CLI](https://docs.imposter.sh/run_imposter_cli/) to be installed. The `oidc-server` plugin is listed in `imposter-project.yaml` (via `.imposter.yaml`) and installed automatically on start.
 
 ```bash
 cd mocks
@@ -62,7 +64,18 @@ npx -y @ai-agent-manager/cli@latest http://localhost:8080
 npm run dev -- http://localhost:8080
 ```
 
+The discovery document requires auth, so the CLI will open a browser login. Use:
+
+| Username | Password |
+|----------|----------|
+| `alice`  | `password123` |
+| `bob`    | `password456` |
+
+After login you should see **My Projects** (projects feature + API base URL + bearer token).
+
 Interactive backend API sandbox (OpenAPI plugin): [http://localhost:8080/_spec](http://localhost:8080/_spec)
+
+OIDC discovery: [http://localhost:8080/oidc/.well-known/openid-configuration](http://localhost:8080/oidc/.well-known/openid-configuration)
 
 ## Discovery document
 
@@ -72,11 +85,14 @@ Interactive backend API sandbox (OpenAPI plugin): [http://localhost:8080/_spec](
 |-------|--------|
 | `api.baseUrl` | `http://localhost:8080` — same mock host as content |
 | `api.features.projects` | `true` — enables My Projects when authenticated |
+| `auth.required` | `true` |
+| `auth.oidcDiscoveryUrl` | `http://localhost:8080/oidc/.well-known/openid-configuration` |
+| `auth.clientId` | `agent-manager` (public client; PKCE, no secret) |
 | `sources` | HTTP bundle + artefact on this mock |
 
 `agents-config.yaml` serves the discovery document and static files under `/agents/` and `/artefacts/`.
 
-> **My Projects in the CLI** also requires `auth.required` and a bearer token. This mock does not fake OIDC. To exercise project APIs without full login, call them directly (see below) or set `API_BASE_URL=http://localhost:8080` when testing the API client with a stub token.
+`oidc-server-config.yaml` registers redirect URI `http://localhost:19875/callback` (Agent Manager’s fixed OAuth callback). Project endpoints still respond without validating the JWT — auth here is for exercising the CLI’s OIDC + My Projects path end-to-end.
 
 ## Backend API mock (OpenAPI)
 
@@ -94,7 +110,8 @@ Catalogue IDs match the mock bundle under `agents/0.1.1/`.
 ### Quick checks
 
 ```bash
-curl -s http://localhost:8080/.well-known/agents/discovery.json | jq .api
+curl -s http://localhost:8080/.well-known/agents/discovery.json | jq '{api, auth}'
+curl -s http://localhost:8080/oidc/.well-known/openid-configuration | jq '{issuer, authorization_endpoint, token_endpoint}'
 curl -s http://localhost:8080/projects | jq '.[].name'
 curl -s http://localhost:8080/projects/proj-alpha | jq '{name, restrictSkills, allowedSkillIds}'
 ```

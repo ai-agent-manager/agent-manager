@@ -291,11 +291,11 @@ npm run typecheck    # type check without emitting
 
 ### Mock HTTP skills server
 
-Integration tests and local dev can run against a local mock of the agent CDN using [Imposter](https://docs.imposter.sh):
+Integration tests and local dev can run against a local mock of the agent CDN, backend projects API, and OIDC login using [Imposter](https://docs.imposter.sh):
 
 ```bash
 cd mocks
-imposter up             # starts on http://localhost:8080
+imposter up             # starts on http://localhost:8080 (installs oidc-server from .imposter.yaml)
 imposter down -a        # stop when done
 ```
 
@@ -304,6 +304,8 @@ Then run against the mock for a local integration test:
 ```bash
 npm run dev -- http://localhost:8080
 ```
+
+Log in as `alice` / `password123` (or `bob` / `password456`) when the browser opens. See [mocks/README.md](mocks/README.md) for details.
 
 ---
 

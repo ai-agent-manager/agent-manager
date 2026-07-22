@@ -6,6 +6,12 @@
       "projects": true
     }
   },
+  "auth": {
+    "required": true,
+    "oidcDiscoveryUrl": "http://localhost:8080/oidc/.well-known/openid-configuration",
+    "clientId": "agent-manager",
+    "scopes": ["openid", "profile", "email"]
+  },
   "sources": [
     {
       "name": "mock-bundle",

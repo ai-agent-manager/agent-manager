@@ -1,0 +1,40 @@
+# Imposter oidc-server plugin — local OIDC IdP for Agent Manager auth flows.
+# Declared in .imposter.yaml (plugins: [oidc-server]); installed on `imposter up`.
+#
+# Endpoints (same host as discovery / projects):
+#   GET  /oidc/.well-known/openid-configuration
+#   GET  /oidc/authorize
+#   POST /oidc/token
+#   GET  /oidc/userinfo
+#
+# CLI redirect URI is fixed in src/auth/callback-server.ts (port 19875).
+
+plugin: oidc-server
+resources: []
+
+config:
+  users:
+    - username: alice
+      password: password123
+      claims:
+        sub: alice
+        email: alice@example.com
+        given_name: Alice
+        family_name: Smith
+        name: Alice Smith
+        preferred_username: alice
+    - username: bob
+      password: password456
+      claims:
+        sub: bob
+        email: bob@example.com
+        given_name: Bob
+        family_name: Jones
+        name: Bob Jones
+        preferred_username: bob
+
+  clients:
+    # Public client — Agent Manager uses Authorization Code + PKCE (no secret).
+    - client_id: agent-manager
+      redirect_uris:
+        - http://localhost:19875/callback
