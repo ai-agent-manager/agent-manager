@@ -44,6 +44,9 @@ jobs:
           engine-type: 'native'
 
       - name: Install skills from mock
+        env:
+          # Discovery requires auth; mock content does not validate JWTs.
+          AGENTMAN_ACCESS_TOKEN: ci-integration-token
         run: node dist/index.js ${{ steps.mocks.outputs.base-url }} --config mocks/test-config.yml
 
       - name: Verify installed skills
