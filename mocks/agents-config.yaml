@@ -1,9 +1,9 @@
 # Imposter mock for the agent content CDN.
 #
-# Serves /agents/index.json, per-version manifests and agent README.md files
-# with permissive CORS so the local SPA can fetch without cross-origin errors.
+# Serves discovery, /agents/*, and /artefacts/* with permissive CORS so the
+# CLI (and any local browser tooling) can fetch without cross-origin errors.
 #
-# Start:  imposter up -t native        (from mocks/)
+# Start:  imposter up             (from mocks/)
 # Stop:   imposter down -a
 
 plugin: rest
@@ -18,7 +18,7 @@ resources:
     response:
       file: .well-known/agents/discovery.json
       delay:
-        exact: 2000
+        exact: 500
 
   # --- Serve all files under /agents/ from the agents/ directory ------------
   - path: /agents/*
@@ -26,7 +26,7 @@ resources:
     response:
       dir: agents
       delay:
-        exact: 2000
+        exact: 500
 
   # --- Serve artefact zips from the artefacts/ directory -------------------
   - path: /artefacts/*

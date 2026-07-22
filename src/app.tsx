@@ -56,6 +56,7 @@ interface AppProps {
 async function acquireBundle(
     source: BundleSource,
     setLoadingMessage: (message: string) => void,
+    forceUpdate = false,
 ): Promise<{ manifest: BundleManifest; bundleDir: string; isNew: boolean; warning?: string }> {
     if (source.type === "url") {
         setLoadingMessage("Downloading agent bundle...");
@@ -63,7 +64,7 @@ async function acquireBundle(
 
         setLoadingMessage("Extracting bundle...");
         try {
-            return await extractBundle(zipPath);
+            return await extractBundle(zipPath, { forceUpdate });
         } catch (error) {
             trackTelemetryError("bundle_extract_failed", error, getBundleSourceTelemetryProperties(source));
             throw error;
@@ -91,6 +92,7 @@ async function acquireDiscoverySkills(
     source: Extract<BundleSource, { type: 'discovery' }>,
     setLoadingMessage: (message: string) => void,
     onAuthPrompt: (authorizeUrl: string) => void,
+    forceUpdate = false,
 ): Promise<{ skills: SkillInfo[]; rovoAgents: RovoAgentInfo[]; warnings: string[]; bundleVersion?: string }> {
     let bearerToken: string | undefined;
     const warnings: string[] = [];
@@ -114,6 +116,7 @@ async function acquireDiscoverySkills(
         source.discovery,
         bearerToken,
         setLoadingMessage,
+        { forceUpdate },
     );
 
     for (const { source, error } of result.errors) {
@@ -152,7 +155,7 @@ export function App({ source, forceUpdate }: AppProps) {
         });
         (async () => {
             try {
-                const result = await acquireBundle(source, setLoadingMessage);
+                const result = await acquireBundle(source, setLoadingMessage, true);
                 const shouldActivateBundle = manifest?.version !== result.manifest.version;
 
                 if (result.isNew || shouldActivateBundle) {
@@ -226,6 +229,7 @@ export function App({ source, forceUpdate }: AppProps) {
                         source,
                         setLoadingMessage,
                         handleAuthPrompt,
+                        forceUpdate,
                     );
 
                     if (warnings.length > 0) {
@@ -246,7 +250,7 @@ export function App({ source, forceUpdate }: AppProps) {
                 let loadedManifest: BundleManifest;
 
                 if (!currentVersion || forceUpdate || source.type === "directory") {
-                    const result = await acquireBundle(source, setLoadingMessage);
+                    const result = await acquireBundle(source, setLoadingMessage, forceUpdate);
                     loadedManifest = result.manifest;
                     bundleVersionDir = result.bundleDir;
 
