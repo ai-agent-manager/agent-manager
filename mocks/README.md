@@ -14,7 +14,7 @@ mocks/
 │       └── discovery.json  # Discovery document served at /.well-known/agents/discovery.json
 ├── agents/
 │   ├── index.json          # Version index — lists available bundle versions
-│   └── 0.1.0/
+│   └── 0.1.1/
 │       ├── manifest.json   # Bundle manifest — agent IDs, names, tags, phases
 │       ├── bundle.zip      # Downloadable bundle (built from this directory)
 │       ├── bundle.zip.sha256
@@ -78,7 +78,7 @@ resources:
       dir: artefacts
 ```
 
-The discovery rule returns `.well-known/agents/discovery.json` verbatim, so `GET /.well-known/agents/discovery.json` gives the CLI its list of sources. The `/agents/*` wildcard maps to files under `agents/` (e.g. `GET /agents/0.1.0/bundle.zip`). The `/artefacts/*` wildcard maps to files under `artefacts/` (e.g. `GET /artefacts/artefact-test.zip`), matching the community artefact source in the discovery document.
+The discovery rule returns `.well-known/agents/discovery.json` verbatim, so `GET /.well-known/agents/discovery.json` gives the CLI its list of sources. The `/agents/*` wildcard maps to files under `agents/` (e.g. `GET /agents/0.1.1/bundle.zip`). The `/artefacts/*` wildcard maps to files under `artefacts/` (e.g. `GET /artefacts/artefact-test.zip`), matching the community artefact source in the discovery document.
 
 ## Adding or updating a bundle version
 
