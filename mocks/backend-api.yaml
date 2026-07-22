@@ -28,9 +28,6 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Project"
-              examples:
-                default:
-                  $ref: "#/components/examples/ProjectList"
 
   /projects/{projectId}:
     parameters:
@@ -46,11 +43,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Project"
-              examples:
-                alpha:
-                  $ref: "#/components/examples/ProjectAlpha"
-                beta:
-                  $ref: "#/components/examples/ProjectBeta"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -70,8 +62,6 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorBody"
-          example:
-            message: Not found
 
   schemas:
     ErrorBody:
@@ -134,64 +124,3 @@ components:
         updatedAt:
           type: string
           format: date-time
-
-  examples:
-    ProjectAlpha:
-      summary: Unrestricted agents; skills limited to react-component-generator
-      value:
-        id: proj-alpha
-        teamId: team-personal-1
-        name: Alpha
-        description: Personal project with restricted skills
-        toolIds: [claude-code, cursor]
-        adminEmails: [developer@example.com]
-        restrictAgents: false
-        restrictSkills: true
-        allowedAgentIds: []
-        allowedSkillIds: [react-component-generator]
-        createdAt: "2026-01-01T00:00:00.000Z"
-        updatedAt: "2026-07-01T00:00:00.000Z"
-
-    ProjectBeta:
-      summary: Agents limited to sprint planner; skills unrestricted
-      value:
-        id: proj-beta
-        teamId: team-platform
-        name: Beta
-        description: Platform project with restricted agents
-        toolIds: [claude-code, atlassian-rovo]
-        adminEmails: [owner@example.com]
-        restrictAgents: true
-        restrictSkills: false
-        allowedAgentIds: [agent-sprint-planner]
-        allowedSkillIds: []
-        createdAt: "2026-02-01T00:00:00.000Z"
-        updatedAt: "2026-07-01T00:00:00.000Z"
-
-    ProjectList:
-      summary: Projects visible to the mock user
-      value:
-        - id: proj-alpha
-          teamId: team-personal-1
-          name: Alpha
-          description: Personal project with restricted skills
-          toolIds: [claude-code, cursor]
-          adminEmails: [developer@example.com]
-          restrictAgents: false
-          restrictSkills: true
-          allowedAgentIds: []
-          allowedSkillIds: [react-component-generator]
-          createdAt: "2026-01-01T00:00:00.000Z"
-          updatedAt: "2026-07-01T00:00:00.000Z"
-        - id: proj-beta
-          teamId: team-platform
-          name: Beta
-          description: Platform project with restricted agents
-          toolIds: [claude-code, atlassian-rovo]
-          adminEmails: [owner@example.com]
-          restrictAgents: true
-          restrictSkills: false
-          allowedAgentIds: [agent-sprint-planner]
-          allowedSkillIds: []
-          createdAt: "2026-02-01T00:00:00.000Z"
-          updatedAt: "2026-07-01T00:00:00.000Z"

@@ -96,7 +96,7 @@ OIDC discovery: [http://localhost:8080/oidc/.well-known/openid-configuration](ht
 
 ## Backend API mock (OpenAPI)
 
-`backend-api-config.yaml` uses Imposter’s **openapi** plugin with `backend-api.yaml`. Example responses live in the spec; path-specific resources pick named examples (e.g. `proj-alpha` vs `proj-beta`).
+`backend-api-config.yaml` uses Imposter’s **openapi** plugin with `backend-api.yaml`. Sample payloads are set on mock resources via `response.content` (e.g. `proj-alpha` vs `proj-beta`).
 
 ### Sample data
 
