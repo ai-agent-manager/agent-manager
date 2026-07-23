@@ -46,7 +46,7 @@ export function AuthPrompt({ authorizeUrl, onOpen }: AuthPromptProps) {
       </Box>
       <Box marginTop={1}>
         <Text dimColor>
-          {'\u26A0'} Tokens will be stored at ~/.agentman/auth/ (filesystem, not keychain)
+          Tokens will be stored in your OS keychain, or ~/.agentman/auth/ (restricted permissions) if no keychain is available
         </Text>
       </Box>
     </Box>
