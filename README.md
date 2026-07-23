@@ -4,7 +4,7 @@
 
 Your team has AI skills. This tool makes sure everyone's coding agent actually uses them.
 
-Agent Manager pulls a versioned bundle of skills and Rovo agent configs from a URL you control, then installs them into Claude Code, Windsurf, GitHub Copilot, or Cursor — interactively on a laptop, or silently in CI.
+Agent Manager pulls a versioned bundle of skills and Rovo agent configs from a URL you control, then installs them into Claude Code, Devin Desktop (formerly Windsurf), GitHub Copilot, or Cursor — interactively on a laptop, or silently in CI.
 
 ---
 
@@ -56,7 +56,7 @@ The `<source>` can be a **bundle URL**, a **GitHub repository URL**, or a **loca
 **Config format:**
 
 ```yaml
-tools: claude-code        # one or more: claude-code | windsurf | github-copilot | cursor | kiro
+tools: claude-code        # one or more: claude-code | windsurf (Devin Desktop) | github-copilot | cursor | kiro
 scope: repo              # repo (default) | system
 skills:
   - my-skill-name
@@ -195,12 +195,12 @@ Skills are installed as symlinks into each tool's native skills directory:
 
 | Tool | System-wide Path | Repo-scoped Path |
 |------|-----------------|-----------------|
-| Agents (Generic) | `~/.agents/skills/<link>/` | `<repo>/.agents/skills/<link>/` |
-| Claude Code | `~/.claude/skills/<link>/` | `<repo>/.claude/skills/<link>/` |
-| Cursor | `~/.cursor/skills/<link>/` | `<repo>/.cursor/skills/<link>/` |
-| GitHub Copilot | `~/.copilot/skills/<link>/` | `<repo>/.github/copilot/skills/<link>/` |
-| Kiro | `~/.kiro/skills/<link>/` | `<repo>/.kiro/skills/<link>/` |
-| Windsurf | `~/.codeium/windsurf/skills/<link>/` | `<repo>/.windsurf/skills/<link>/` |
+| Agents (Generic) | `~/.agents/skills/<skill>/` | `<repo>/.agents/skills/<skill>/` |
+| Claude Code | `~/.claude/skills/<skill>/` | `<repo>/.claude/skills/<skill>/` |
+| Cursor | `~/.cursor/skills/<skill>/` | `<repo>/.cursor/skills/<skill>/` |
+| GitHub Copilot | `~/.copilot/skills/<skill>/` | `<repo>/.github/copilot/skills/<skill>/` |
+| Kiro | `~/.kiro/skills/<skill>/` | `<repo>/.kiro/skills/<skill>/` |
+| Devin Desktop (formerly Windsurf) | `~/.codeium/windsurf/skills/<skill>/` | `<repo>/.windsurf/skills/<skill>/` |
 
 The link name depends on the install source:
 

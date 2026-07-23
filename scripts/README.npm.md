@@ -84,7 +84,7 @@ Skills are installed as symlinks into each tool's native skills directory:
 | Cursor | `~/.cursor/skills/<skill-name>/` |
 | GitHub Copilot | `~/.copilot/skills/<skill-name>/` |
 | Kiro | `~/.kiro/skills/<skill-name>/` |
-| Windsurf | `~/.codeium/windsurf/skills/<skill-name>/` |
+| Devin Desktop (formerly Windsurf) | `~/.codeium/windsurf/skills/<skill-name>/` |
 
 On Windows, if symlink creation fails (requires admin or developer mode), the tool falls back to copying the skill directory.
 
@@ -101,7 +101,7 @@ Repository-scoped installs use tool-specific paths within the repo:
 | Cursor | `<repo>/.cursor/skills/<skill-name>/` |
 | GitHub Copilot | `<repo>/.github/copilot/skills/<skill-name>/` |
 | Kiro | `<repo>/.kiro/skills/<skill-name>/` |
-| Windsurf | `<repo>/.windsurf/skills/<skill-name>/` |
+| Devin Desktop (formerly Windsurf) | `<repo>/.windsurf/skills/<skill-name>/` |
 
 Symlinks still point to `~/.agentman/bundles/<version>/<skill>` -- the bundle content is not copied into the repo.
 

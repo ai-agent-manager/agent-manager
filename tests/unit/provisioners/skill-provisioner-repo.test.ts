@@ -3,7 +3,7 @@ import { mkdtemp, rm, mkdir, writeFile, readlink, readFile } from "node:fs/promi
 import path from "node:path";
 import os from "node:os";
 import { ClaudeCodeProvisioner } from "../../../src/provisioners/ClaudeCodeProvisioner.js";
-import { WindsurfProvisioner } from "../../../src/provisioners/WindsurfProvisioner.js";
+import { DevinDesktopProvisioner } from "../../../src/provisioners/DevinDesktopProvisioner.js";
 import { CopilotProvisioner } from "../../../src/provisioners/CopilotProvisioner.js";
 import { AgentsProvisioner } from "../../../src/provisioners/AgentsProvisioner.js";
 import { CursorProvisioner } from "../../../src/provisioners/CursorProvisioner.js";
@@ -72,8 +72,8 @@ describe("SkillProvisioner (repo scope)", () => {
       expect(prov.getRepoSkillsDir(repoRoot)).toBe(path.join(repoRoot, ".claude", "skills"));
     });
 
-    it("Windsurf installs to <repo>/.windsurf/skills/", () => {
-      const prov = new WindsurfProvisioner({ scope: "repo", repoRoot });
+    it("Devin Desktop installs to <repo>/.windsurf/skills/", () => {
+      const prov = new DevinDesktopProvisioner({ scope: "repo", repoRoot });
       expect(prov.getRepoSkillsDir(repoRoot)).toBe(path.join(repoRoot, ".windsurf", "skills"));
     });
 
