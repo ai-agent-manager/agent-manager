@@ -16,6 +16,7 @@ import {
   deriveInstallNamespace,
   buildInstallKey,
   flattenNamespace,
+  buildLinkName,
   type RepoSkillSource,
   type ArtefactSkillSource,
   type BundleSkillSource,
@@ -481,6 +482,82 @@ describe('deriveRepoNamespace', () => {
   it('sanitises special characters in org and repo names', () => {
     expect(deriveRepoNamespace('https://github.com/my org/my!repo')).toBe('github.com/my-org/my-repo');
   });
+
+  // ── Nested repo paths (GitLab subgroups, Gitea orgs, Azure DevOps) ───────────
+
+  it('retains nested path segments so subgroup repos do not collide', () => {
+    const a = deriveRepoNamespace('https://gitlab.example.com/group/sub/repo-a');
+    const b = deriveRepoNamespace('https://gitlab.example.com/group/sub/repo-b');
+    expect(a).toBe('gitlab.example.com/group/sub/repo-a');
+    expect(b).toBe('gitlab.example.com/group/sub/repo-b');
+    expect(a).not.toBe(b);
+  });
+
+  it('strips .git from a single-segment repo path instead of emitting "unknown"', () => {
+    expect(deriveRepoNamespace('git://localhost/weird.git')).toBe('localhost/weird');
+  });
+
+  it('truncates at a GitLab /-/ web route marker', () => {
+    expect(deriveRepoNamespace('https://gitlab.example.com/group/sub/proj/-/tree/main')).toBe(
+      'gitlab.example.com/group/sub/proj',
+    );
+  });
+
+  it('does not truncate a repo whose name happens to be a route-marker word', () => {
+    // chromium/src and chromium/tree are distinct real repos; "src" and "tree" are
+    // also web-route verbs. Truncating them to just the org collapsed both onto
+    // "github.com/chromium" — the same silent collision this whole change prevents.
+    const src = deriveRepoNamespace('https://github.com/chromium/src');
+    const tree = deriveRepoNamespace('https://github.com/chromium/tree');
+    expect(src).toBe('github.com/chromium/src');
+    expect(tree).toBe('github.com/chromium/tree');
+    expect(src).not.toBe(tree);
+  });
+
+  it('still truncates a real /tree/<ref> route on a repo named after a marker word', () => {
+    // The repo IS named "src", yet the trailing /tree/main is a genuine route and
+    // must still collapse to the repo — the position-2 floor handles both at once.
+    expect(deriveRepoNamespace('https://github.com/chromium/src/tree/main')).toBe(
+      'github.com/chromium/src',
+    );
+  });
+
+  it('truncates a marker route page that sits as the last path segment', () => {
+    expect(deriveRepoNamespace('https://github.com/org/repo/releases')).toBe('github.com/org/repo');
+  });
+
+  it('keeps a non-default port distinct from the default-port host', () => {
+    const ported = deriveRepoNamespace('https://github.acme-corp.com:8443/my-org/my-repo');
+    const plain = deriveRepoNamespace('https://github.acme-corp.com/my-org/my-repo');
+    expect(ported).not.toBe(plain);
+    expect(ported).toBe('github.acme-corp.com-8443/my-org/my-repo');
+  });
+});
+
+// ── buildLinkName ─────────────────────────────────────────────────────────────
+
+describe('buildLinkName', () => {
+  it('joins namespace and skill id with "~" when within the length limit', () => {
+    expect(buildLinkName('github.com/example-org/example-repo', 'my-skill')).toBe(
+      'github.com~example-org~example-repo~my-skill',
+    );
+  });
+
+  it('keeps a deeply nested link name within the filesystem per-name limit', () => {
+    const deep = ['host.example.com', ...Array.from({ length: 40 }, (_, i) => `segment-number-${i}`)].join('/');
+    const link = buildLinkName(deep, 'my-skill');
+    expect(link.length).toBeLessThanOrEqual(200);
+    expect(link.endsWith('~my-skill')).toBe(true);
+  });
+
+  it('two different over-long namespaces still produce different link names', () => {
+    const base = Array.from({ length: 40 }, (_, i) => `segment-number-${i}`).join('/');
+    const a = buildLinkName(`host.example.com/${base}/repo-a`, 'my-skill');
+    const b = buildLinkName(`host.example.com/${base}/repo-b`, 'my-skill');
+    expect(a.length).toBeLessThanOrEqual(200);
+    expect(b.length).toBeLessThanOrEqual(200);
+    expect(a).not.toBe(b);
+  });
 });
 
 // ── deriveArtefactNamespace ───────────────────────────────────────────────────
@@ -512,6 +589,43 @@ describe('deriveArtefactNamespace', () => {
     const ns1 = deriveArtefactNamespace('https://cdn.example.com/my-skill-1.0.0.zip');
     const ns2 = deriveArtefactNamespace('https://cdn.example.com/my-skill-2.0.0.zip');
     expect(ns1).toBe(ns2);
+  });
+
+  it('lowercases the artefact name segment — case-differing filenames collide intentionally', () => {
+    const ns1 = deriveArtefactNamespace('https://cdn.example.com/MyApp.zip');
+    const ns2 = deriveArtefactNamespace('https://cdn.example.com/myapp.zip');
+    expect(ns1).toBe(ns2);
+    expect(ns1).toBe('cdn.example.com/myapp');
+  });
+
+  // ── GitHub release-asset URLs keep owner/repo in the namespace ───────────────
+
+  it('keeps owner/repo for a GitHub release-asset URL', () => {
+    expect(
+      deriveArtefactNamespace('https://github.com/example-org/tools/releases/download/v1.0.0/skills.zip'),
+    ).toBe('github.com/example-org/tools/skills');
+  });
+
+  it('two different owners publishing the same release-asset filename get distinct namespaces', () => {
+    const ns1 = deriveArtefactNamespace('https://github.com/alice/tools/releases/download/v1.0.0/skills.zip');
+    const ns2 = deriveArtefactNamespace('https://github.com/mallory/other/releases/download/v2.0.0/skills.zip');
+    expect(ns1).not.toBe(ns2);
+    expect(ns1).toBe('github.com/alice/tools/skills');
+    expect(ns2).toBe('github.com/mallory/other/skills');
+  });
+
+  it('the same owner/repo across different release tags shares one namespace (version upgrade)', () => {
+    const ns1 = deriveArtefactNamespace('https://github.com/alice/tools/releases/download/v1.0.0/skills.zip');
+    const ns2 = deriveArtefactNamespace('https://github.com/alice/tools/releases/download/v2.0.0/skills.zip');
+    expect(ns1).toBe(ns2);
+  });
+
+  it('recognises the release-asset path shape on a non-github (e.g. GHES) host too', () => {
+    expect(
+      deriveArtefactNamespace(
+        'https://github.example-internal.com/example-org/tools/releases/download/v1.0.0/skills.zip',
+      ),
+    ).toBe('github.example-internal.com/example-org/tools/skills');
   });
 });
 

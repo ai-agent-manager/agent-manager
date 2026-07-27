@@ -29,7 +29,7 @@ vi.mock("../../../src/config/paths.js", () => ({
 vi.mock("../../../src/config/tools.js", () => ({
   getSkillTools: () => [
     { id: "claude-code", name: "Claude Code", getSkillsDir: () => "/mock/.claude/skills", getRepoSkillsDir: () => "/mock/.claude/skills" },
-    { id: "windsurf", name: "Windsurf", getSkillsDir: () => "/mock/.windsurf/skills", getRepoSkillsDir: () => "/mock/.windsurf/skills" },
+    { id: "windsurf", name: "Devin Desktop", getSkillsDir: () => "/mock/.windsurf/skills", getRepoSkillsDir: () => "/mock/.windsurf/skills" },
   ],
 }));
 
@@ -186,7 +186,7 @@ describe("SkillVersionManager", () => {
 
     expect(lastFrame()).toContain("hello-world-skill");
     expect(lastFrame()).toContain("Claude Code");
-    expect(lastFrame()).toContain("Windsurf");
+    expect(lastFrame()).toContain("Devin Desktop");
   });
 
   it("shows different versions when skills have mixed versions", async () => {
@@ -223,7 +223,7 @@ describe("SkillVersionManager", () => {
 
     expect(lastFrame()).toContain("skill-a");
     expect(lastFrame()).toContain("Claude Code");
-    expect(lastFrame()).toContain("Windsurf");
+    expect(lastFrame()).toContain("Devin Desktop");
     expect(lastFrame()).toContain("1.0.0");
     expect(lastFrame()).toContain("2.0.0");
   });

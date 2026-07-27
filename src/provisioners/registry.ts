@@ -4,7 +4,7 @@ import { ClaudeCodeProvisioner } from "./ClaudeCodeProvisioner.js";
 import { CopilotProvisioner } from "./CopilotProvisioner.js";
 import { CursorProvisioner } from "./CursorProvisioner.js";
 import { KiroProvisioner } from "./KiroProvisioner.js";
-import { WindsurfProvisioner } from "./WindsurfProvisioner.js";
+import { DevinDesktopProvisioner } from "./DevinDesktopProvisioner.js";
 import type { SkillProvisioner } from "./SkillProvisioner.js";
 import type { ProvisionerScope } from "./types.js";
 
@@ -32,7 +32,7 @@ export const SKILL_PROVISIONER_CLASSES: readonly SkillProvisionerClass[] = [
   CursorProvisioner,
   CopilotProvisioner,
   KiroProvisioner,
-  WindsurfProvisioner,
+  DevinDesktopProvisioner,
 ];
 
 function toToolDefinition(ProvisionerClass: SkillProvisionerClass): ToolDefinition {
