@@ -13,7 +13,14 @@ vi.mock('../../../src/discovery/index.js', () => ({
   fetchDiscoveryDocument: vi.fn(async () => mockDiscovery),
 }));
 
-const { resolveSource } = await import('../../../src/bundle/source.js');
+const configState = { value: { installations: {} } as import('../../../src/bundle/cache.js').AgentmanConfig };
+
+vi.mock('../../../src/bundle/cache.js', async () => {
+  const actual = await vi.importActual<typeof import('../../../src/bundle/cache.js')>('../../../src/bundle/cache.js');
+  return { ...actual, readConfig: vi.fn(async () => configState.value) };
+});
+
+const { resolveSource, resolvePersistedSource } = await import('../../../src/bundle/source.js');
 
 describe('resolveSource', () => {
   let tempDir: string;
@@ -83,5 +90,61 @@ describe('resolveSource', () => {
 
   it('throws for an invalid URL', async () => {
     await expect(resolveSource('https://')).rejects.toThrow();
+  });
+});
+
+describe('resolvePersistedSource', () => {
+  let tempDir: string;
+
+  beforeEach(async () => {
+    tempDir = path.join(os.tmpdir(), `persisted-test-${Date.now()}`);
+    await mkdir(tempDir, { recursive: true });
+    configState.value = { installations: {} };
+  });
+
+  afterEach(async () => {
+    await rm(tempDir, { recursive: true, force: true });
+  });
+
+  it('returns null when no sources are configured', async () => {
+    expect(await resolvePersistedSource()).toBeNull();
+  });
+
+  it('resolves the active source first', async () => {
+    configState.value = {
+      installations: {},
+      sources: [{ kind: 'directory', value: tempDir }],
+      activeSource: { kind: 'directory', value: tempDir },
+    };
+
+    const resolved = await resolvePersistedSource();
+    expect(resolved?.source).toEqual({ type: 'directory', dirPath: tempDir });
+    expect(resolved?.stored).toEqual({ kind: 'directory', value: tempDir });
+  });
+
+  it('skips a source that fails to resolve and tries the next (per-source isolation)', async () => {
+    const badPath = path.join(tempDir, 'does-not-exist');
+    configState.value = {
+      installations: {},
+      sources: [
+        { kind: 'directory', value: badPath },
+        { kind: 'directory', value: tempDir },
+      ],
+    };
+
+    const resolved = await resolvePersistedSource();
+    expect(resolved?.stored).toEqual({ kind: 'directory', value: tempDir });
+  });
+
+  it('throws an aggregated error when every source fails', async () => {
+    configState.value = {
+      installations: {},
+      sources: [
+        { kind: 'directory', value: path.join(tempDir, 'nope-1') },
+        { kind: 'directory', value: path.join(tempDir, 'nope-2') },
+      ],
+    };
+
+    await expect(resolvePersistedSource()).rejects.toThrow('None of the configured sources');
   });
 });

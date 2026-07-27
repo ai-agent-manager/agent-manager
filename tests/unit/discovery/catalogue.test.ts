@@ -1,8 +1,26 @@
 import { describe, it, expect } from 'vitest';
-import { buildCatalogue, filterCatalogue } from '../../../src/discovery/catalogue.js';
+import {
+  buildCatalogue,
+  buildRovoCatalogue,
+  buildUnifiedCatalogue,
+  filterCatalogue,
+} from '../../../src/discovery/catalogue.js';
 import type { ResolvedSkill } from '../../../src/discovery/resolver.js';
 import type { SourceStatus, SourceType } from '../../../src/discovery/types.js';
 import type { SkillSourcePin } from '../../../src/bundle/skill-source.js';
+import type { RovoAgentInfo, RovoAgentConfig } from '../../../src/bundle/scanner.js';
+
+function makeRovoAgent(overrides: { dirName: string; name?: string; description?: string }): RovoAgentInfo {
+  const { dirName, name, description } = overrides;
+  return {
+    dirName,
+    dirPath: `/tmp/agents/${dirName}`,
+    configPath: `/tmp/agents/${dirName}/rovo-agent.yaml`,
+    config: { identity: { name: name ?? '', description: description ?? '' } } as unknown as RovoAgentConfig,
+    meta: null,
+    knowledgeBaseFiles: [],
+  };
+}
 
 function makeSkill(overrides: {
   dirName: string;
@@ -124,6 +142,52 @@ describe('buildCatalogue', () => {
   it('returns an empty catalogue for no skills', () => {
     expect(buildCatalogue([])).toEqual([]);
   });
+
+  it('tags every skill entry with kind "skill"', () => {
+    const entries = buildCatalogue([makeSkill({ dirName: 'my-skill', sourceName: 'repo-a', sourcePin: repoPin })]);
+    expect(entries[0]!.kind).toBe('skill');
+  });
+});
+
+describe('buildRovoCatalogue', () => {
+  it('maps agents to entries using identity name and description', () => {
+    const entries = buildRovoCatalogue([
+      makeRovoAgent({ dirName: 'epic-agent', name: 'Epic Agent', description: 'Elaborates epics' }),
+    ]);
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.kind).toBe('rovo-agent');
+    expect(entries[0]!.skillId).toBe('epic-agent');
+    expect(entries[0]!.displayName).toBe('Epic Agent');
+    expect(entries[0]!.description).toBe('Elaborates epics');
+    expect(entries[0]!.agent.dirName).toBe('epic-agent');
+  });
+
+  it('falls back to dirName when the identity name is empty', () => {
+    const entries = buildRovoCatalogue([makeRovoAgent({ dirName: 'bare-agent' })]);
+    expect(entries[0]!.displayName).toBe('bare-agent');
+  });
+});
+
+describe('buildUnifiedCatalogue', () => {
+  it('lists skills and rovo agents together, each tagged by kind', () => {
+    const entries = buildUnifiedCatalogue(
+      [makeSkill({ dirName: 'my-skill', sourceName: 'repo-a', sourcePin: repoPin })],
+      [makeRovoAgent({ dirName: 'my-agent', name: 'My Agent' })],
+    );
+
+    expect(entries.map((e) => e.kind)).toEqual(['skill', 'rovo-agent']);
+  });
+
+  it('keeps a skill and an agent that share a dirName as separate entries', () => {
+    const entries = buildUnifiedCatalogue(
+      [makeSkill({ dirName: 'shared-name', sourceName: 'repo-a', sourcePin: repoPin })],
+      [makeRovoAgent({ dirName: 'shared-name', name: 'Shared Agent' })],
+    );
+
+    expect(entries).toHaveLength(2);
+    expect(entries.filter((e) => e.skillId === 'shared-name').map((e) => e.kind)).toEqual(['skill', 'rovo-agent']);
+  });
 });
 
 describe('filterCatalogue', () => {
@@ -157,5 +221,16 @@ describe('filterCatalogue', () => {
 
   it('returns no entries when nothing matches', () => {
     expect(filterCatalogue(entries, 'nonexistent')).toHaveLength(0);
+  });
+
+  it('matches rovo agent entries by name and description', () => {
+    const unified = buildUnifiedCatalogue(
+      [makeSkill({ dirName: 'data-pipeline', sourceName: 'acme-repo', sourcePin: repoPin })],
+      [makeRovoAgent({ dirName: 'epic-agent', name: 'Epic Agent', description: 'Elaborates epics' })],
+    );
+
+    expect(filterCatalogue(unified, 'epic')[0]!.skillId).toBe('epic-agent');
+    expect(filterCatalogue(unified, 'elaborates')[0]!.skillId).toBe('epic-agent');
+    expect(filterCatalogue(unified, 'pipeline')[0]!.skillId).toBe('data-pipeline');
   });
 });

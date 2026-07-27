@@ -6,9 +6,11 @@ import { AuthPrompt } from "./components/AuthPrompt.js";
 import { ChromeExtensionInstall } from "./components/ChromeExtensionInstall.js";
 import { ChromeExtensionServer } from "./components/ChromeExtensionServer.js";
 import { MainMenu } from "./components/MainMenu.js";
+import { MaintenanceMenu } from "./components/MaintenanceMenu.js";
+import { SettingsScreen } from "./components/SettingsScreen.js";
 import { ManageFlow } from "./components/ManageFlow.js";
 import { SkillInstallFlow } from "./components/SkillInstallFlow.js";
-import { UrlInstallFlow } from "./components/UrlInstallFlow.js";
+import { SourceManager } from "./components/SourceManager.js";
 import { RovoMenu } from "./components/RovoMenu.js";
 import { RovoMethodMenu } from "./components/RovoMethodMenu.js";
 import { ScopeSelector } from "./components/ScopeSelector.js";
@@ -19,7 +21,7 @@ import { StartupNoticePanel } from "./components/StartupNoticePanel.js";
 import { StatusMessage } from "./components/StatusMessage.js";
 import { ToolSelector } from "./components/ToolSelector.js";
 import { VersionManager } from "./components/VersionManager.js";
-import { getCurrentBundleVersion, readConfig, setCurrentBundle, writeConfig } from "./bundle/cache.js";
+import { getCurrentBundleVersion, readConfig, setCurrentBundle, updateConfig } from "./bundle/cache.js";
 import { downloadBundle } from "./bundle/downloader.js";
 import { extractBundle } from "./bundle/extractor.js";
 import { importLocalBundle } from "./bundle/importer.js";
@@ -31,17 +33,19 @@ import { getBundleVersionDir } from "./config/paths.js";
 import type { InstallScope } from "./config/scopes.js";
 import type { StartupUpdateNotice } from "./lib/startup-update-checks.js";
 import { checkForStartupUpdates, shouldRunStartupUpdateChecks } from "./lib/startup-update-checks.js";
-import { getBundleSourceTelemetryProperties, trackTelemetryError, trackTelemetryEvent } from "./telemetry.js";
+import { getBundleSourceTelemetryProperties, setTelemetryDisabledByConfig, trackTelemetryError, trackTelemetryEvent } from "./telemetry.js";
 import { featureFlags } from "./lib/feature-flags.js";
-import { resolveDiscoverySkills, buildCatalogue, type ResolvedSkill } from "./discovery/index.js";
+import { resolveDiscoverySkills, buildUnifiedCatalogue, type ResolvedSkill } from "./discovery/index.js";
 import { authenticate, openInBrowser } from "./auth/index.js";
 
 export type Screen =
     | "loading"
     | "auth"
     | "main-menu"
+    | "maintenance-menu"
+    | "settings"
     | "skill-install"
-    | "url-install"
+    | "source-manager"
     | "manage-installed"
     | "scope-selector"
     | "tool-selector"
@@ -146,6 +150,9 @@ export function App({ source, forceUpdate }: AppProps) {
     const [authorizeUrl, setAuthorizeUrl] = useState<string | null>(null);
     const [discoverySkills, setDiscoverySkills] = useState<ResolvedSkill[] | null>(null);
     const [discoveryBundleVersion, setDiscoveryBundleVersion] = useState<string | null>(null);
+    // Set when a Rovo agent is picked from the unified catalogue; scopes the Rovo
+    // flow to that one agent. Null when Rovo is entered via the standalone menu.
+    const [selectedRovoAgent, setSelectedRovoAgent] = useState<RovoAgentInfo | null>(null);
 
     const bundleTelemetryProps = getBundleSourceTelemetryProperties(source);
 
@@ -220,11 +227,16 @@ export function App({ source, forceUpdate }: AppProps) {
     useEffect(() => {
         (async () => {
             try {
-                const config = await readConfig();
+                const startupConfig = await readConfig();
+                setTelemetryDisabledByConfig(startupConfig.telemetryDisabled ?? false);
+
                 if (source.type === "discovery" || source.type === "url") {
-                    config.baseUrl = source.baseUrl;
+                    await updateConfig((config) => {
+                        if (config.baseUrl !== source.baseUrl) {
+                            config.baseUrl = source.baseUrl;
+                        }
+                    });
                 }
-                await writeConfig(config);
 
                 // --- Discovery source: resolve skills from discovery document ---
                 if (source.type === "discovery") {
@@ -299,6 +311,7 @@ export function App({ source, forceUpdate }: AppProps) {
                 setBundleDir(bundleVersionDir);
                 setScreen("main-menu");
 
+                const config = await readConfig();
                 if (shouldRunStartupUpdateChecks(config)) {
                     void (async () => {
                         const result = await checkForStartupUpdates({
@@ -415,7 +428,7 @@ export function App({ source, forceUpdate }: AppProps) {
             sourceName: "bundle",
             sourceType: "http" as const,
         }));
-    const catalogueEntries = buildCatalogue(catalogueSkills);
+    const catalogueEntries = buildUnifiedCatalogue(catalogueSkills, bundleContents?.rovoAgents ?? []);
 
     if (screen === "loading") {
         return (
@@ -463,32 +476,19 @@ export function App({ source, forceUpdate }: AppProps) {
             {screen === "main-menu" && (
                 <MainMenu
                     hasBundleContents={!!bundleContents}
-                    hasRovoAgents={!!bundleContents && bundleContents.rovoAgents.length > 0}
                     onSelect={(action) => {
                         switch (action) {
-                            case "browse-skills":
+                            case "search-install":
                                 setScreen("skill-install");
                                 break;
-                            case "url-install":
-                                setScreen("url-install");
+                            case "maintenance":
+                                setScreen("maintenance-menu");
                                 break;
-                            case "install-skills":
-                                setScreen("scope-selector");
+                            case "source-management":
+                                setScreen("source-manager");
                                 break;
-                            case "manage-installed":
-                                setScreen("manage-installed");
-                                break;
-                            case "manage-skill-versions":
-                                setScreen("skill-version-manager");
-                                break;
-                            case "rovo-agents":
-                                setScreen(featureFlags.chromeExtension ? "rovo-method" : "rovo-menu");
-                                break;
-                            case "manage-versions":
-                                setScreen("version-manager");
-                                break;
-                            case "update-app":
-                                setScreen("app-update");
+                            case "settings":
+                                setScreen("settings");
                                 break;
                             case "exit":
                                 process.exit(0);
@@ -497,20 +497,54 @@ export function App({ source, forceUpdate }: AppProps) {
                 />
             )}
 
-            {screen === "skill-install" && (
-                <SkillInstallFlow
-                    entries={catalogueEntries}
-                    bundleVersion={effectiveVersion}
+            {screen === "maintenance-menu" && (
+                <MaintenanceMenu
+                    hasBundleContents={!!bundleContents}
+                    onSelect={(action) => {
+                        switch (action) {
+                            case "bulk-sync":
+                                setScreen("scope-selector");
+                                break;
+                            case "skill-versions":
+                                setScreen("skill-version-manager");
+                                break;
+                            case "manage-installed":
+                                setScreen("manage-installed");
+                                break;
+                            case "bundle-versions":
+                                setScreen("version-manager");
+                                break;
+                            case "update-app":
+                                setScreen("app-update");
+                                break;
+                            case "back":
+                                setScreen("main-menu");
+                        }
+                    }}
                     onBack={() => setScreen("main-menu")}
                 />
             )}
 
-            {screen === "url-install" && <UrlInstallFlow onBack={() => setScreen("main-menu")} />}
+            {screen === "skill-install" && (
+                <SkillInstallFlow
+                    entries={catalogueEntries}
+                    bundleVersion={effectiveVersion}
+                    onSelectRovoAgent={(agent) => {
+                        setSelectedRovoAgent(agent);
+                        setScreen(featureFlags.chromeExtension ? "rovo-method" : "rovo-menu");
+                    }}
+                    onBack={() => setScreen("main-menu")}
+                />
+            )}
 
-            {screen === "manage-installed" && <ManageFlow onBack={() => setScreen("main-menu")} />}
+            {screen === "source-manager" && <SourceManager onBack={() => setScreen("main-menu")} />}
+
+            {screen === "settings" && <SettingsScreen onBack={() => setScreen("main-menu")} />}
+
+            {screen === "manage-installed" && <ManageFlow onBack={() => setScreen("maintenance-menu")} />}
 
             {screen === "scope-selector" && (
-                <ScopeSelector onSelect={handleScopeSelect} onBack={() => setScreen("main-menu")} />
+                <ScopeSelector onSelect={handleScopeSelect} onBack={() => setScreen("maintenance-menu")} />
             )}
 
             {screen === "tool-selector" && (
@@ -542,7 +576,7 @@ export function App({ source, forceUpdate }: AppProps) {
                     repoRoot={repoRoot}
                     bundleTelemetryProps={bundleTelemetryProps}
                     onBack={() => setScreen("tool-selector")}
-                    onDone={() => setScreen("main-menu")}
+                    onDone={() => setScreen("maintenance-menu")}
                 />
             )}
 
@@ -550,16 +584,16 @@ export function App({ source, forceUpdate }: AppProps) {
                 <VersionManager
                     currentVersion={manifest?.version ?? null}
                     source={source}
-                    onBack={() => setScreen("main-menu")}
+                    onBack={() => setScreen("maintenance-menu")}
                     onVersionChanged={handleVersionChanged}
                 />
             )}
 
-            {screen === "skill-version-manager" && <SkillVersionManager onBack={() => setScreen("main-menu")} />}
+            {screen === "skill-version-manager" && <SkillVersionManager onBack={() => setScreen("maintenance-menu")} />}
 
             {screen === "app-update" && (
                 <AppUpdateManager
-                    onBack={() => setScreen("main-menu")}
+                    onBack={() => setScreen("maintenance-menu")}
                     onExit={(message) => {
                         console.log(`\n  ${message}\n`);
                         process.exit(0);
@@ -578,15 +612,15 @@ export function App({ source, forceUpdate }: AppProps) {
                             setScreen("rovo-menu");
                         }
                     }}
-                    onBack={() => setScreen("main-menu")}
+                    onBack={() => setScreen("skill-install")}
                 />
             )}
 
             {screen === "rovo-menu" && bundleContents && (
                 <RovoMenu
-                    rovoAgents={bundleContents.rovoAgents}
+                    rovoAgents={selectedRovoAgent ? [selectedRovoAgent] : bundleContents.rovoAgents}
                     bundleTelemetryProps={bundleTelemetryProps}
-                    onBack={() => setScreen(featureFlags.chromeExtension ? "rovo-method" : "main-menu")}
+                    onBack={() => setScreen(featureFlags.chromeExtension ? "rovo-method" : "skill-install")}
                 />
             )}
 
@@ -600,7 +634,7 @@ export function App({ source, forceUpdate }: AppProps) {
             )}
 
             {screen === "chrome-extension-install" && (
-                <ChromeExtensionInstall onBack={() => setScreen(featureFlags.chromeExtension ? "rovo-method" : "main-menu")} />
+                <ChromeExtensionInstall onBack={() => setScreen(featureFlags.chromeExtension ? "rovo-method" : "skill-install")} />
             )}
         </Box>
     );

@@ -1,8 +1,9 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render } from 'ink-testing-library';
-import { buildCatalogue } from '../../../src/discovery/catalogue.js';
+import { buildCatalogue, buildUnifiedCatalogue } from '../../../src/discovery/catalogue.js';
 import type { ResolvedSkill } from '../../../src/discovery/resolver.js';
+import type { RovoAgentInfo, RovoAgentConfig } from '../../../src/bundle/scanner.js';
 
 const ESC = String.fromCharCode(27);
 const DOWN = `${ESC}[B`;
@@ -85,7 +86,7 @@ beforeEach(() => {
 describe('SkillInstallFlow', () => {
   it('walks browse → source → scope → tool → confirm → install → result', async () => {
     const { lastFrame, stdin } = render(
-      <SkillInstallFlow entries={entries} bundleVersion="1.0.0" onBack={() => {}} />,
+      <SkillInstallFlow entries={entries} bundleVersion="1.0.0" onSelectRovoAgent={() => {}} onBack={() => {}} />,
     );
 
     await vi.waitFor(() => {
@@ -143,7 +144,7 @@ describe('SkillInstallFlow', () => {
 
   it('offers to install another skill from the result screen', async () => {
     const { lastFrame, stdin } = render(
-      <SkillInstallFlow entries={entries} bundleVersion="1.0.0" onBack={() => {}} />,
+      <SkillInstallFlow entries={entries} bundleVersion="1.0.0" onSelectRovoAgent={() => {}} onBack={() => {}} />,
     );
 
     await vi.waitFor(() => {
@@ -169,7 +170,7 @@ describe('SkillInstallFlow', () => {
   it('surfaces install errors on the result screen', async () => {
     vi.mocked(installResolvedSkills).mockRejectedValue(new Error('disk full'));
     const { lastFrame, stdin } = render(
-      <SkillInstallFlow entries={entries} bundleVersion="1.0.0" onBack={() => {}} />,
+      <SkillInstallFlow entries={entries} bundleVersion="1.0.0" onSelectRovoAgent={() => {}} onBack={() => {}} />,
     );
 
     await vi.waitFor(() => {
@@ -186,10 +187,43 @@ describe('SkillInstallFlow', () => {
     });
   });
 
+  it('dispatches a picked rovo agent out of the flow instead of installing', async () => {
+    const rovoAgent: RovoAgentInfo = {
+      dirName: 'epic-agent',
+      dirPath: '/tmp/agents/epic-agent',
+      configPath: '/tmp/agents/epic-agent/rovo-agent.yaml',
+      config: { identity: { name: 'Epic Agent', description: 'Elaborates epics' } } as unknown as RovoAgentConfig,
+      meta: null,
+      knowledgeBaseFiles: [],
+    };
+    const rovoEntries = buildUnifiedCatalogue([], [rovoAgent]);
+    const onSelectRovoAgent = vi.fn();
+
+    const { lastFrame, stdin } = render(
+      <SkillInstallFlow
+        entries={rovoEntries}
+        bundleVersion="1.0.0"
+        onSelectRovoAgent={onSelectRovoAgent}
+        onBack={() => {}}
+      />,
+    );
+
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain('Epic Agent');
+    });
+    await flushInkInput();
+
+    await press(stdin, ENTER);
+    await vi.waitFor(() => {
+      expect(onSelectRovoAgent).toHaveBeenCalledWith(rovoAgent);
+    });
+    expect(installResolvedSkills).not.toHaveBeenCalled();
+  });
+
   it('returns to the menu from the result screen', async () => {
     const onBack = vi.fn();
     const { lastFrame, stdin } = render(
-      <SkillInstallFlow entries={entries} bundleVersion="1.0.0" onBack={onBack} />,
+      <SkillInstallFlow entries={entries} bundleVersion="1.0.0" onSelectRovoAgent={() => {}} onBack={onBack} />,
     );
 
     await vi.waitFor(() => {

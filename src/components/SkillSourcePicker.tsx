@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { Box, Text } from 'ink';
 import SelectInput from 'ink-select-input';
-import type { CatalogueEntry, SkillCandidate } from '../discovery/catalogue.js';
+import type { SkillCatalogueEntry, SkillCandidate } from '../discovery/catalogue.js';
 
 interface SkillSourcePickerProps {
-  entry: CatalogueEntry;
+  entry: SkillCatalogueEntry;
   onSelect: (candidate: SkillCandidate) => void;
   onBack: () => void;
 }

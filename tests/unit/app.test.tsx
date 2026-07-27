@@ -93,6 +93,7 @@ vi.mock("../../src/bundle/cache.js", () => ({
     readConfig: vi.fn(),
     setCurrentBundle: vi.fn(),
     writeConfig: vi.fn(),
+    updateConfig: vi.fn(),
 }));
 
 vi.mock("../../src/bundle/scanner.js", () => ({
@@ -106,12 +107,13 @@ vi.mock("../../src/lib/startup-update-checks.js", () => ({
 
 vi.mock("../../src/telemetry.js", () => ({
     getBundleSourceTelemetryProperties: vi.fn(() => ({ source: "url" })),
+    setTelemetryDisabledByConfig: vi.fn(),
     trackTelemetryError: vi.fn(),
     trackTelemetryEvent: vi.fn(),
 }));
 
 import { App } from "../../src/app.js";
-import { getCurrentBundleVersion, readConfig, setCurrentBundle, writeConfig } from "../../src/bundle/cache.js";
+import { getCurrentBundleVersion, readConfig, setCurrentBundle, writeConfig, updateConfig } from "../../src/bundle/cache.js";
 import { downloadBundle } from "../../src/bundle/downloader.js";
 import { extractBundle } from "../../src/bundle/extractor.js";
 import { scanBundle } from "../../src/bundle/scanner.js";
@@ -124,6 +126,7 @@ describe("App", () => {
 
         vi.mocked(readConfig).mockResolvedValue({ installations: {} });
         vi.mocked(writeConfig).mockResolvedValue(undefined);
+        vi.mocked(updateConfig).mockResolvedValue({ installations: {} });
         vi.mocked(getCurrentBundleVersion).mockResolvedValue(null);
 
         vi.mocked(downloadBundle)

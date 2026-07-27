@@ -54,12 +54,16 @@ export function SkillBrowser({ entries, onSelect, onBack }: SkillBrowserProps) {
       <Text> </Text>
       {filtered.length === 0 && <Text dimColor>{'  '}No skills match "{query}".</Text>}
       {filtered.map((entry, index) => (
-        <Box key={entry.skillId} flexDirection="column">
+        <Box key={`${entry.kind}:${entry.skillId}`} flexDirection="column">
           <Text color={index === clampedCursor ? 'cyan' : undefined}>
             {index === clampedCursor ? '❯ ' : '  '}
             {entry.displayName}
             {'  '}
-            <SourceSummary candidates={entry.candidates} />
+            {entry.kind === 'skill' ? (
+              <SourceSummary candidates={entry.candidates} />
+            ) : (
+              <Text color="magenta">rovo agent</Text>
+            )}
           </Text>
           {entry.description !== '' && (
             <Text dimColor>

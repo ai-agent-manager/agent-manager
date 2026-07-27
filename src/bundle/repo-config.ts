@@ -1,6 +1,8 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, rename } from "node:fs/promises";
 import path from "node:path";
 import type { SkillSourcePin } from "./skill-source.js";
+import { writeFileAtomic } from "../lib/fs.js";
+import { withLock } from "../lib/file-lock.js";
 
 /** Name of the per-repo config file */
 export const REPO_CONFIG_FILENAME = ".agentman.json";
@@ -50,28 +52,69 @@ function getRepoConfigPath(repoRoot: string): string {
     return path.join(repoRoot, REPO_CONFIG_FILENAME);
 }
 
+function getRepoConfigLockPath(repoRoot: string): string {
+    return `${getRepoConfigPath(repoRoot)}.lock`;
+}
+
 /**
  * Read the per-repo `.agentman.json` config.
  * Returns `null` if the file does not exist.
+ *
+ * A file that exists but fails to parse as JSON is corrupt — it is backed up
+ * alongside itself (nothing is silently discarded) and a warning is printed;
+ * the caller gets `null`, the same as a missing file. Any other read error
+ * (e.g. permissions) propagates.
  */
 export async function readRepoConfig(repoRoot: string): Promise<RepoAgentmanConfig | null> {
+    const configPath = getRepoConfigPath(repoRoot);
+    let raw: string;
     try {
-        const raw = await readFile(getRepoConfigPath(repoRoot), "utf-8");
-        return JSON.parse(raw) as RepoAgentmanConfig;
+        raw = await readFile(configPath, "utf-8");
     } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") {
             return null;
         }
-
         throw error;
+    }
+
+    try {
+        return JSON.parse(raw) as RepoAgentmanConfig;
+    } catch {
+        const backupPath = `${configPath}.corrupt-${Date.now()}`;
+        await rename(configPath, backupPath).catch(() => {});
+        console.warn(
+            `Warning: config file at ${configPath} was corrupt and has been backed up to ${backupPath}. Starting with an empty config.`,
+        );
+        return null;
     }
 }
 
 /**
- * Write the per-repo `.agentman.json` config.
+ * Write the per-repo `.agentman.json` config. Writes via a temp file +
+ * rename so a crash or a concurrent reader never observes a
+ * partially-written file.
  */
 export async function writeRepoConfig(repoRoot: string, config: RepoAgentmanConfig): Promise<void> {
-    await writeFile(getRepoConfigPath(repoRoot), JSON.stringify(config, null, 2) + "\n");
+    await writeFileAtomic(getRepoConfigPath(repoRoot), JSON.stringify(config, null, 2) + "\n");
+}
+
+/**
+ * Read-modify-write the repo config under an exclusive lock, so that a
+ * concurrent agentman process cannot clobber changes made in between the
+ * read and the write. `mutate` may mutate the config in place and return
+ * nothing, or return a replacement config.
+ */
+export async function updateRepoConfig(
+    repoRoot: string,
+    mutate: (config: RepoAgentmanConfig, wasCreated: boolean) => RepoAgentmanConfig | void,
+): Promise<RepoAgentmanConfig> {
+    return withLock(getRepoConfigLockPath(repoRoot), async () => {
+        const existing = await readRepoConfig(repoRoot);
+        const config: RepoAgentmanConfig = existing ?? { installations: {} };
+        const result = mutate(config, existing === null) ?? config;
+        await writeRepoConfig(repoRoot, result);
+        return result;
+    });
 }
 
 /**
@@ -88,35 +131,37 @@ export async function recordRepoInstall(
     record: Omit<RepoInstallRecord, 'bundleVersion'>,
     bundleVersion?: string,
 ): Promise<void> {
-    let config = await readRepoConfig(repoRoot);
-    if (!config) {
-        config = { ...(bundleVersion !== undefined && { bundleVersion }), installations: {} };
-    }
-
-    if (!config.installations[toolId]) {
-        config.installations[toolId] = {};
-    }
-    const entry: RepoInstallRecord = { ...record };
-    if (bundleVersion !== undefined) entry.bundleVersion = bundleVersion;
-    config.installations[toolId][skillName] = entry;
-    await writeRepoConfig(repoRoot, config);
+    await updateRepoConfig(repoRoot, (config, wasCreated) => {
+        if (wasCreated && bundleVersion !== undefined) {
+            config.bundleVersion = bundleVersion;
+        }
+        if (!config.installations[toolId]) {
+            config.installations[toolId] = {};
+        }
+        const entry: RepoInstallRecord = { ...record };
+        if (bundleVersion !== undefined) entry.bundleVersion = bundleVersion;
+        config.installations[toolId][skillName] = entry;
+    });
 }
 
 /**
  * Remove a skill installation record from the repo config.
  */
 export async function removeRepoInstallRecord(repoRoot: string, toolId: string, skillName: string): Promise<void> {
-    const config = await readRepoConfig(repoRoot);
-    if (!config) return;
+    // Nothing to remove from a config that doesn't exist yet — and creating
+    // one here would leave a stray .agentman.json where none existed before.
+    const existing = await readRepoConfig(repoRoot);
+    if (!existing) return;
 
-    if (config.installations[toolId]) {
-        delete config.installations[toolId][skillName];
-        // Clean up empty tool entries
-        if (Object.keys(config.installations[toolId]).length === 0) {
-            delete config.installations[toolId];
+    await updateRepoConfig(repoRoot, (config) => {
+        if (config.installations[toolId]) {
+            delete config.installations[toolId][skillName];
+            // Clean up empty tool entries
+            if (Object.keys(config.installations[toolId]).length === 0) {
+                delete config.installations[toolId];
+            }
         }
-    }
-    await writeRepoConfig(repoRoot, config);
+    });
 }
 
 /**
@@ -124,11 +169,7 @@ export async function removeRepoInstallRecord(repoRoot: string, toolId: string, 
  * Creates the config file if it doesn't exist.
  */
 export async function pinRepoVersion(repoRoot: string, bundleVersion: string): Promise<void> {
-    let config = await readRepoConfig(repoRoot);
-    if (!config) {
-        config = { bundleVersion, installations: {} };
-    } else {
+    await updateRepoConfig(repoRoot, (config) => {
         config.bundleVersion = bundleVersion;
-    }
-    await writeRepoConfig(repoRoot, config);
+    });
 }

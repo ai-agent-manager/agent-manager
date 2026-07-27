@@ -6,6 +6,7 @@ import {
     getBundleEndpointTelemetryValue,
     getBundleSourceTelemetryProperties,
     resolveTelemetrySettings,
+    setTelemetryDisabledByConfig,
     shouldDisableTelemetry,
 } from "../../../src/telemetry.js";
 
@@ -256,5 +257,34 @@ describe("createTelemetryClient", () => {
 
         expect(() => client.track({ action: "agentman_started" })).not.toThrow();
         await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+});
+
+describe("setTelemetryDisabledByConfig", () => {
+    afterEach(() => {
+        // Module-level flag — reset so it never leaks into the process-wide client.
+        setTelemetryDisabledByConfig(false);
+    });
+
+    it("suppresses sends on an otherwise-enabled client, and env-based disable is independent", async () => {
+        const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+        const client = createTelemetryClient({
+            env: { AGENTMAN_TELEMETRY_URL: "https://example.com/telemetry", AGENTMAN_TELEMETRY_SITE_ID: "13" },
+            fetchImpl: fetchMock as typeof fetch,
+            stdinIsTTY: true,
+            stdoutIsTTY: true,
+        });
+
+        expect(client.isEnabled()).toBe(true);
+        await client.send({ action: "agentman_started" });
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+
+        setTelemetryDisabledByConfig(true);
+        expect(client.isEnabled()).toBe(false);
+        await client.send({ action: "agentman_started" });
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+
+        setTelemetryDisabledByConfig(false);
+        expect(client.isEnabled()).toBe(true);
     });
 });

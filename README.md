@@ -170,12 +170,17 @@ npx -y @ai-agent-manager/cli@latest --help
 
 ## Interactive Menu
 
-The TUI has four options:
+The TUI's top-level menu has these options:
 
-- **Install Skills** -- Choose system-wide or repository-scoped installation, select a coding tool, then choose which skills to install or uninstall via symlink.
-- **Rovo Agents** -- Provision Atlassian Rovo agents. By default this runs Playwright-driven browser automation from the command line. Set `AGENTMAN_CHROME_EXTENSION=1` to also offer the Chrome Extension options, including direct extension installation (see [Feature Flags](#feature-flags)).
-- **Manage Bundle Versions** -- View cached bundle versions, switch the active bundle, or remove old cached bundles.
-- **Update Agent Manager App** -- Update the Agent Manager CLI application itself via npm. This is separate from bundle, skill, and Rovo agent version management.
+- **Search & Install** -- Search a single catalogue of skills and Rovo agents, then act on your choice. Selecting a skill installs it (choose a source, scope, and coding tool); selecting a Rovo agent provisions it in Atlassian Studio. Rovo provisioning runs Playwright-driven browser automation from the command line by default; set `AGENTMAN_CHROME_EXTENSION=1` to also offer the Chrome Extension options, including direct extension installation (see [Feature Flags](#feature-flags)).
+- **Maintenance & Updates** -- Bulk-sync a tool's skills (select the complete set for a tool; deselecting uninstalls), manage individual skill versions, manage installed skills (update/remove/inspect), manage cached bundle versions, and update the Agent Manager CLI itself.
+- **Source Management** -- Install from a source URL: a GitHub repo, an artefact zip, or a bundle URL.
+- **Settings & Config** -- Toggle startup update checks and telemetry, persisted to `~/.agentman/config.json`. Environment variables still take precedence.
+- **Exit**
+
+### Saved sources
+
+Passing a source once saves it: `agentman <url>` resolves the source as before and also stores it, marking it the **active** source. A later bare `agentman` (no argument) resolves the active source, so you no longer need to paste the URL every time. Manage the saved list — add, remove, or pick which one is active — from **Source Management**. When a bare invocation runs, sources are tried in order (active first); a source that is unreachable is skipped so one dead source never blocks startup. Headless (`--config`) mode is unaffected: it always requires an explicit source argument and never falls back to saved sources, keeping CI runs reproducible.
 
 On startup, if a newer app version or bundle is available, a bordered update panel appears above the menu. Press `U` to update the app, or `B` to pull the latest bundle immediately.
 
@@ -185,7 +190,7 @@ To suppress startup update checks:
 AGENTMAN_DISABLE_STARTUP_UPDATE_CHECKS=1 npx -y @ai-agent-manager/cli@latest <base-url>
 ```
 
-Or set `"startupUpdateChecksDisabled": true` in `~/.agentman/config.json`.
+Or toggle it from **Settings & Config** in the menu, or set `"startupUpdateChecksDisabled": true` in `~/.agentman/config.json`.
 
 ---
 
@@ -223,7 +228,7 @@ A `.agentman.json` file is written at the repo root tracking the pinned bundle v
 2. If the server requires authentication, an OAuth2/OIDC flow runs interactively (PKCE, browser-based login).
 3. The bundle is downloaded and extracted to `~/.agentman/bundles/<version>/`.
 4. `~/.agentman/current` symlinks to the active version.
-5. Multiple bundle versions coexist on disk. Switch between them from the **Manage Versions** menu.
+5. Multiple bundle versions coexist on disk. Switch between them from **Maintenance & Updates → Manage Bundle Versions**.
 6. Installing a skill symlinks the entire skill directory from the cache into the target tool's skills path.
 7. Installation state is tracked in `~/.agentman/config.json` (system-wide) or `.agentman.json` (repo-scoped).
 

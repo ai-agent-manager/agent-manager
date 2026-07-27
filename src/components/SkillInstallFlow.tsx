@@ -7,7 +7,8 @@ import { ScopeSelector } from './ScopeSelector.js';
 import { ToolSelector } from './ToolSelector.js';
 import { LoadingSpinner } from './Spinner.js';
 import { installResolvedSkills } from '../operations/install.js';
-import type { CatalogueEntry, SkillCandidate } from '../discovery/catalogue.js';
+import type { CatalogueEntry, SkillCatalogueEntry, SkillCandidate } from '../discovery/catalogue.js';
+import type { RovoAgentInfo } from '../bundle/scanner.js';
 import type { InstallScope } from '../config/scopes.js';
 import type { InstallResult } from '../provisioners/types.js';
 
@@ -24,12 +25,14 @@ interface SkillInstallFlowProps {
   entries: CatalogueEntry[];
   /** Bundle version used when the chosen candidate comes from an http bundle source. */
   bundleVersion: string;
+  /** Called when the user picks a Rovo agent — provisioning happens outside this flow. */
+  onSelectRovoAgent: (agent: RovoAgentInfo) => void;
   onBack: () => void;
 }
 
-export function SkillInstallFlow({ entries, bundleVersion, onBack }: SkillInstallFlowProps) {
+export function SkillInstallFlow({ entries, bundleVersion, onSelectRovoAgent, onBack }: SkillInstallFlowProps) {
   const [screen, setScreen] = useState<FlowScreen>('browse');
-  const [entry, setEntry] = useState<CatalogueEntry | null>(null);
+  const [entry, setEntry] = useState<SkillCatalogueEntry | null>(null);
   const [candidate, setCandidate] = useState<SkillCandidate | null>(null);
   const [scope, setScope] = useState<InstallScope>('system');
   const [repoRoot, setRepoRoot] = useState<string | null>(null);
@@ -68,6 +71,10 @@ export function SkillInstallFlow({ entries, bundleVersion, onBack }: SkillInstal
       <SkillBrowser
         entries={entries}
         onSelect={(selected) => {
+          if (selected.kind === 'rovo-agent') {
+            onSelectRovoAgent(selected.agent);
+            return;
+          }
           setEntry(selected);
           setScreen('source-picker');
         }}

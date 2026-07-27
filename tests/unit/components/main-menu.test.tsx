@@ -7,70 +7,30 @@ describe("MainMenu", () => {
     const noop = vi.fn();
 
     describe("conditional items", () => {
-        it('shows "Browse & Install Skills" when hasBundleContents is true', () => {
-            const { lastFrame } = render(<MainMenu hasBundleContents={true} hasRovoAgents={false} onSelect={noop} />);
-            expect(lastFrame()).toContain("Browse & Install Skills");
+        it('shows "Search & Install" when hasBundleContents is true', () => {
+            const { lastFrame } = render(<MainMenu hasBundleContents={true} onSelect={noop} />);
+            expect(lastFrame()).toContain("Search & Install");
         });
 
-        it('hides "Browse & Install Skills" when hasBundleContents is false', () => {
-            const { lastFrame } = render(<MainMenu hasBundleContents={false} hasRovoAgents={false} onSelect={noop} />);
-            expect(lastFrame()).not.toContain("Browse & Install Skills");
-        });
-
-        it('shows "Bulk Install by Tool" when hasBundleContents is true', () => {
-            const { lastFrame } = render(<MainMenu hasBundleContents={true} hasRovoAgents={false} onSelect={noop} />);
-            expect(lastFrame()).toContain("Bulk Install by Tool");
-        });
-
-        it('hides "Bulk Install by Tool" when hasBundleContents is false', () => {
-            const { lastFrame } = render(<MainMenu hasBundleContents={false} hasRovoAgents={false} onSelect={noop} />);
-            expect(lastFrame()).not.toContain("Bulk Install by Tool");
-        });
-
-        it('shows "Manage Skill Versions" when hasBundleContents is true', () => {
-            const { lastFrame } = render(<MainMenu hasBundleContents={true} hasRovoAgents={false} onSelect={noop} />);
-            expect(lastFrame()).toContain("Manage Skill Versions");
-        });
-
-        it('hides "Manage Skill Versions" when hasBundleContents is false', () => {
-            const { lastFrame } = render(<MainMenu hasBundleContents={false} hasRovoAgents={false} onSelect={noop} />);
-            expect(lastFrame()).not.toContain("Manage Skill Versions");
-        });
-
-        it('shows "Provision Rovo Agents" when hasRovoAgents is true', () => {
-            const { lastFrame } = render(<MainMenu hasBundleContents={false} hasRovoAgents={true} onSelect={noop} />);
-            expect(lastFrame()).toContain("Provision Rovo Agents");
-        });
-
-        it('hides "Provision Rovo Agents" when hasRovoAgents is false', () => {
-            const { lastFrame } = render(<MainMenu hasBundleContents={false} hasRovoAgents={false} onSelect={noop} />);
-            expect(lastFrame()).not.toContain("Provision Rovo Agents");
+        it('hides "Search & Install" when hasBundleContents is false', () => {
+            const { lastFrame } = render(<MainMenu hasBundleContents={false} onSelect={noop} />);
+            expect(lastFrame()).not.toContain("Search & Install");
         });
     });
 
     describe("permanent items", () => {
-        it('always shows "Install from URL"', () => {
-            const { lastFrame } = render(<MainMenu hasBundleContents={false} hasRovoAgents={false} onSelect={noop} />);
-            expect(lastFrame()).toContain("Install from URL");
+        it('always shows "Maintenance & Updates"', () => {
+            const { lastFrame } = render(<MainMenu hasBundleContents={false} onSelect={noop} />);
+            expect(lastFrame()).toContain("Maintenance & Updates");
         });
 
-        it('always shows "Manage Installed Skills"', () => {
-            const { lastFrame } = render(<MainMenu hasBundleContents={false} hasRovoAgents={false} onSelect={noop} />);
-            expect(lastFrame()).toContain("Manage Installed Skills");
-        });
-
-        it('always shows "Manage Bundle Versions"', () => {
-            const { lastFrame } = render(<MainMenu hasBundleContents={false} hasRovoAgents={false} onSelect={noop} />);
-            expect(lastFrame()).toContain("Manage Bundle Versions");
-        });
-
-        it('always shows "Update Agent Manager App"', () => {
-            const { lastFrame } = render(<MainMenu hasBundleContents={false} hasRovoAgents={false} onSelect={noop} />);
-            expect(lastFrame()).toContain("Update Agent Manager App");
+        it('always shows "Source Management"', () => {
+            const { lastFrame } = render(<MainMenu hasBundleContents={false} onSelect={noop} />);
+            expect(lastFrame()).toContain("Source Management");
         });
 
         it('always shows "Exit"', () => {
-            const { lastFrame } = render(<MainMenu hasBundleContents={false} hasRovoAgents={false} onSelect={noop} />);
+            const { lastFrame } = render(<MainMenu hasBundleContents={false} onSelect={noop} />);
             expect(lastFrame()).toContain("Exit");
         });
     });
