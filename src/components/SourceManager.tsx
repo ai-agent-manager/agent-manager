@@ -32,7 +32,13 @@ export function SourceManager({ onBack }: SourceManagerProps) {
     const [addValue, setAddValue] = useState("");
     const [note, setNote] = useState<string | null>(null);
 
-    useEscapeBack(onBack);
+    // Escape unwinds exactly one level: from the sources menu it leaves the
+    // screen, from a sub-screen it returns to the sources menu. Both handlers
+    // are registered unconditionally and gated by `isActive`, so hook order
+    // stays stable. `url-install` is excluded — UrlInstallFlow owns Escape
+    // while it is mounted.
+    useEscapeBack(onBack, screen === "menu");
+    useEscapeBack(() => setScreen("menu"), screen === "add" || screen === "remove");
 
     const reload = async () => {
         const config = await readConfig();

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { SkillSourcePin } from '../../../src/bundle/skill-source.js';
 
 const repoPin: SkillSourcePin = {
@@ -104,6 +104,7 @@ const { installFromRepo, installFromArtefact, installFromBundle } = await import
   '../../../src/operations/install.js'
 );
 const { findRepoRoot } = await import('../../../src/lib/repo.js');
+const { readConfig } = await import('../../../src/bundle/cache.js');
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -177,6 +178,53 @@ describe('resolveIdentifier', () => {
 
   it('throws SkillNotFoundError when nothing matches', async () => {
     await expect(resolveIdentifier('nonexistent')).rejects.toThrow(SkillNotFoundError);
+  });
+
+  describe('same skill installed for several tools', () => {
+    // One record per tool, all sharing an installKey — so an exact-key lookup
+    // is ambiguous unless the caller says which tool it means.
+    const multiToolConfig = {
+      installations: {
+        'claude-code': {
+          'github.com/example-org/example-repo/my-skill': {
+            installedAt: '2026-01-01T00:00:00.000Z',
+            method: 'symlink' as const,
+            sourcePin: repoPin,
+          },
+        },
+        cursor: {
+          'github.com/example-org/example-repo/my-skill': {
+            installedAt: '2026-01-01T00:00:00.000Z',
+            method: 'symlink' as const,
+            sourcePin: repoPin,
+          },
+        },
+      },
+    };
+
+    beforeEach(() => {
+      vi.mocked(readConfig).mockResolvedValue(multiToolConfig);
+    });
+
+    // mockResolvedValue outlives clearAllMocks, so restore the shared fixture.
+    afterEach(() => {
+      vi.mocked(readConfig).mockResolvedValue(systemConfig);
+    });
+
+    it('is ambiguous on an exact install key without a toolId', async () => {
+      await expect(
+        resolveIdentifier('github.com/example-org/example-repo/my-skill', 'system'),
+      ).rejects.toThrow(AmbiguousIdentifierError);
+    });
+
+    it('resolves to the requested tool when a toolId is given', async () => {
+      const record = await resolveIdentifier(
+        'github.com/example-org/example-repo/my-skill',
+        'system',
+        'cursor',
+      );
+      expect(record.toolId).toBe('cursor');
+    });
   });
 
   it('narrows ambiguity with a scope hint', async () => {

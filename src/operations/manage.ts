@@ -120,12 +120,20 @@ function toRecord(
  * Exact installKey match wins; otherwise a bare skillId match is accepted when
  * unambiguous. Ambiguity throws AmbiguousIdentifierError so the caller can
  * present the qualified alternatives instead of guessing.
+ *
+ * `toolId` narrows the candidates to a single tool. The same skill installed
+ * for several tools yields one record per tool — all sharing an installKey —
+ * so a caller that already knows which tool it is acting on (e.g. a row picked
+ * in the installed list) must pass it, or the lookup is ambiguous by
+ * construction.
  */
 export async function resolveIdentifier(
   id: string,
   scopeHint?: InstallScope,
+  toolId?: string,
 ): Promise<InstalledSkillRecord> {
-  const all = await listInstalled(scopeHint ?? 'all');
+  const candidates = await listInstalled(scopeHint ?? 'all');
+  const all = toolId ? candidates.filter((r) => r.toolId === toolId) : candidates;
 
   const exact = all.filter((r) => r.installKey === id);
   if (exact.length === 1) return exact[0]!;
@@ -144,8 +152,9 @@ export async function resolveIdentifier(
 export async function updateInstalled(
   id: string,
   scopeHint?: InstallScope,
+  toolIdHint?: string,
 ): Promise<InstallResult> {
-  const record = await resolveIdentifier(id, scopeHint);
+  const record = await resolveIdentifier(id, scopeHint, toolIdHint);
   const { sourcePin, toolId, scope, repoRoot } = record;
 
   if (!sourcePin) {
@@ -209,8 +218,9 @@ export async function updateInstalled(
 export async function removeInstalled(
   id: string,
   scopeHint?: InstallScope,
+  toolIdHint?: string,
 ): Promise<UninstallResult> {
-  const record = await resolveIdentifier(id, scopeHint);
+  const record = await resolveIdentifier(id, scopeHint, toolIdHint);
   const { installKey, toolId, scope, repoRoot } = record;
 
   const provisioner = createSkillProvisioner(toolId, scope, repoRoot);

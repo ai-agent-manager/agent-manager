@@ -92,7 +92,7 @@ export function ManageActions({ record, onBack, onDone }: ManageActionsProps) {
             if (item.value === 'yes') {
               void runAction(
                 'Removing',
-                () => removeInstalled(record.installKey, record.scope),
+                () => removeInstalled(record.installKey, record.scope, record.toolId),
                 `Removed ${record.skillId}.`,
               );
             } else {
@@ -122,7 +122,7 @@ export function ManageActions({ record, onBack, onDone }: ManageActionsProps) {
           if (item.value === 'update') {
             void runAction(
               'Updating',
-              () => updateInstalled(record.installKey, record.scope),
+              () => updateInstalled(record.installKey, record.scope, record.toolId),
               `Updated ${record.skillId} successfully.`,
             );
             return;

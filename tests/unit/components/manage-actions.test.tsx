@@ -78,7 +78,9 @@ describe('ManageActions', () => {
     await vi.waitFor(() => {
       expect(lastFrame()).toContain('✓ Updated my-skill successfully.');
     });
-    expect(updateInstalled).toHaveBeenCalledWith(record.installKey, 'system');
+    // toolId is passed so the lookup stays unambiguous when the same skill is
+    // installed for more than one tool.
+    expect(updateInstalled).toHaveBeenCalledWith(record.installKey, 'system', record.toolId);
     await flushInkInput();
 
     await press(stdin, ENTER);
@@ -112,7 +114,7 @@ describe('ManageActions', () => {
     await vi.waitFor(() => {
       expect(lastFrame()).toContain('✓ Removed my-skill.');
     });
-    expect(removeInstalled).toHaveBeenCalledWith(record.installKey, 'system');
+    expect(removeInstalled).toHaveBeenCalledWith(record.installKey, 'system', record.toolId);
   });
 
   it('cancels removal from the confirm screen', async () => {
