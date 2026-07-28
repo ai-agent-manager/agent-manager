@@ -72,6 +72,7 @@ export function ManageList({ onSelect, onBack, refreshToken }: ManageListProps) 
         {'SCOPE  TOOL'}
       </Text>
       <SelectInput
+        limit={12}
         items={items}
         onSelect={(item) => {
           if (!item.value) {

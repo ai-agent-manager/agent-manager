@@ -90,6 +90,7 @@ export function RovoMenu({ rovoAgents, bundleTelemetryProps, onBack }: RovoMenuP
                 <Text bold>Available Rovo agents in this bundle:</Text>
                 <Text> </Text>
                 <SelectInput
+                    limit={12}
                     items={items}
                     onSelect={(item) => {
                         if (item.value === "__back__") {

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { SkillInfo } from '../bundle/scanner.js';
+import { useListViewport } from '../lib/use-list-viewport.js';
 
 interface SourceSkillPickerProps {
   /** Header line describing the acquired source (e.g. describeSkillSource output). */
@@ -49,12 +50,20 @@ export function SourceSkillPicker({ sourceDescription, skills, onConfirm, onBack
     }
   });
 
+  // Keep the frame within the terminal height — see useListViewport.
+  const { start, end, hiddenAbove, hiddenBelow } = useListViewport(
+    skills.length,
+    Math.min(cursor, Math.max(0, skills.length - 1)),
+  );
+
   return (
     <Box flexDirection="column" marginLeft={2}>
       <Text bold>Select skills to install:</Text>
       <Text dimColor>{'  '}{sourceDescription}</Text>
       <Text> </Text>
-      {skills.map((skill, i) => {
+      {hiddenAbove > 0 && <Text dimColor>{'    '}↑ {hiddenAbove} more</Text>}
+      {skills.slice(start, end).map((skill, offset) => {
+        const i = start + offset;
         const isCursor = i === cursor;
         const isSelected = selected.has(skill.dirName);
         const name = skill.meta?.name ?? skill.dirName;
@@ -67,6 +76,7 @@ export function SourceSkillPicker({ sourceDescription, skills, onConfirm, onBack
           </Text>
         );
       })}
+      {hiddenBelow > 0 && <Text dimColor>{'    '}↓ {hiddenBelow} more</Text>}
       <Text>
         {cursor === skills.length ? '  ❯ ' : '    '}
         {'← Back'}

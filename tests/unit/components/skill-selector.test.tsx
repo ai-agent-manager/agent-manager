@@ -83,6 +83,23 @@ const SKILLS: SkillInfo[] = [
   makeSkill("api-skill", "API Skill", "Helps with APIs"),
 ];
 
+async function flushInkInput(): Promise<void> {
+  await new Promise<void>((resolve) => setImmediate(resolve));
+}
+
+/**
+ * Send a keypress to an Ink component under test.
+ *
+ * Yields before writing: Ink attaches its stdin handler after the first render
+ * commit, and a write that lands before that is silently dropped — which shows
+ * up as a rare, machine-speed-dependent failure on CI rather than locally.
+ */
+async function press(stdin: { write: (input: string) => void }, input: string): Promise<void> {
+  await flushInkInput();
+  stdin.write(input);
+  await flushInkInput();
+}
+
 const BUNDLE_VERSION = "abc1234567890";
 
 const defaultProps = {
@@ -204,7 +221,7 @@ describe("SkillSelector", () => {
           .find((line) => line.includes("Web Skill")),
       ).toContain("❯");
 
-      stdin.write("\u001B[B");
+      await press(stdin, "\u001B[B");
       await vi.waitFor(() => {
         expect(
           lastFrame()!
@@ -218,7 +235,7 @@ describe("SkillSelector", () => {
       const { lastFrame, stdin } = render(<SkillSelector {...defaultProps} />);
       await vi.waitFor(() => expect(lastFrame()).toContain("Web Skill"));
 
-      stdin.write("\u001B[B");
+      await press(stdin, "\u001B[B");
       await vi.waitFor(() => {
         expect(
           lastFrame()!
@@ -227,7 +244,7 @@ describe("SkillSelector", () => {
         ).toContain("❯");
       });
 
-      stdin.write("\u001B[A");
+      await press(stdin, "\u001B[A");
       await vi.waitFor(() => {
         expect(
           lastFrame()!
@@ -249,7 +266,7 @@ describe("SkillSelector", () => {
           .find((line) => line.includes("Web Skill")),
       ).toContain("[ ]");
 
-      stdin.write(" ");
+      await press(stdin, " ");
       await vi.waitFor(() => {
         expect(
           lastFrame()!
@@ -271,7 +288,7 @@ describe("SkillSelector", () => {
         ).toContain("[✓]");
       });
 
-      stdin.write(" ");
+      await press(stdin, " ");
       await vi.waitFor(() => {
         expect(
           lastFrame()!
@@ -290,7 +307,7 @@ describe("SkillSelector", () => {
       const { lastFrame, stdin } = render(<SkillSelector {...defaultProps} />);
       await vi.waitFor(() => expect(lastFrame()).toContain("Web Skill"));
 
-      stdin.write("\r");
+      await press(stdin, "\r");
 
       await vi.waitFor(() => {
         expect(lastFrame()).toContain("already at a different version");
@@ -305,7 +322,7 @@ describe("SkillSelector", () => {
       const { lastFrame, stdin } = render(<SkillSelector {...defaultProps} />);
       await vi.waitFor(() => expect(lastFrame()).toContain("Web Skill"));
 
-      stdin.write("\r");
+      await press(stdin, "\r");
 
       await vi.waitFor(() => {
         expect(lastFrame()).toContain("skill(s) installed");
@@ -321,7 +338,7 @@ describe("SkillSelector", () => {
       const { lastFrame, stdin } = render(<SkillSelector {...defaultProps} onBack={onBack} />);
       await vi.waitFor(() => expect(lastFrame()).toContain("Web Skill"));
 
-      stdin.write("\u001B");
+      await press(stdin, "\u001B");
       await vi.waitFor(() => expect(onBack).toHaveBeenCalled());
     });
 
@@ -330,7 +347,7 @@ describe("SkillSelector", () => {
       const { lastFrame, stdin } = render(<SkillSelector {...defaultProps} onBack={onBack} />);
       await vi.waitFor(() => expect(lastFrame()).toContain("← Back"));
 
-      stdin.write("\u001B[B");
+      await press(stdin, "\u001B[B");
       await vi.waitFor(() => {
         expect(
           lastFrame()!
@@ -339,7 +356,7 @@ describe("SkillSelector", () => {
         ).toContain("❯");
       });
 
-      stdin.write("\u001B[B");
+      await press(stdin, "\u001B[B");
       await vi.waitFor(() => {
         expect(
           lastFrame()!
@@ -349,7 +366,7 @@ describe("SkillSelector", () => {
       });
 
       await new Promise((resolve) => setTimeout(resolve, 0));
-      stdin.write("\r");
+      await press(stdin, "\r");
 
       await vi.waitFor(() => expect(onBack).toHaveBeenCalled());
     });
@@ -371,7 +388,7 @@ describe("SkillSelector", () => {
           .split("\n")
           .find((line) => line.includes("Web Skill")) ?? "";
       if (!webLine.includes("[✓]")) {
-        stdin.write(" ");
+        await press(stdin, " ");
         await vi.waitFor(() => {
           expect(
             lastFrame()!
@@ -382,7 +399,7 @@ describe("SkillSelector", () => {
       }
 
       await new Promise((resolve) => setTimeout(resolve, 0));
-      stdin.write("\r");
+      await press(stdin, "\r");
 
       await vi.waitFor(() => expect(mockProvisioner.install).toHaveBeenCalledWith([SKILLS[0]], BUNDLE_VERSION));
 
@@ -418,7 +435,7 @@ describe("SkillSelector", () => {
         ).toContain("[✓]");
       });
 
-      stdin.write(" ");
+      await press(stdin, " ");
       await vi.waitFor(() => {
         expect(
           lastFrame()!
@@ -428,7 +445,7 @@ describe("SkillSelector", () => {
       });
 
       await new Promise((resolve) => setTimeout(resolve, 0));
-      stdin.write("\r");
+      await press(stdin, "\r");
 
       await vi.waitFor(() => expect(mockProvisioner.uninstall).toHaveBeenCalledWith(["web-skill"]));
 
@@ -468,7 +485,7 @@ describe("SkillSelector", () => {
         ).toContain("[✓]");
       });
 
-      stdin.write(" ");
+      await press(stdin, " ");
       await vi.waitFor(() => {
         expect(
           lastFrame()!
@@ -478,7 +495,7 @@ describe("SkillSelector", () => {
       });
 
       await new Promise((resolve) => setTimeout(resolve, 0));
-      stdin.write("\r");
+      await press(stdin, "\r");
 
       await vi.waitFor(() => expect(mockProvisioner.uninstall).toHaveBeenCalledWith(["web-skill"]));
 
@@ -558,7 +575,7 @@ describe("SkillSelector", () => {
       expect(lineB).toContain("[ ]");
 
       // Toggle repo-b; repo-a selection must be unaffected.
-      stdin.write("\u001B[B"); // cursor down to repo-b
+      await press(stdin, "\u001B[B"); // cursor down to repo-b
       await vi.waitFor(() => {
         expect(
           lastFrame()!.split("\n").find((l) => l.includes("Shared Skill (B)")),
@@ -569,7 +586,7 @@ describe("SkillSelector", () => {
       // cursor state update commits — flush a tick so the next keypress is
       // handled with the up-to-date cursor value (see the "Back option" test above).
       await new Promise((resolve) => setTimeout(resolve, 0));
-      stdin.write(" ");
+      await press(stdin, " ");
       await vi.waitFor(() => {
         const f = lastFrame()!;
         expect(f.split("\n").find((l) => l.includes("Shared Skill (B)"))).toContain("[✓]");

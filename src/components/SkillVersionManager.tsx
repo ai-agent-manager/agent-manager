@@ -215,6 +215,7 @@ export function SkillVersionManager({ onBack }: SkillVersionManagerProps) {
                 <Text dimColor> Which skills do you want to manage?</Text>
                 <Text> </Text>
                 <SelectInput
+                    limit={12}
                     items={items}
                     onSelect={(item) => {
                         if (item.value === "__back__") {

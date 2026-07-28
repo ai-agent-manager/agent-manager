@@ -126,4 +126,70 @@ describe('SkillBrowser', () => {
       expect(onBack).toHaveBeenCalled();
     });
   });
+
+  describe('viewport windowing', () => {
+    // A frame taller than the terminal cannot be fully cleared on re-render,
+    // which corrupts the display — so the list must be windowed.
+    const manyEntries = buildCatalogue(
+      Array.from({ length: 40 }, (_, i) =>
+        makeSkill({ dirName: `skill-${String(i).padStart(2, '0')}`, sourceName: 'acme-repo' }),
+      ),
+    );
+
+    it('renders only a window of a long list, with a hidden-below indicator', async () => {
+      const { lastFrame } = render(
+        <SkillBrowser entries={manyEntries} onSelect={() => {}} onBack={() => {}} />,
+      );
+      await vi.waitFor(() => {
+        expect(lastFrame()).toContain('skill-00');
+      });
+
+      const frame = lastFrame()!;
+      expect(frame).not.toContain('skill-39');
+      expect(frame).toMatch(/↓ \d+ more/);
+      expect(frame).not.toMatch(/↑ \d+ more/);
+    });
+
+    it('scrolls the window as the cursor moves down', async () => {
+      const { lastFrame, stdin } = render(
+        <SkillBrowser entries={manyEntries} onSelect={() => {}} onBack={() => {}} />,
+      );
+      await vi.waitFor(() => {
+        expect(lastFrame()).toContain('skill-00');
+      });
+      await flushInkInput();
+
+      for (let i = 0; i < 20; i++) {
+        await press(stdin, DOWN);
+      }
+
+      const frame = lastFrame()!;
+      expect(frame).toContain('❯ skill-20');
+      expect(frame).toMatch(/↑ \d+ more/);
+      expect(frame).not.toContain('skill-00');
+    });
+
+    it('shows the description only for the highlighted entry', async () => {
+      const described = buildCatalogue([
+        makeSkill({ dirName: 'first', sourceName: 'acme-repo', meta: { name: 'First', description: 'FIRST-DESC' } }),
+        makeSkill({ dirName: 'second', sourceName: 'acme-repo', meta: { name: 'Second', description: 'SECOND-DESC' } }),
+      ]);
+
+      const { lastFrame, stdin } = render(
+        <SkillBrowser entries={described} onSelect={() => {}} onBack={() => {}} />,
+      );
+      await vi.waitFor(() => {
+        expect(lastFrame()).toContain('First');
+      });
+
+      expect(lastFrame()).toContain('FIRST-DESC');
+      expect(lastFrame()).not.toContain('SECOND-DESC');
+
+      await flushInkInput();
+      await press(stdin, DOWN);
+
+      expect(lastFrame()).toContain('SECOND-DESC');
+      expect(lastFrame()).not.toContain('FIRST-DESC');
+    });
+  });
 });

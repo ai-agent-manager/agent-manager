@@ -88,6 +88,7 @@ export function SourceManager({ onBack }: SourceManagerProps) {
                 <Text bold>Remove a source</Text>
                 <Text> </Text>
                 <SelectInput
+                    limit={12}
                     items={[
                         ...sources.map((s, i) => ({ key: `${s.kind}:${s.value}`, label: sourceLabel(s, false), value: i })),
                         { key: "back", label: "← Back", value: -1 },
@@ -130,6 +131,7 @@ export function SourceManager({ onBack }: SourceManagerProps) {
             {sources.length === 0 && <Text dimColor>{"  "}No sources saved yet. Add one below.</Text>}
             {note && <Text color="green">{"  "}{note}</Text>}
             <SelectInput
+                limit={12}
                 items={items}
                 onSelect={(item) => {
                     if (item.value === "__sep__") {

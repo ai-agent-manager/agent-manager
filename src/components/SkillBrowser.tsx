@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { filterCatalogue, type CatalogueEntry, type SkillCandidate } from '../discovery/catalogue.js';
+import { useListViewport } from '../lib/use-list-viewport.js';
 
 interface SkillBrowserProps {
   entries: CatalogueEntry[];
@@ -14,6 +15,9 @@ export function SkillBrowser({ entries, onSelect, onBack }: SkillBrowserProps) {
 
   const filtered = filterCatalogue(entries, query);
   const clampedCursor = Math.min(cursor, Math.max(0, filtered.length - 1));
+
+  const { start, end, hiddenAbove, hiddenBelow } = useListViewport(filtered.length, clampedCursor);
+  const visible = filtered.slice(start, end);
 
   useInput((input, key) => {
     if (key.escape) {
@@ -53,28 +57,39 @@ export function SkillBrowser({ entries, onSelect, onBack }: SkillBrowserProps) {
       </Text>
       <Text> </Text>
       {filtered.length === 0 && <Text dimColor>{'  '}No skills match "{query}".</Text>}
-      {filtered.map((entry, index) => (
-        <Box key={`${entry.kind}:${entry.skillId}`} flexDirection="column">
-          <Text color={index === clampedCursor ? 'cyan' : undefined}>
-            {index === clampedCursor ? '❯ ' : '  '}
-            {entry.displayName}
-            {'  '}
-            {entry.kind === 'skill' ? (
-              <SourceSummary candidates={entry.candidates} />
-            ) : (
-              <Text color="magenta">rovo agent</Text>
-            )}
-          </Text>
-          {entry.description !== '' && (
-            <Text dimColor>
-              {'      '}
-              {entry.description}
+      {hiddenAbove > 0 && <Text dimColor>{'  '}↑ {hiddenAbove} more</Text>}
+      {visible.map((entry, index) => {
+        const actualIndex = start + index;
+        const isSelected = actualIndex === clampedCursor;
+        return (
+          <Box key={`${entry.kind}:${entry.skillId}`} flexDirection="column">
+            <Text color={isSelected ? 'cyan' : undefined}>
+              {isSelected ? '❯ ' : '  '}
+              {entry.displayName}
+              {'  '}
+              {entry.kind === 'skill' ? (
+                <SourceSummary candidates={entry.candidates} />
+              ) : (
+                <Text color="magenta">rovo agent</Text>
+              )}
             </Text>
-          )}
-        </Box>
-      ))}
+            {/* Only the highlighted entry shows its description: with one line per
+                row the list stays scannable and fits far more entries on screen. */}
+            {isSelected && entry.description !== '' && (
+              <Text dimColor>
+                {'      '}
+                {entry.description}
+              </Text>
+            )}
+          </Box>
+        );
+      })}
+      {hiddenBelow > 0 && <Text dimColor>{'  '}↓ {hiddenBelow} more</Text>}
       <Text> </Text>
-      <Text dimColor>{'  '}Type to search · ↑/↓ move · Enter select · Esc back</Text>
+      <Text dimColor>
+        {'  '}Type to search · ↑/↓ move · Enter select · Esc back
+        {filtered.length > 0 && ` · ${clampedCursor + 1}/${filtered.length}`}
+      </Text>
     </Box>
   );
 }

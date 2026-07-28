@@ -30,6 +30,7 @@ export function SkillSourcePicker({ entry, onSelect, onBack }: SkillSourcePicker
       <Text> </Text>
       <Text>Choose a source:</Text>
       <SelectInput
+        limit={12}
         items={items}
         onSelect={(item) => {
           if (item.value === BACK) {

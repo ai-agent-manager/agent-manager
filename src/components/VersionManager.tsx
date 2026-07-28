@@ -195,6 +195,7 @@ export function VersionManager({
         <Text dimColor> Select a version to download and cache it locally.</Text>
         <Text> </Text>
         <SelectInput
+          limit={12}
           items={items}
           onSelect={(item) => {
             if (item.value === '__back__') {

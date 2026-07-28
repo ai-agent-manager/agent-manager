@@ -9,6 +9,7 @@ import type { TelemetryValue } from "../telemetry.js";
 import { trackTelemetryError, trackTelemetryEvent } from "../telemetry.js";
 import { LoadingSpinner } from "./Spinner.js";
 import { StatusMessage } from "./StatusMessage.js";
+import { useListViewport } from "../lib/use-list-viewport.js";
 
 interface SkillSelectorProps {
   toolId: string;
@@ -73,6 +74,16 @@ export function SkillSelector({
       }
     })();
   }, [toolId]);
+
+  // Keep the frame within the terminal height — see useListViewport. Declared
+  // with the other hooks, above the early returns below, so the hook order
+  // stays identical across every render.
+  const {
+    start: viewportStart,
+    end: viewportEnd,
+    hiddenAbove,
+    hiddenBelow,
+  } = useListViewport(skills.length, Math.min(cursor, Math.max(0, skills.length - 1)));
 
   useInput((input, key) => {
     if (installing || loading || result) {
@@ -245,6 +256,8 @@ export function SkillSelector({
 
   const scopeLabel = scope === "repo" ? "this repository" : "system-wide";
 
+  const visibleSkills = skills.slice(viewportStart, viewportEnd);
+
   return (
     <Box flexDirection="column" marginLeft={2}>
       <Text bold>
@@ -252,7 +265,9 @@ export function SkillSelector({
       </Text>
       {note && scope === "system" && <Text color="yellow"> {note}</Text>}
       <Text> </Text>
-      {skills.map((skill, index) => {
+      {hiddenAbove > 0 && <Text dimColor>{"    "}↑ {hiddenAbove} more</Text>}
+      {visibleSkills.map((skill, offset) => {
+        const index = viewportStart + offset;
         const installKey = deriveSkillInstallKey(skill);
         const isSelected = selected.has(installKey);
         const isCursor = index === cursor;
@@ -271,6 +286,7 @@ export function SkillSelector({
           </Text>
         );
       })}
+      {hiddenBelow > 0 && <Text dimColor>{"    "}↓ {hiddenBelow} more</Text>}
       <Text>
         {cursor === skills.length ? "  ❯ " : "    "}
         {"← Back"}
