@@ -31,11 +31,16 @@ export interface StoredSource {
     value: string;
 }
 
-/** Classify a raw source string the same way resolveSource does. */
+/**
+ * Classify a raw source string the same way resolveSource does. Directory
+ * sources are resolved to an absolute path at classification time so a stored
+ * source keeps working when a later bare invocation runs from a different
+ * working directory. URLs are stored verbatim.
+ */
 export function classifyStoredSource(input: string): StoredSource {
     return /^https?:\/\//i.test(input)
         ? { kind: "discovery", value: input }
-        : { kind: "directory", value: input };
+        : { kind: "directory", value: path.resolve(input) };
 }
 
 function sameStoredSource(a: StoredSource, b: StoredSource): boolean {

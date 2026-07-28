@@ -356,6 +356,16 @@ export function buildSourcePin(
   };
 }
 
+/**
+ * Build the source pin for a local-directory bundle install. Shared by the
+ * headless and interactive install paths so a directory-sourced skill records
+ * the same pin regardless of entry point. The pin carries no bundleBaseUrl, so
+ * the update path can recognise it as a non-updatable local-directory install.
+ */
+export function buildPinForDirectorySource(dirPath: string, bundleVersion: string): SkillSourcePin {
+  return buildSourcePin({ type: 'bundle', dirPath, installLayout: 'flat' }, bundleVersion);
+}
+
 // ── Display helpers ───────────────────────────────────────────────────────────
 
 /**

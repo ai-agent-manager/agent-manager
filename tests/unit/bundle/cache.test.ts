@@ -72,7 +72,7 @@ describe('stored sources', () => {
       kind: 'discovery',
       value: 'https://bootstrap.example.com',
     });
-    expect(classifyStoredSource('./my-agents')).toEqual({ kind: 'directory', value: './my-agents' });
+    expect(classifyStoredSource('./my-agents')).toEqual({ kind: 'directory', value: path.resolve('./my-agents') });
   });
 
   it('migrates a legacy baseUrl-only config into sources + activeSource on read', async () => {

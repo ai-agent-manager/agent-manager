@@ -114,6 +114,9 @@ export function SourceManager({ onBack }: SourceManagerProps) {
             label: sourceLabel(s, active !== null && s.kind === active.kind && s.value === active.value),
             value: `select:${i}`,
         })),
+        // Divider between the sources list and the actions, so the two groups
+        // read as distinct sections. Selecting it is a no-op.
+        ...(sources.length > 0 ? [{ key: "__sep__", label: "──────────────", value: "__sep__" }] : []),
         { key: "add", label: "＋ Add a source (URL or local path)", value: "add" },
         ...(sources.length > 0 ? [{ key: "remove", label: "⌫ Remove a source", value: "remove" }] : []),
         { key: "url-install", label: "Install a skill from a URL", value: "url-install" },
@@ -129,6 +132,9 @@ export function SourceManager({ onBack }: SourceManagerProps) {
             <SelectInput
                 items={items}
                 onSelect={(item) => {
+                    if (item.value === "__sep__") {
+                        return;
+                    }
                     if (item.value === "add") {
                         setNote(null);
                         setScreen("add");

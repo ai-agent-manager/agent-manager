@@ -36,6 +36,7 @@ import { checkForStartupUpdates, shouldRunStartupUpdateChecks } from "./lib/star
 import { getBundleSourceTelemetryProperties, setTelemetryDisabledByConfig, trackTelemetryError, trackTelemetryEvent } from "./telemetry.js";
 import { featureFlags } from "./lib/feature-flags.js";
 import { resolveDiscoverySkills, buildUnifiedCatalogue, type ResolvedSkill } from "./discovery/index.js";
+import { buildPinForDirectorySource, buildSourcePin, type BundleSkillSource } from "./bundle/skill-source.js";
 import { authenticate, openInBrowser } from "./auth/index.js";
 
 export type Screen =
@@ -421,10 +422,20 @@ export function App({ source, forceUpdate }: AppProps) {
 
     // Discovery skills carry real source metadata; legacy bundle/directory
     // skills get a synthesised bundle source so the skill-first flow still works.
+    // The same bundle pin the headless path records is attached here so a skill
+    // installed interactively from a directory/bundle gets an identical record
+    // (and the update path reports the accurate "local directory" reason).
+    const legacyBundlePin =
+        source.type === "directory"
+            ? buildPinForDirectorySource(source.dirPath, effectiveVersion)
+            : source.type === "url"
+                ? buildSourcePin({ type: "bundle", baseUrl: source.baseUrl, installLayout: "flat" } as BundleSkillSource, effectiveVersion)
+                : undefined;
     const catalogueSkills: ResolvedSkill[] =
         discoverySkills ??
         (bundleContents?.skills ?? []).map((skill) => ({
             ...skill,
+            sourcePin: skill.sourcePin ?? legacyBundlePin,
             sourceName: "bundle",
             sourceType: "http" as const,
         }));
