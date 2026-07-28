@@ -187,7 +187,9 @@ describe('readConfig', () => {
     expect(backupContents).toBe('not valid json{{{');
   });
 
-  it('rethrows non-parse read errors (e.g. permission denied)', async () => {
+  // chmod 0o000 does not deny read access on Windows (POSIX bits are ignored),
+  // so this permission-denied scenario is only reproducible on Unix.
+  it.skipIf(process.platform === 'win32')('rethrows non-parse read errors (e.g. permission denied)', async () => {
     const { chmod } = await import('node:fs/promises');
     const configPath = path.join(tempDir, 'config.json');
     await mkdir(tempDir, { recursive: true });

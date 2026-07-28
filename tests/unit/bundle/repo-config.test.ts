@@ -41,7 +41,9 @@ describe("repo-config", () => {
             expect(backups).toHaveLength(1);
         });
 
-        it("rethrows non-parse read errors (e.g. permission denied)", async () => {
+        // chmod 0o000 does not deny read access on Windows (POSIX bits are ignored),
+        // so this permission-denied scenario is only reproducible on Unix.
+        it.skipIf(process.platform === "win32")("rethrows non-parse read errors (e.g. permission denied)", async () => {
             const { writeFile, chmod } = await import("node:fs/promises");
             const configPath = path.join(tmpDir, REPO_CONFIG_FILENAME);
             await writeFile(configPath, JSON.stringify({ installations: {} }));
