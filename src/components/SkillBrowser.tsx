@@ -50,7 +50,7 @@ export function SkillBrowser({ entries, onSelect, onBack }: SkillBrowserProps) {
 
   return (
     <Box flexDirection="column" marginLeft={2}>
-      <Text bold>Browse skills</Text>
+      <Text bold>Browse agents and skills</Text>
       <Text>
         {'  '}Search: {query}
         <Text inverse> </Text>

@@ -29,7 +29,7 @@ export function MainMenu({ hasBundleContents, onSelect }: MainMenuProps) {
             value: "maintenance" as MainMenuAction,
         },
         {
-            label: "Source Management           Install from a source (GitHub repo, artefact, bundle)",
+            label: "Manage Sources              Configure sources (Git repo, HTTP, local archive)",
             value: "source-management" as MainMenuAction,
         },
         {
