@@ -7,6 +7,7 @@ import type { AcquireResult } from '../../../src/operations/install.js';
 const ESC = String.fromCharCode(27);
 const DOWN = `${ESC}[B`;
 const ENTER = '\r';
+const SPACE = ' ';
 
 const repoSkills: SkillInfo[] = [
   {
@@ -154,6 +155,7 @@ describe('UrlInstallFlow', () => {
     });
     await flushInkInput();
 
+    await press(stdin, SPACE);
     await press(stdin, ENTER);
     await vi.waitFor(() => {
       expect(lastFrame()).toContain('Confirm install');
@@ -203,6 +205,7 @@ describe('UrlInstallFlow', () => {
       expect(lastFrame()).toContain('Which tool');
     });
     await flushInkInput();
+    await press(stdin, SPACE);
     await press(stdin, ENTER);
     await vi.waitFor(() => {
       expect(lastFrame()).toContain('Confirm install');

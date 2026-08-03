@@ -13,6 +13,7 @@ import { useListViewport } from "../lib/use-list-viewport.js";
 
 interface SkillSelectorProps {
   toolId: string;
+  toolProgress?: { index: number; total: number };
   skills: SkillInfo[];
   bundleVersion: string;
   scope: InstallScope;
@@ -32,6 +33,7 @@ function serialiseSkillNames(skillNames: string[]): string | undefined {
 
 export function SkillSelector({
   toolId,
+  toolProgress,
   skills,
   bundleVersion,
   scope,
@@ -262,6 +264,7 @@ export function SkillSelector({
     <Box flexDirection="column" marginLeft={2}>
       <Text bold>
         Select skills to install for {provisioner.name} <Text dimColor>({scopeLabel})</Text>:
+        {toolProgress && <Text dimColor> ({toolProgress.index} of {toolProgress.total})</Text>}
       </Text>
       {note && scope === "system" && <Text color="yellow"> {note}</Text>}
       <Text> </Text>

@@ -5,6 +5,7 @@ import type { InstalledSkillRecord } from '../operations/manage.js';
 import { updateInstalled, removeInstalled } from '../operations/manage.js';
 import { LoadingSpinner } from './Spinner.js';
 import { InfoView } from './InfoView.js';
+import { useEscapeBack } from '../lib/use-escape-back.js';
 
 type Action = 'update' | 'remove' | 'info' | 'back';
 type Screen = 'menu' | 'confirm-remove' | 'loading' | 'result' | 'info';
@@ -27,6 +28,8 @@ export function ManageActions({ record, onBack, onDone }: ManageActionsProps) {
     },
     { isActive: screen === 'result' },
   );
+
+  useEscapeBack(onBack, screen === 'menu');
 
   const items: Array<{ label: string; value: Action }> = [
     { label: 'Update    Re-pull from pinned source', value: 'update' },

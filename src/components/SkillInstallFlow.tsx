@@ -2,11 +2,13 @@ import React, { useState } from 'react';
 import { Box, Text } from 'ink';
 import SelectInput from 'ink-select-input';
 import { SkillBrowser, TrustBadge } from './SkillBrowser.js';
-import { SkillSourcePicker, candidateCoordinate } from './SkillSourcePicker.js';
+import { candidateCoordinate } from './SkillSourcePicker.js';
 import { ScopeSelector } from './ScopeSelector.js';
 import { ToolSelector } from './ToolSelector.js';
 import { LoadingSpinner } from './Spinner.js';
 import { installResolvedSkills } from '../operations/install.js';
+import { mergeInstallResults } from '../lib/merge-install-results.js';
+import { useEscapeBack } from '../lib/use-escape-back.js';
 import type { CatalogueEntry, SkillCatalogueEntry, SkillCandidate } from '../discovery/catalogue.js';
 import type { RovoAgentInfo } from '../bundle/scanner.js';
 import type { InstallScope } from '../config/scopes.js';
@@ -14,7 +16,6 @@ import type { InstallResult } from '../provisioners/types.js';
 
 type FlowScreen =
   | 'browse'
-  | 'source-picker'
   | 'scope-selector'
   | 'tool-selector'
   | 'confirm'
@@ -36,13 +37,16 @@ export function SkillInstallFlow({ entries, bundleVersion, onSelectRovoAgent, on
   const [candidate, setCandidate] = useState<SkillCandidate | null>(null);
   const [scope, setScope] = useState<InstallScope>('system');
   const [repoRoot, setRepoRoot] = useState<string | null>(null);
-  const [toolId, setToolId] = useState('');
+  const [toolIds, setToolIds] = useState<string[]>([]);
   const [result, setResult] = useState<InstallResult | null>(null);
   const [installError, setInstallError] = useState<string | null>(null);
 
-  const runInstall = async (selectedToolId: string) => {
+  useEscapeBack(() => setScreen('tool-selector'), screen === 'confirm');
+  useEscapeBack(onBack, screen === 'result');
+
+  const runInstall = async (selectedToolIds: string[]) => {
     if (!candidate) return;
-    setToolId(selectedToolId);
+    setToolIds(selectedToolIds);
     setScreen('confirm');
   };
 
@@ -50,14 +54,18 @@ export function SkillInstallFlow({ entries, bundleVersion, onSelectRovoAgent, on
     if (!candidate) return;
     setScreen('installing');
     try {
-      const installResult = await installResolvedSkills({
-        skills: [candidate.skill],
-        toolId,
-        scope,
-        repoRoot: repoRoot ?? undefined,
-        bundleVersion: candidate.sourceType === 'http' ? bundleVersion : '',
-      });
-      setResult(installResult);
+      const installResults = await Promise.all(
+        toolIds.map((toolId) =>
+          installResolvedSkills({
+            skills: [candidate.skill],
+            toolId,
+            scope,
+            repoRoot: repoRoot ?? undefined,
+            bundleVersion: candidate.sourceType === 'http' ? bundleVersion : '',
+          }),
+        ),
+      );
+      setResult(mergeInstallResults(installResults));
       setInstallError(null);
     } catch (err) {
       setResult(null);
@@ -70,28 +78,16 @@ export function SkillInstallFlow({ entries, bundleVersion, onSelectRovoAgent, on
     return (
       <SkillBrowser
         entries={entries}
-        onSelect={(selected) => {
+        onSelect={(selected, selectedCandidate) => {
           if (selected.kind === 'rovo-agent') {
             onSelectRovoAgent(selected.agent);
             return;
           }
           setEntry(selected);
-          setScreen('source-picker');
-        }}
-        onBack={onBack}
-      />
-    );
-  }
-
-  if (screen === 'source-picker' && entry) {
-    return (
-      <SkillSourcePicker
-        entry={entry}
-        onSelect={(selected) => {
-          setCandidate(selected);
+          setCandidate(selectedCandidate ?? selected.candidates[0]!);
           setScreen('scope-selector');
         }}
-        onBack={() => setScreen('browse')}
+        onBack={onBack}
       />
     );
   }
@@ -104,7 +100,7 @@ export function SkillInstallFlow({ entries, bundleVersion, onSelectRovoAgent, on
           setRepoRoot(selectedRepoRoot);
           setScreen('tool-selector');
         }}
-        onBack={() => setScreen('source-picker')}
+        onBack={() => setScreen('browse')}
       />
     );
   }
@@ -139,8 +135,7 @@ export function SkillInstallFlow({ entries, bundleVersion, onSelectRovoAgent, on
         <Row label="Scope">
           {scope === 'system' ? 'local (home directory)' : `repo (${repoRoot ?? ''})`}
         </Row>
-        <Row label="Tool">{toolId}</Row>
-        <Row label="Install key">{candidate.installKey}</Row>
+        <Row label="Tool">{toolIds.join(', ')}</Row>
         <Text> </Text>
         <SelectInput
           items={[
@@ -165,12 +160,12 @@ export function SkillInstallFlow({ entries, bundleVersion, onSelectRovoAgent, on
       <Box flexDirection="column" marginLeft={2}>
         {installError && <Text color="red">✗ {installError}</Text>}
         {result?.installed.map((item) => (
-          <Text key={item.name} color="green">
+          <Text key={item.path} color="green">
             ✓ {item.name} ({item.method}) → {item.path}
           </Text>
         ))}
-        {result?.errors.map((err) => (
-          <Text key={err.name} color="red">
+        {result?.errors.map((err, index) => (
+          <Text key={`${err.name}-${index}`} color="red">
             ✗ {err.name}: {err.error}
           </Text>
         ))}

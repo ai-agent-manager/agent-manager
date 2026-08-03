@@ -6,6 +6,7 @@ import type { BundleContents } from '../bundle/scanner.js';
 import type { BundleManifest } from '../bundle/manifest.js';
 import { LoadingSpinner } from './Spinner.js';
 import { StatusMessage } from './StatusMessage.js';
+import { useEscapeBack } from '../lib/use-escape-back.js';
 
 interface ChromeExtensionServerProps {
   bundleContents: BundleContents;
@@ -79,6 +80,9 @@ export function ChromeExtensionServer({
     }
     onBack();
   }, [handle, onBack]);
+
+  useEscapeBack(() => void handleStop(), state === 'running');
+  useEscapeBack(onBack, state === 'error');
 
   // -------------------------------------------------------------------------
   // Starting

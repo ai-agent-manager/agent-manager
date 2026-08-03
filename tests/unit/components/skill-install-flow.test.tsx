@@ -8,6 +8,7 @@ import type { RovoAgentInfo, RovoAgentConfig } from '../../../src/bundle/scanner
 const ESC = String.fromCharCode(27);
 const DOWN = `${ESC}[B`;
 const ENTER = '\r';
+const SPACE = ' ';
 
 vi.mock('../../../src/operations/install.js', () => ({
   installResolvedSkills: vi.fn(async () => ({
@@ -84,22 +85,14 @@ beforeEach(() => {
 });
 
 describe('SkillInstallFlow', () => {
-  it('walks browse → source → scope → tool → confirm → install → result', async () => {
+  it('walks browse → scope → tool → confirm → install → result', async () => {
     const { lastFrame, stdin } = render(
       <SkillInstallFlow entries={entries} bundleVersion="1.0.0" onSelectRovoAgent={() => {}} onBack={() => {}} />,
     );
 
     await vi.waitFor(() => {
-      expect(lastFrame()).toContain('Browse skills');
+      expect(lastFrame()).toContain('Browse agents and skills');
     });
-    await flushInkInput();
-
-    await press(stdin, ENTER);
-    await vi.waitFor(() => {
-      expect(lastFrame()).toContain('Choose a source:');
-    });
-    expect(lastFrame()).toContain('acme-repo');
-    expect(lastFrame()).toContain('official');
     await flushInkInput();
 
     await press(stdin, ENTER);
@@ -114,6 +107,7 @@ describe('SkillInstallFlow', () => {
     });
     await flushInkInput();
 
+    await press(stdin, SPACE);
     await press(stdin, ENTER);
     await vi.waitFor(() => {
       expect(lastFrame()).toContain('Confirm install');
@@ -124,7 +118,6 @@ describe('SkillInstallFlow', () => {
     expect(confirmFrame).toContain('(git)');
     expect(confirmFrame).toContain('official');
     expect(confirmFrame).toContain('https://github.com/acme/skills@main');
-    expect(confirmFrame).toContain('github.com/acme/skills/my-skill');
     expect(confirmFrame).toContain('claude-code');
     await flushInkInput();
 
@@ -148,11 +141,11 @@ describe('SkillInstallFlow', () => {
     );
 
     await vi.waitFor(() => {
-      expect(lastFrame()).toContain('Browse skills');
+      expect(lastFrame()).toContain('Browse agents and skills');
     });
     await flushInkInput();
 
-    for (const key of [ENTER, ENTER, ENTER, ENTER, ENTER]) {
+    for (const key of [ENTER, ENTER, SPACE, ENTER, ENTER]) {
       await press(stdin, key);
       await flushInkInput();
     }
@@ -163,7 +156,7 @@ describe('SkillInstallFlow', () => {
 
     await press(stdin, ENTER);
     await vi.waitFor(() => {
-      expect(lastFrame()).toContain('Browse skills');
+      expect(lastFrame()).toContain('Browse agents and skills');
     });
   });
 
@@ -174,11 +167,11 @@ describe('SkillInstallFlow', () => {
     );
 
     await vi.waitFor(() => {
-      expect(lastFrame()).toContain('Browse skills');
+      expect(lastFrame()).toContain('Browse agents and skills');
     });
     await flushInkInput();
 
-    for (const key of [ENTER, ENTER, ENTER, ENTER, ENTER]) {
+    for (const key of [ENTER, ENTER, SPACE, ENTER, ENTER]) {
       await press(stdin, key);
       await flushInkInput();
     }
@@ -227,11 +220,11 @@ describe('SkillInstallFlow', () => {
     );
 
     await vi.waitFor(() => {
-      expect(lastFrame()).toContain('Browse skills');
+      expect(lastFrame()).toContain('Browse agents and skills');
     });
     await flushInkInput();
 
-    for (const key of [ENTER, ENTER, ENTER, ENTER, ENTER]) {
+    for (const key of [ENTER, ENTER, SPACE, ENTER, ENTER]) {
       await press(stdin, key);
       await flushInkInput();
     }

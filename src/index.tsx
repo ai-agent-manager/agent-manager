@@ -46,7 +46,7 @@ if (configPath) {
 const spinner = startConsoleSpinner("Resolving source...");
 
 try {
-    let source: BundleSource;
+    let source: BundleSource | undefined;
 
     if (sourceInput) {
         // One-liner: resolve exactly as before, then persist the source so a
@@ -55,22 +55,18 @@ try {
         await addSource(classifyStoredSource(sourceInput), { setActive: true });
     } else {
         const resolved = await resolvePersistedSource();
-        if (!resolved) {
-            spinner.stop();
-            console.log(
-                "  Error: no source provided and none saved. Provide a source (URL or directory), or add one from Source Management.\n",
-            );
-            showHelp();
-            process.exit(1);
-        }
-        source = resolved.source;
+        // No persisted source is not fatal: the TUI still opens so the user can
+        // reach Source Management and add one, instead of hitting a dead end.
+        source = resolved?.source;
     }
 
     spinner.stop();
-    trackTelemetryEvent({
-        action: "agentman_started",
-        properties: { forceUpdate, ...getBundleSourceTelemetryProperties(source) },
-    });
+    if (source) {
+        trackTelemetryEvent({
+            action: "agentman_started",
+            properties: { forceUpdate, ...getBundleSourceTelemetryProperties(source) },
+        });
+    }
 
     render(<App source={source} forceUpdate={forceUpdate} />);
 } catch (err) {

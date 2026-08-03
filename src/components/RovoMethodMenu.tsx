@@ -2,6 +2,7 @@ import React from "react";
 import { Box, Text } from "ink";
 import SelectInput from "ink-select-input";
 import { featureFlags } from "../lib/feature-flags.js";
+import { useEscapeBack } from "../lib/use-escape-back.js";
 
 export type RovoMethod = "chrome-extension" | "install-chrome-extension" | "command-line";
 
@@ -11,6 +12,8 @@ interface RovoMethodMenuProps {
 }
 
 export function RovoMethodMenu({ onSelect, onBack }: RovoMethodMenuProps) {
+  useEscapeBack(onBack);
+
   const items = [
     ...(featureFlags.chromeExtension
       ? [

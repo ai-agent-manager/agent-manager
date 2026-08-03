@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Text } from 'ink';
+import { Box, Text, useInput } from 'ink';
 import SelectInput from 'ink-select-input';
 import {
   listCachedBundles,
@@ -136,6 +136,36 @@ export function VersionManager({
     }
     return count;
   };
+
+  useInput(
+    (_input, key) => {
+      if (!key.escape) return;
+      switch (subScreen) {
+        case 'overview':
+          onBack();
+          break;
+        case 'browse':
+          setBrowseError(null);
+          setSubScreen('overview');
+          break;
+        case 'switch':
+          setSubScreen('overview');
+          break;
+        case 'confirm-skill-update':
+          setPendingVersion(null);
+          setSubScreen('switch');
+          break;
+        case 'cleanup':
+          setSubScreen('overview');
+          break;
+        case 'confirm-remove':
+          setPendingRemoveVersion(null);
+          setSubScreen('cleanup');
+          break;
+      }
+    },
+    { isActive: !loading && !updatingSkills && !(subScreen === 'browse' && browseLoading) },
+  );
 
   if (loading) {
     return <LoadingSpinner message="Loading version information..." />;

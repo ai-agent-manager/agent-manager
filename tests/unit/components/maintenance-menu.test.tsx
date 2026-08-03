@@ -21,21 +21,41 @@ describe("MaintenanceMenu", () => {
 
     describe("conditional items", () => {
         it('shows "Bulk Sync by Tool" and "Manage Skill Versions" when hasBundleContents is true', () => {
-            const { lastFrame } = render(<MaintenanceMenu hasBundleContents={true} onSelect={noop} onBack={noop} />);
+            const { lastFrame } = render(
+                <MaintenanceMenu hasBundleContents={true} hasSource={true} onSelect={noop} onBack={noop} />,
+            );
             expect(lastFrame()).toContain("Bulk Sync by Tool");
             expect(lastFrame()).toContain("Manage Skill Versions");
         });
 
         it('hides them when hasBundleContents is false', () => {
-            const { lastFrame } = render(<MaintenanceMenu hasBundleContents={false} onSelect={noop} onBack={noop} />);
+            const { lastFrame } = render(
+                <MaintenanceMenu hasBundleContents={false} hasSource={true} onSelect={noop} onBack={noop} />,
+            );
             expect(lastFrame()).not.toContain("Bulk Sync by Tool");
             expect(lastFrame()).not.toContain("Manage Skill Versions");
+        });
+
+        it('shows "Manage Bundle Versions" when hasSource is true', () => {
+            const { lastFrame } = render(
+                <MaintenanceMenu hasBundleContents={false} hasSource={true} onSelect={noop} onBack={noop} />,
+            );
+            expect(lastFrame()).toContain("Manage Bundle Versions");
+        });
+
+        it('hides "Manage Bundle Versions" when hasSource is false', () => {
+            const { lastFrame } = render(
+                <MaintenanceMenu hasBundleContents={false} hasSource={false} onSelect={noop} onBack={noop} />,
+            );
+            expect(lastFrame()).not.toContain("Manage Bundle Versions");
         });
     });
 
     describe("permanent items", () => {
         it("always shows the manage/update items and Back", () => {
-            const { lastFrame } = render(<MaintenanceMenu hasBundleContents={false} onSelect={noop} onBack={noop} />);
+            const { lastFrame } = render(
+                <MaintenanceMenu hasBundleContents={false} hasSource={true} onSelect={noop} onBack={noop} />,
+            );
             expect(lastFrame()).toContain("Manage Installed Skills");
             expect(lastFrame()).toContain("Manage Bundle Versions");
             expect(lastFrame()).toContain("Update Agent Manager App");
@@ -46,7 +66,7 @@ describe("MaintenanceMenu", () => {
     it("calls onBack when Escape is pressed", async () => {
         const onBack = vi.fn();
         const { lastFrame, stdin } = render(
-            <MaintenanceMenu hasBundleContents={true} onSelect={noop} onBack={onBack} />,
+            <MaintenanceMenu hasBundleContents={true} hasSource={true} onSelect={noop} onBack={onBack} />,
         );
         await vi.waitFor(() => {
             expect(lastFrame()).toContain("Maintenance & updates");

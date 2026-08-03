@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import SelectInput from 'ink-select-input';
+import { useEscapeBack } from '../lib/use-escape-back.js';
 
 export type InstallSourceType = 'repo' | 'artefact' | 'bundle';
 type MenuItem = InstallSourceType | '__back__';
@@ -11,6 +12,8 @@ interface InstallSourceMenuProps {
 }
 
 export function InstallSourceMenu({ onSelect, onBack }: InstallSourceMenuProps) {
+  useEscapeBack(onBack);
+
   const items: Array<{ label: string; value: MenuItem }> = [
     { label: 'GitHub Repository        Install skills from a GitHub repo URL', value: 'repo' },
     { label: 'Artefact (zip)           Install a packaged skill from a zip URL', value: 'artefact' },

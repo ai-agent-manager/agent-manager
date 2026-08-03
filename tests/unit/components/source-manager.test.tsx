@@ -85,7 +85,7 @@ describe("SourceManager", () => {
     it("adds a typed source, classifying a URL as discovery", async () => {
         const { lastFrame, stdin } = render(<SourceManager onBack={() => {}} />);
         await vi.waitFor(() => {
-            expect(lastFrame()).toContain("＋ Add a source");
+            expect(lastFrame()).toContain("Add a source");
         });
         await flushInkInput();
 

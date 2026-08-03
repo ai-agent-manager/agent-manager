@@ -17,6 +17,8 @@ import {
   type SkillSource,
 } from '../bundle/skill-source.js';
 import { createSkillProvisioner } from '../provisioners/registry.js';
+import { mergeInstallResults } from '../lib/merge-install-results.js';
+import { useEscapeBack } from '../lib/use-escape-back.js';
 import type { SkillInfo } from '../bundle/scanner.js';
 import type { InstallScope } from '../config/scopes.js';
 import type { InstallResult } from '../provisioners/types.js';
@@ -44,10 +46,13 @@ export function UrlInstallFlow({ onBack }: UrlInstallFlowProps) {
   const [selectedSkills, setSelectedSkills] = useState<SkillInfo[]>([]);
   const [scope, setScope] = useState<InstallScope>('system');
   const [repoRoot, setRepoRoot] = useState<string | null>(null);
-  const [toolId, setToolId] = useState('');
+  const [toolIds, setToolIds] = useState<string[]>([]);
   const [coordsError, setCoordsError] = useState<string | null>(null);
   const [result, setResult] = useState<InstallResult | null>(null);
   const [installError, setInstallError] = useState<string | null>(null);
+
+  useEscapeBack(() => setScreen('tool-selector'), screen === 'confirm');
+  useEscapeBack(onBack, screen === 'result');
 
   const acquire = async (input: string) => {
     setScreen('acquiring');
@@ -80,13 +85,13 @@ export function UrlInstallFlow({ onBack }: UrlInstallFlowProps) {
     if (!acquired) return;
     setScreen('installing');
     try {
-      const provisioner = createSkillProvisioner(toolId, scope, repoRooted());
-      const installResult = await provisioner.install(
-        selectedSkills,
-        acquired.bundleVersion,
-        acquired.sourcePin,
+      const installResults = await Promise.all(
+        toolIds.map((toolId) => {
+          const provisioner = createSkillProvisioner(toolId, scope, repoRooted());
+          return provisioner.install(selectedSkills, acquired.bundleVersion, acquired.sourcePin);
+        }),
       );
-      setResult(installResult);
+      setResult(mergeInstallResults(installResults));
       setInstallError(null);
     } catch (err) {
       setResult(null);
@@ -168,8 +173,8 @@ export function UrlInstallFlow({ onBack }: UrlInstallFlowProps) {
       <ToolSelector
         scope={scope}
         repoRoot={repoRoot}
-        onSelect={(selectedToolId) => {
-          setToolId(selectedToolId);
+        onSelect={(selectedToolIds) => {
+          setToolIds(selectedToolIds);
           setScreen('confirm');
         }}
         onBack={() => setScreen('scope-selector')}
@@ -186,7 +191,7 @@ export function UrlInstallFlow({ onBack }: UrlInstallFlowProps) {
           {describeSkillSource(source)} <Text dimColor>({source.type})</Text>
         </Row>
         <Row label="Scope">{scope === 'system' ? 'local (home directory)' : `repo (${repoRoot ?? ''})`}</Row>
-        <Row label="Tool">{toolId}</Row>
+        <Row label="Tool">{toolIds.join(', ')}</Row>
         <Text> </Text>
         <Text>{'  '}Skills:</Text>
         {selectedSkills.map((skill) => (
@@ -219,12 +224,12 @@ export function UrlInstallFlow({ onBack }: UrlInstallFlowProps) {
       <Box flexDirection="column" marginLeft={2}>
         {installError && <Text color="red">✗ {installError}</Text>}
         {result?.installed.map((item) => (
-          <Text key={item.name} color="green">
+          <Text key={item.path} color="green">
             ✓ {item.name} ({item.method}) → {item.path}
           </Text>
         ))}
-        {result?.errors.map((err) => (
-          <Text key={err.name} color="red">
+        {result?.errors.map((err, index) => (
+          <Text key={`${err.name}-${index}`} color="red">
             ✗ {err.name}: {err.error}
           </Text>
         ))}

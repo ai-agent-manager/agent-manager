@@ -13,11 +13,12 @@ export type MaintenanceAction =
 
 interface MaintenanceMenuProps {
     hasBundleContents: boolean;
+    hasSource: boolean;
     onSelect: (action: MaintenanceAction) => void;
     onBack: () => void;
 }
 
-export function MaintenanceMenu({ hasBundleContents, onSelect, onBack }: MaintenanceMenuProps) {
+export function MaintenanceMenu({ hasBundleContents, hasSource, onSelect, onBack }: MaintenanceMenuProps) {
     useEscapeBack(onBack);
 
     const items = [
@@ -37,10 +38,14 @@ export function MaintenanceMenu({ hasBundleContents, onSelect, onBack }: Mainten
             label: "Manage Installed Skills     Update, remove, or inspect installed skills",
             value: "manage-installed" as MaintenanceAction,
         },
-        {
-            label: "Manage Bundle Versions      View bundle versions, update or downgrade",
-            value: "bundle-versions" as MaintenanceAction,
-        },
+        ...(hasSource
+            ? [
+                  {
+                      label: "Manage Bundle Versions      View bundle versions, update or downgrade",
+                      value: "bundle-versions" as MaintenanceAction,
+                  },
+              ]
+            : []),
         {
             label: "Update Agent Manager App    Update this CLI application to the latest version",
             value: "update-app" as MaintenanceAction,

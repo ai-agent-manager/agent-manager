@@ -24,9 +24,9 @@ describe("MainMenu", () => {
             expect(lastFrame()).toContain("Maintenance & Updates");
         });
 
-        it('always shows "Source Management"', () => {
+        it('always shows "Manage Sources"', () => {
             const { lastFrame } = render(<MainMenu hasBundleContents={false} onSelect={noop} />);
-            expect(lastFrame()).toContain("Source Management");
+            expect(lastFrame()).toContain("Manage Sources");
         });
 
         it('always shows "Exit"', () => {

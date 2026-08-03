@@ -58,6 +58,12 @@ vi.mock("../../src/components/RovoMenu.js", () => ({
     },
 }));
 
+vi.mock("../../src/components/SourceManager.js", () => ({
+    SourceManager: function MockSourceManager() {
+        return <Text>Source Manager Screen</Text>;
+    },
+}));
+
 vi.mock("../../src/components/Spinner.js", () => ({
     LoadingSpinner: function MockLoadingSpinner({ message }: { message: string }) {
         return <Text>{message}</Text>;
@@ -182,5 +188,16 @@ describe("App", () => {
         await vi.waitFor(() => {
             expect(lastFrame()).toContain("Bundle: v1.1.0");
         });
+    });
+
+    it("opens Source Management directly when no source is configured", async () => {
+        const { lastFrame } = render(<App source={undefined} forceUpdate={false} />);
+
+        await vi.waitFor(() => {
+            expect(lastFrame()).toContain("Source Manager Screen");
+        });
+
+        expect(downloadBundle).not.toHaveBeenCalled();
+        expect(scanBundle).not.toHaveBeenCalled();
     });
 });

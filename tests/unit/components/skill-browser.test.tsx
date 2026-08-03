@@ -62,22 +62,22 @@ async function renderReady(props: { onSelect?: (entry: unknown) => void; onBack?
     />,
   );
   await vi.waitFor(() => {
-    expect(result.lastFrame()).toContain('Browse skills');
+    expect(result.lastFrame()).toContain('Browse agents and skills');
   });
   await flushInkInput();
   return result;
 }
 
 describe('SkillBrowser', () => {
-  it('lists skills with source type and trust for single-candidate entries', async () => {
+  it('lists one row per skill+source with source type, trust, and source name', async () => {
     const { lastFrame } = await renderReady();
 
     const frame = lastFrame()!;
     expect(frame).toContain('Data Pipeline');
     expect(frame).toContain('Builds ingestion pipelines');
-    expect(frame).toContain('git · official');
-    expect(frame).toContain('web-frontend');
-    expect(frame).toContain('(2 sources)');
+    expect(frame).toContain('git · official · acme-repo');
+    expect(frame).toContain('artefact · community · community-cdn');
+    expect(frame).not.toContain('(2 sources)');
   });
 
   it('filters as the user types and selects the match on Enter', async () => {
@@ -92,7 +92,10 @@ describe('SkillBrowser', () => {
 
     await press(stdin, ENTER);
     await vi.waitFor(() => {
-      expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ skillId: 'web-frontend' }));
+      expect(onSelect).toHaveBeenCalledWith(
+        expect.objectContaining({ skillId: 'web-frontend' }),
+        expect.objectContaining({ sourceName: 'acme-repo' }),
+      );
     });
   });
 
@@ -105,15 +108,38 @@ describe('SkillBrowser', () => {
     });
   });
 
-  it('moves the cursor with arrows and selects the highlighted entry', async () => {
+  it('moves the cursor with arrows and selects the highlighted entry with its candidate', async () => {
     const onSelect = vi.fn();
     const { lastFrame, stdin } = await renderReady({ onSelect });
 
+    // Row 0: Data Pipeline (acme-repo, official)
+    // Row 1: web-frontend (acme-repo, official)
+    // Row 2: web-frontend (community-cdn, community)
     await press(stdin, DOWN);
     expect(lastFrame()).toContain('❯ web-frontend');
     await press(stdin, ENTER);
     await vi.waitFor(() => {
-      expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ skillId: 'web-frontend' }));
+      expect(onSelect).toHaveBeenCalledWith(
+        expect.objectContaining({ skillId: 'web-frontend' }),
+        expect.objectContaining({ sourceName: 'acme-repo' }),
+      );
+    });
+  });
+
+  it('selects a specific source row for a multi-source skill', async () => {
+    const onSelect = vi.fn();
+    const { lastFrame, stdin } = await renderReady({ onSelect });
+
+    // Move to row 2: web-frontend from community-cdn
+    await press(stdin, DOWN);
+    await press(stdin, DOWN);
+    expect(lastFrame()).toContain('community-cdn');
+    await press(stdin, ENTER);
+    await vi.waitFor(() => {
+      expect(onSelect).toHaveBeenCalledWith(
+        expect.objectContaining({ skillId: 'web-frontend' }),
+        expect.objectContaining({ sourceName: 'community-cdn', sourceType: 'artefact' }),
+      );
     });
   });
 

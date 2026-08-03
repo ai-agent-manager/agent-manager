@@ -1,11 +1,31 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { filterCatalogue, type CatalogueEntry, type SkillCandidate } from '../discovery/catalogue.js';
 import { useListViewport } from '../lib/use-list-viewport.js';
 
+interface DisplayRow {
+  entry: CatalogueEntry;
+  candidate?: SkillCandidate;
+  key: string;
+}
+
+function flattenEntries(entries: CatalogueEntry[]): DisplayRow[] {
+  const rows: DisplayRow[] = [];
+  for (const entry of entries) {
+    if (entry.kind === 'skill') {
+      for (const candidate of entry.candidates) {
+        rows.push({ entry, candidate, key: `${entry.skillId}:${candidate.sourceName}` });
+      }
+    } else {
+      rows.push({ entry, key: `rovo:${entry.skillId}` });
+    }
+  }
+  return rows;
+}
+
 interface SkillBrowserProps {
   entries: CatalogueEntry[];
-  onSelect: (entry: CatalogueEntry) => void;
+  onSelect: (entry: CatalogueEntry, candidate?: SkillCandidate) => void;
   onBack: () => void;
 }
 
@@ -14,10 +34,11 @@ export function SkillBrowser({ entries, onSelect, onBack }: SkillBrowserProps) {
   const [cursor, setCursor] = useState(0);
 
   const filtered = filterCatalogue(entries, query);
-  const clampedCursor = Math.min(cursor, Math.max(0, filtered.length - 1));
+  const rows = useMemo(() => flattenEntries(filtered), [filtered]);
+  const clampedCursor = Math.min(cursor, Math.max(0, rows.length - 1));
 
-  const { start, end, hiddenAbove, hiddenBelow } = useListViewport(filtered.length, clampedCursor);
-  const visible = filtered.slice(start, end);
+  const { start, end, hiddenAbove, hiddenBelow } = useListViewport(rows.length, clampedCursor);
+  const visible = rows.slice(start, end);
 
   useInput((input, key) => {
     if (key.escape) {
@@ -25,16 +46,16 @@ export function SkillBrowser({ entries, onSelect, onBack }: SkillBrowserProps) {
       return;
     }
     if (key.return) {
-      const entry = filtered[clampedCursor];
-      if (entry) onSelect(entry);
+      const row = rows[clampedCursor];
+      if (row) onSelect(row.entry, row.candidate);
       return;
     }
     if (key.upArrow) {
-      setCursor((c) => Math.max(0, Math.min(c, filtered.length - 1) - 1));
+      setCursor((c) => Math.max(0, Math.min(c, rows.length - 1) - 1));
       return;
     }
     if (key.downArrow) {
-      setCursor((c) => Math.min(filtered.length - 1, c + 1));
+      setCursor((c) => Math.min(rows.length - 1, c + 1));
       return;
     }
     if (key.backspace || key.delete) {
@@ -56,30 +77,37 @@ export function SkillBrowser({ entries, onSelect, onBack }: SkillBrowserProps) {
         <Text inverse> </Text>
       </Text>
       <Text> </Text>
-      {filtered.length === 0 && <Text dimColor>{'  '}No skills match "{query}".</Text>}
+      {rows.length === 0 && <Text dimColor>{'  '}No skills match "{query}".</Text>}
       {hiddenAbove > 0 && <Text dimColor>{'  '}↑ {hiddenAbove} more</Text>}
-      {visible.map((entry, index) => {
+      {visible.map((row, index) => {
         const actualIndex = start + index;
         const isSelected = actualIndex === clampedCursor;
         return (
-          <Box key={`${entry.kind}:${entry.skillId}`} flexDirection="column">
+          <Box key={row.key} flexDirection="column">
             <Text color={isSelected ? 'cyan' : undefined}>
               {isSelected ? '❯ ' : '  '}
-              {entry.displayName}
+              {row.entry.displayName}
               {'  '}
-              {entry.kind === 'skill' ? (
-                <SourceSummary candidates={entry.candidates} />
+              {row.candidate ? (
+                <Text dimColor>
+                  {row.candidate.sourceType}
+                  {row.candidate.sourceStatus && (
+                    <>
+                      {' · '}
+                      <TrustBadge status={row.candidate.sourceStatus} />
+                    </>
+                  )}
+                  {' · '}
+                  {row.candidate.sourceName}
+                </Text>
               ) : (
                 <Text color="magenta">rovo agent</Text>
               )}
             </Text>
-            {/* Only the highlighted entry shows its description: with one line per
-                row the list stays scannable and fits far more entries on screen. */}
-            {isSelected && entry.description !== '' && (
-              <Text dimColor>
-                {'      '}
-                {entry.description}
-              </Text>
+            {isSelected && row.entry.description !== '' && (
+              <Box marginLeft={6}>
+                <Text dimColor>{row.entry.description}</Text>
+              </Box>
             )}
           </Box>
         );
@@ -88,27 +116,9 @@ export function SkillBrowser({ entries, onSelect, onBack }: SkillBrowserProps) {
       <Text> </Text>
       <Text dimColor>
         {'  '}Type to search · ↑/↓ move · Enter select · Esc back
-        {filtered.length > 0 && ` · ${clampedCursor + 1}/${filtered.length}`}
+        {rows.length > 0 && ` · ${clampedCursor + 1}/${rows.length}`}
       </Text>
     </Box>
-  );
-}
-
-function SourceSummary({ candidates }: { candidates: SkillCandidate[] }) {
-  if (candidates.length > 1) {
-    return <Text dimColor>({candidates.length} sources)</Text>;
-  }
-  const candidate = candidates[0]!;
-  return (
-    <Text dimColor>
-      {candidate.sourceType}
-      {candidate.sourceStatus && (
-        <>
-          {' · '}
-          <TrustBadge status={candidate.sourceStatus} />
-        </>
-      )}
-    </Text>
   );
 }
 

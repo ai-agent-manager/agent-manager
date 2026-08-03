@@ -3,6 +3,7 @@ import { Box, Text, useStdout } from 'ink';
 import SelectInput from 'ink-select-input';
 import { listInstalled, type InstalledSkillRecord } from '../operations/manage.js';
 import { LoadingSpinner } from './Spinner.js';
+import { useEscapeBack } from '../lib/use-escape-back.js';
 
 interface ManageListProps {
   onSelect: (record: InstalledSkillRecord) => void;
@@ -17,6 +18,8 @@ export function ManageList({ onSelect, onBack, refreshToken }: ManageListProps) 
   const [error, setError] = useState<string | null>(null);
   const { stdout } = useStdout();
   const termWidth = stdout?.columns ?? 80;
+
+  useEscapeBack(onBack, !loading);
 
   useEffect(() => {
     setLoading(true);
