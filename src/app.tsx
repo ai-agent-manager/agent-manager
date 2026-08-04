@@ -62,6 +62,7 @@ export type Screen =
 interface AppProps {
     source: BundleSource | undefined;
     forceUpdate: boolean;
+    sourceError?: string;
 }
 
 async function acquireBundle(
@@ -134,7 +135,7 @@ async function acquireDiscoverySkills(
     return { skills: result.skills, rovoAgents: result.rovoAgents, warnings, bundleVersion: result.bundleVersion };
 }
 
-export function App({ source, forceUpdate }: AppProps) {
+export function App({ source, forceUpdate, sourceError }: AppProps) {
     const [screen, setScreen] = useState<Screen>("loading");
     const [manifest, setManifest] = useState<BundleManifest | null>(null);
     const [bundleContents, setBundleContents] = useState<BundleContents | null>(null);
@@ -232,9 +233,14 @@ export function App({ source, forceUpdate }: AppProps) {
 
     useEffect(() => {
         if (!source) {
-            // No source configured yet: skip bundle/discovery resolution entirely
-            // and land straight on Source Management instead of a dead end.
-            setWarning("No source configured yet. Add one from Source Management to get started.");
+            // No usable source: skip bundle/discovery resolution entirely and land
+            // straight on Source Management instead of a dead end. This covers both
+            // "nothing configured yet" and "configured sources all failed to resolve".
+            setWarning(
+                sourceError
+                    ? `Could not resolve any configured source:\n${sourceError}`
+                    : "No source configured yet. Add one from Source Management to get started.",
+            );
             setScreen("source-manager");
             return;
         }
@@ -595,6 +601,7 @@ export function App({ source, forceUpdate }: AppProps) {
 
             {screen === "skill-selector" && effectiveContents && toolsQueue.length > 0 && (
                 <SkillSelector
+                    key={toolsQueue[0]}
                     toolId={toolsQueue[0]!}
                     toolProgress={
                         toolsQueueTotal > 1

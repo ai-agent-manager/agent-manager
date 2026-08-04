@@ -47,6 +47,7 @@ const spinner = startConsoleSpinner("Resolving source...");
 
 try {
     let source: BundleSource | undefined;
+    let sourceError: string | undefined;
 
     if (sourceInput) {
         // One-liner: resolve exactly as before, then persist the source so a
@@ -54,10 +55,18 @@ try {
         source = await resolveSource(sourceInput);
         await addSource(classifyStoredSource(sourceInput), { setActive: true });
     } else {
-        const resolved = await resolvePersistedSource();
-        // No persisted source is not fatal: the TUI still opens so the user can
-        // reach Source Management and add one, instead of hitting a dead end.
-        source = resolved?.source;
+        try {
+            const resolved = await resolvePersistedSource();
+            // No persisted source is not fatal: the TUI still opens so the user can
+            // reach Source Management and add one, instead of hitting a dead end.
+            source = resolved?.source;
+        } catch (err) {
+            // All configured sources failed to resolve (e.g. unreachable URLs).
+            // Also not fatal: fall through to the TUI with the failure surfaced,
+            // instead of exiting the process outright.
+            trackTelemetryError("bundle_source_resolve_failed", err, telemetryForInput(sourceInput));
+            sourceError = err instanceof Error ? err.message : String(err);
+        }
     }
 
     spinner.stop();
@@ -68,7 +77,7 @@ try {
         });
     }
 
-    render(<App source={source} forceUpdate={forceUpdate} />);
+    render(<App source={source} forceUpdate={forceUpdate} sourceError={sourceError} />);
 } catch (err) {
     spinner.stop();
     trackTelemetryError("bundle_source_resolve_failed", err, telemetryForInput(sourceInput));
