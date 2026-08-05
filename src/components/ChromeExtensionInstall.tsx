@@ -4,6 +4,7 @@ import SelectInput from "ink-select-input";
 import { installChromeExtension } from "../lib/chrome-extension-installer.js";
 import { LoadingSpinner } from "./Spinner.js";
 import { StatusMessage } from "./StatusMessage.js";
+import { useEscapeBack } from "../lib/use-escape-back.js";
 
 interface ChromeExtensionInstallProps {
   onBack: () => void;
@@ -13,6 +14,8 @@ type InstallState = "installing" | "installed" | "manual-required" | "error";
 
 export function ChromeExtensionInstall({ onBack }: ChromeExtensionInstallProps) {
   const [state, setState] = useState<InstallState>("installing");
+
+  useEscapeBack(onBack, state !== "installing");
   const [crxPath, setCrxPath] = useState("");
   const [jsonPath, setJsonPath] = useState("");
   const [manualInstructions, setManualInstructions] = useState<string[]>([]);

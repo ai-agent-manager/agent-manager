@@ -182,6 +182,44 @@ describe('resolveDiscoverySkills', () => {
     expect(result.skills).toHaveLength(0);
   });
 
+  it('tags resolved skills with source name, type, and status', async () => {
+    const doc: DiscoveryDocument = {
+      version: '1',
+      sources: [
+        { name: 'official-repo', type: 'git', url: 'https://github.com/example/repo.git', status: 'official' },
+        { name: 'community-bundle', type: 'http', url: 'https://cdn.example.com/bundle', status: 'community' },
+      ],
+    };
+
+    const result = await resolveDiscoverySkills(doc);
+    expect(result.skills).toHaveLength(2);
+
+    const gitSkill = result.skills.find((s) => s.dirName === 'git-skill-a')!;
+    expect(gitSkill.sourceName).toBe('official-repo');
+    expect(gitSkill.sourceType).toBe('git');
+    expect(gitSkill.sourceStatus).toBe('official');
+
+    const httpSkill = result.skills.find((s) => s.dirName === 'http-skill-a')!;
+    expect(httpSkill.sourceName).toBe('community-bundle');
+    expect(httpSkill.sourceType).toBe('http');
+    expect(httpSkill.sourceStatus).toBe('community');
+  });
+
+  it('omits sourceStatus when the discovery source has no status', async () => {
+    const doc: DiscoveryDocument = {
+      version: '1',
+      sources: [
+        { name: 'unlabeled-repo', type: 'git', url: 'https://github.com/example/repo.git' },
+      ],
+    };
+
+    const result = await resolveDiscoverySkills(doc);
+    expect(result.skills).toHaveLength(1);
+    expect(result.skills[0]!.sourceName).toBe('unlabeled-repo');
+    expect(result.skills[0]!.sourceStatus).toBeUndefined();
+    expect('sourceStatus' in result.skills[0]!).toBe(false);
+  });
+
   it('does not tag non-integrity errors with isIntegrity', async () => {
     const { importGitSkills } = await import('../../../src/discovery/git-importer.js');
     vi.mocked(importGitSkills).mockRejectedValueOnce(new Error('network failure'));

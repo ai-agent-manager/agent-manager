@@ -24,6 +24,7 @@ vi.mock('../../../src/config/paths.js', () => ({
   getBundleVersionDir: (v: string) => path.join(tempDir, 'bundles', v),
   getCurrentBundleLink: () => path.join(tempDir, 'current'),
   getConfigPath: () => path.join(tempDir, 'config.json'),
+  getConfigLockPath: () => path.join(tempDir, 'config.json.lock'),
 }));
 
 // Mock fs operations for updateSkillVersion tests
@@ -46,6 +47,11 @@ import {
   setCurrentBundle,
   updateSkillVersion,
   getRecordVersion,
+  addSource,
+  removeSource,
+  setActiveSource,
+  classifyStoredSource,
+  orderedSources,
   type AgentmanConfig,
 } from '../../../src/bundle/cache.js';
 import { scanBundle } from '../../../src/bundle/scanner.js';
@@ -58,6 +64,77 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await rm(tempDir, { recursive: true, force: true });
+});
+
+describe('stored sources', () => {
+  it('classifies URLs as discovery and paths as directory', () => {
+    expect(classifyStoredSource('https://bootstrap.example.com')).toEqual({
+      kind: 'discovery',
+      value: 'https://bootstrap.example.com',
+    });
+    expect(classifyStoredSource('./my-agents')).toEqual({ kind: 'directory', value: path.resolve('./my-agents') });
+  });
+
+  it('migrates a legacy baseUrl-only config into sources + activeSource on read', async () => {
+    await writeFile(path.join(tempDir, 'config.json'), JSON.stringify({ baseUrl: 'https://legacy.example.com', installations: {} }));
+
+    const config = await readConfig();
+
+    expect(config.sources).toEqual([{ kind: 'discovery', value: 'https://legacy.example.com' }]);
+    expect(config.activeSource).toEqual({ kind: 'discovery', value: 'https://legacy.example.com' });
+  });
+
+  it('does not re-seed sources when they already exist', async () => {
+    await writeFile(
+      path.join(tempDir, 'config.json'),
+      JSON.stringify({ baseUrl: 'https://legacy.example.com', sources: [], installations: {} }),
+    );
+
+    const config = await readConfig();
+    expect(config.sources).toEqual([]);
+  });
+
+  it('adds a source idempotently and sets it active', async () => {
+    const src = { kind: 'discovery' as const, value: 'https://a.example.com' };
+    await addSource(src, { setActive: true });
+    await addSource(src, { setActive: true });
+
+    const config = await readConfig();
+    expect(config.sources).toEqual([src]);
+    expect(config.activeSource).toEqual(src);
+  });
+
+  it('orders sources with the active one first', async () => {
+    const a = { kind: 'discovery' as const, value: 'https://a.example.com' };
+    const b = { kind: 'directory' as const, value: './b' };
+    await addSource(a);
+    await addSource(b, { setActive: true });
+
+    const config = await readConfig();
+    expect(orderedSources(config)).toEqual([b, a]);
+  });
+
+  it('removes a source and repoints the active pointer to a remaining source', async () => {
+    const a = { kind: 'discovery' as const, value: 'https://a.example.com' };
+    const b = { kind: 'directory' as const, value: './b' };
+    await addSource(a, { setActive: true });
+    await addSource(b);
+
+    await removeSource(a);
+
+    const config = await readConfig();
+    expect(config.sources).toEqual([b]);
+    expect(config.activeSource).toEqual(b);
+  });
+
+  it('setActiveSource adds the source if it is not already known', async () => {
+    const a = { kind: 'discovery' as const, value: 'https://a.example.com' };
+    await setActiveSource(a);
+
+    const config = await readConfig();
+    expect(config.sources).toEqual([a]);
+    expect(config.activeSource).toEqual(a);
+  });
 });
 
 describe('readConfig', () => {
@@ -94,6 +171,37 @@ describe('readConfig', () => {
     const config = await readConfig();
     expect(config).toEqual({ installations: {} });
   });
+
+  it('backs up a corrupt config file instead of discarding it', async () => {
+    await mkdir(tempDir, { recursive: true });
+    await writeFile(path.join(tempDir, 'config.json'), 'not valid json{{{');
+
+    await readConfig();
+
+    const { readdir } = await import('node:fs/promises');
+    const entries = await readdir(tempDir);
+    const backups = entries.filter((e) => e.startsWith('config.json.corrupt-'));
+    expect(backups).toHaveLength(1);
+
+    const backupContents = await readFile(path.join(tempDir, backups[0]), 'utf-8');
+    expect(backupContents).toBe('not valid json{{{');
+  });
+
+  // chmod 0o000 does not deny read access on Windows (POSIX bits are ignored),
+  // so this permission-denied scenario is only reproducible on Unix.
+  it.skipIf(process.platform === 'win32')('rethrows non-parse read errors (e.g. permission denied)', async () => {
+    const { chmod } = await import('node:fs/promises');
+    const configPath = path.join(tempDir, 'config.json');
+    await mkdir(tempDir, { recursive: true });
+    await writeFile(configPath, JSON.stringify({ installations: {} }));
+    await chmod(configPath, 0o000);
+
+    try {
+      await expect(readConfig()).rejects.toThrow();
+    } finally {
+      await chmod(configPath, 0o644);
+    }
+  });
 });
 
 describe('writeConfig', () => {
@@ -118,7 +226,7 @@ describe('writeConfig', () => {
     await writeConfig(config);
 
     const raw = await readFile(path.join(tempDir, 'config.json'), 'utf-8');
-    expect(JSON.parse(raw)).toEqual({ installations: {} });
+    expect(JSON.parse(raw)).toEqual({ installations: {}, schemaVersion: 2 });
   });
 
   it('leaves no temp files behind after writing', async () => {
@@ -162,6 +270,28 @@ describe('recordInstall', () => {
     expect(Object.keys(config.installations['claude-code'])).toHaveLength(2);
     expect(config.installations['claude-code']['skill-a'].method).toBe('symlink');
     expect(config.installations['claude-code']['skill-b'].method).toBe('copy');
+  });
+
+  it('serializes concurrent writes so neither is lost (locking prevents clobbering)', async () => {
+    // Two "processes" recording different skills at the same time — without the
+    // lock around read-modify-write, whichever writes last would win with a
+    // config it read before the other's write, silently dropping one record.
+    await Promise.all([
+      recordInstall('claude-code', 'skill-a', {
+        bundleVersion: 'v1',
+        installedAt: '2025-06-01T00:00:00Z',
+        method: 'symlink',
+      }),
+      recordInstall('claude-code', 'skill-b', {
+        bundleVersion: 'v1',
+        installedAt: '2025-06-01T00:00:00Z',
+        method: 'symlink',
+      }),
+    ]);
+
+    const config = await readConfig();
+    expect(config.installations['claude-code']['skill-a']).toBeDefined();
+    expect(config.installations['claude-code']['skill-b']).toBeDefined();
   });
 
   it('adds skills under different tools', async () => {

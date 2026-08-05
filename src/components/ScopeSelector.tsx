@@ -6,6 +6,7 @@ import { findRepoRoot, getRepoName } from "../lib/repo.js";
 import { readRepoConfig } from "../bundle/repo-config.js";
 import { LoadingSpinner } from "./Spinner.js";
 import { trackTelemetryError } from "../telemetry.js";
+import { useEscapeBack } from "../lib/use-escape-back.js";
 
 interface ScopeSelectorProps {
     onSelect: (scope: InstallScope, repoRoot: string | null) => void;
@@ -17,6 +18,8 @@ export function ScopeSelector({ onSelect, onBack }: ScopeSelectorProps) {
     const [repoName, setRepoName] = useState<string | null>(null);
     const [pinnedVersion, setPinnedVersion] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
+
+    useEscapeBack(onBack, !loading);
 
     useEffect(() => {
         (async () => {

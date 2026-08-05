@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import path from "node:path";
-import { Box, Text } from "ink";
+import { Box, Text, useInput } from "ink";
 import SelectInput from "ink-select-input";
 import { readConfig, listCachedBundles, updateSkillVersion, getRecordVersion, type CachedBundle } from "../bundle/cache.js";
 import { readRepoConfig } from "../bundle/repo-config.js";
@@ -165,6 +165,34 @@ export function SkillVersionManager({ onBack }: SkillVersionManagerProps) {
         setVersionSelectionNotice(null);
     };
 
+    useInput(
+        (_input, key) => {
+            if (!key.escape) return;
+            switch (subScreen) {
+                case "select-scope":
+                    onBack();
+                    break;
+                case "skill-list":
+                    resetToScopeScreen();
+                    break;
+                case "select-tool":
+                    setSubScreen("skill-list");
+                    setSelectedSkillInstances([]);
+                    setVersionSelectionNotice(null);
+                    break;
+                case "select-version":
+                    setSubScreen("skill-list");
+                    setSelectedSkill(null);
+                    setVersionSelectionNotice(null);
+                    break;
+                case "align-all":
+                    setSubScreen("skill-list");
+                    break;
+            }
+        },
+        { isActive: !loading && !scanning && !updating && !message },
+    );
+
     if (loading) {
         return <LoadingSpinner message="Loading installed skills..." />;
     }
@@ -215,6 +243,7 @@ export function SkillVersionManager({ onBack }: SkillVersionManagerProps) {
                 <Text dimColor> Which skills do you want to manage?</Text>
                 <Text> </Text>
                 <SelectInput
+                    limit={12}
                     items={items}
                     onSelect={(item) => {
                         if (item.value === "__back__") {

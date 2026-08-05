@@ -7,6 +7,7 @@ import {
   getBundleVersionDir,
   getCurrentBundleLink,
   getConfigPath,
+  getConfigLockPath,
   getTempDir,
   getAuthDir,
   getAtlassianAuthPath,
@@ -53,6 +54,13 @@ describe('getConfigPath', () => {
   it('returns a config.json path under agentman dir', () => {
     const configPath = getConfigPath();
     expect(configPath).toBe(path.join(home, '.agentman', 'config.json'));
+  });
+});
+
+describe('getConfigLockPath', () => {
+  it('returns a config.json.lock path under agentman dir', () => {
+    const lockPath = getConfigLockPath();
+    expect(lockPath).toBe(path.join(home, '.agentman', 'config.json.lock'));
   });
 });
 

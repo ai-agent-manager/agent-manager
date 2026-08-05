@@ -14,6 +14,7 @@ import { LoadingSpinner } from "./Spinner.js";
 import { StatusMessage } from "./StatusMessage.js";
 import type { TelemetryValue } from "../telemetry.js";
 import { trackTelemetryError, trackTelemetryEvent } from "../telemetry.js";
+import { useEscapeBack } from "../lib/use-escape-back.js";
 
 interface RovoMenuProps {
     rovoAgents: RovoAgentInfo[];
@@ -57,6 +58,8 @@ export function RovoMenu({ rovoAgents, bundleTelemetryProps, onBack }: RovoMenuP
     const [existingKb, setExistingKb] = useState<ExistingKnowledgeBase | null>(null);
     const [kbStrategy, setKbStrategy] = useState<KnowledgeBaseStrategy | undefined>(undefined);
 
+    useEscapeBack(onBack, state === "select-agent" || state === "done");
+
     /** True when the currently selected agent has knowledge-base files to upload */
     const agentHasKnowledgeBase = (selectedAgent?.knowledgeBaseFiles.length ?? 0) > 0;
 
@@ -90,6 +93,7 @@ export function RovoMenu({ rovoAgents, bundleTelemetryProps, onBack }: RovoMenuP
                 <Text bold>Available Rovo agents in this bundle:</Text>
                 <Text> </Text>
                 <SelectInput
+                    limit={12}
                     items={items}
                     onSelect={(item) => {
                         if (item.value === "__back__") {

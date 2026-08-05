@@ -6,7 +6,10 @@ import { importLocalBundle } from './bundle/importer.js';
 import { scanBundle, type SkillInfo } from './bundle/scanner.js';
 import { setCurrentBundle } from './bundle/cache.js';
 import { resolveSource } from './bundle/source.js';
-import { buildSourcePin, deriveSkillInstallKey, type SkillSourcePin } from './bundle/skill-source.js';
+import { buildPinForDirectorySource, deriveSkillInstallKey, type SkillSourcePin } from './bundle/skill-source.js';
+
+// Re-exported for backward compatibility with existing importers/tests.
+export { buildPinForDirectorySource } from './bundle/skill-source.js';
 import { resolveDiscoverySkills } from './discovery/index.js';
 import { authenticate } from './auth/index.js';
 import { createSkillProvisioner, formatSupportedSkillToolIds } from './provisioners/registry.js';
@@ -66,10 +69,6 @@ export async function parseHeadlessConfig(configPath: string): Promise<HeadlessC
     bundleVersion,
     artefactSha256,
   };
-}
-
-export function buildPinForDirectorySource(dirPath: string, bundleVersion: string): SkillSourcePin {
-  return buildSourcePin({ type: 'bundle', dirPath, installLayout: 'flat' }, bundleVersion);
 }
 
 // TODO(#39): wire _forceUpdate into the headless acquisition path so `agentman <url> --update`

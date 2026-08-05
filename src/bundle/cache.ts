@@ -1,4 +1,4 @@
-import { readdir, readFile, readlink, rm, symlink, unlink, mkdir, writeFile, lstat } from "node:fs/promises";
+import { readdir, readFile, readlink, rm, symlink, unlink, mkdir, rename, lstat } from "node:fs/promises";
 import path from "node:path";
 import {
     getAgentmanDir,
@@ -6,12 +6,46 @@ import {
     getBundleVersionDir,
     getCurrentBundleLink,
     getConfigPath,
+    getConfigLockPath,
 } from "../config/paths.js";
 import { parseManifest } from "./manifest.js";
-import { readRepoConfig, writeRepoConfig } from "./repo-config.js";
+import { readRepoConfig, updateRepoConfig } from "./repo-config.js";
 import { scanBundle } from "./scanner.js";
 import { getPlatform } from "../lib/platform.js";
+import { writeFileAtomic } from "../lib/fs.js";
+import { withLock } from "../lib/file-lock.js";
 import type { SkillSourcePin } from "./skill-source.js";
+
+const CONFIG_SCHEMA_VERSION = 2;
+
+/**
+ * A source agentman resolves at startup to build the catalogue. At this
+ * top-level layer resolveSource classifies a URL as a discovery document and a
+ * path as a local directory, so `kind` is unambiguous — it is persisted
+ * alongside the value so a stored URL is never mistaken for anything else.
+ */
+export type StoredSourceKind = "discovery" | "directory";
+
+export interface StoredSource {
+    kind: StoredSourceKind;
+    value: string;
+}
+
+/**
+ * Classify a raw source string the same way resolveSource does. Directory
+ * sources are resolved to an absolute path at classification time so a stored
+ * source keeps working when a later bare invocation runs from a different
+ * working directory. URLs are stored verbatim.
+ */
+export function classifyStoredSource(input: string): StoredSource {
+    return /^https?:\/\//i.test(input)
+        ? { kind: "discovery", value: input }
+        : { kind: "directory", value: path.resolve(input) };
+}
+
+function sameStoredSource(a: StoredSource, b: StoredSource): boolean {
+    return a.kind === b.kind && a.value === b.value;
+}
 
 export interface CachedBundle {
     version: string;
@@ -21,8 +55,16 @@ export interface CachedBundle {
 }
 
 export interface AgentmanConfig {
+    /** Format version of this config file, stamped on every write. Absent on files written before this field existed. */
+    schemaVersion?: number;
     baseUrl?: string;
     startupUpdateChecksDisabled?: boolean;
+    /** Persisted telemetry opt-out. Only ever disables — env vars still take precedence. */
+    telemetryDisabled?: boolean;
+    /** Sources the user has added — resolved to build the catalogue. */
+    sources?: StoredSource[];
+    /** The source a bare `agentman` invocation resolves first. */
+    activeSource?: StoredSource;
     installations: Record<string, Record<string, InstallRecord>>;
 }
 
@@ -207,12 +249,14 @@ export async function updateSkillVersion(
             await replaceSymlink(skillPath, newTargetPath);
 
             // Update only the specific skill's bundleVersion — not the top-level one
-            repoConfig.installations[toolId][skillName] = {
-                ...repoConfig.installations[toolId][skillName],
-                bundleVersion: newVersion,
-                method: "symlink",
-            };
-            await writeRepoConfig(repoRoot, repoConfig);
+            await updateRepoConfig(repoRoot, (cfg) => {
+                if (!cfg.installations[toolId]) cfg.installations[toolId] = {};
+                cfg.installations[toolId][skillName] = {
+                    ...cfg.installations[toolId][skillName],
+                    bundleVersion: newVersion,
+                    method: "symlink",
+                };
+            });
 
             return { success: true };
         } catch (error) {
@@ -240,17 +284,16 @@ export async function updateSkillVersion(
     try {
         await replaceSymlink(skillPath, newTargetPath);
 
-        if (!config.installations[toolId]) {
-            config.installations[toolId] = {};
-        }
-
-        config.installations[toolId][skillName] = {
-            ...config.installations[toolId][skillName],
-            bundleVersion: newVersion,
-            method: "symlink",
-        };
-
-        await writeConfig(config);
+        await updateConfig((cfg) => {
+            if (!cfg.installations[toolId]) {
+                cfg.installations[toolId] = {};
+            }
+            cfg.installations[toolId][skillName] = {
+                ...cfg.installations[toolId][skillName],
+                bundleVersion: newVersion,
+                method: "symlink",
+            };
+        });
 
         return { success: true };
     } catch (error) {
@@ -287,43 +330,156 @@ export async function removeCachedBundle(version: string): Promise<void> {
 
 /**
  * Read the agentman config file.
+ *
+ * A missing file is the normal first-run case and resolves to a default,
+ * empty config. A file that exists but fails to parse as JSON is corrupt —
+ * it is backed up alongside itself (so nothing is silently discarded) and a
+ * warning is printed; the caller still gets a default, empty config so the
+ * app can proceed. Any other read error (e.g. permissions) propagates.
  */
 export async function readConfig(): Promise<AgentmanConfig> {
+    const configPath = getConfigPath();
+    let raw: string;
     try {
-        const raw = await readFile(getConfigPath(), "utf-8");
-        return JSON.parse(raw) as AgentmanConfig;
+        raw = await readFile(configPath, "utf-8");
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+            return { installations: {} };
+        }
+        throw error;
+    }
+
+    try {
+        return migrateConfig(JSON.parse(raw) as AgentmanConfig);
     } catch {
+        const backupPath = `${configPath}.corrupt-${Date.now()}`;
+        await rename(configPath, backupPath).catch(() => {});
+        console.warn(
+            `Warning: config file at ${configPath} was corrupt and has been backed up to ${backupPath}. Starting with an empty config.`,
+        );
         return { installations: {} };
     }
 }
 
 /**
- * Write the agentman config file.
+ * Bring an on-disk config forward to the current schema. Runs on every read and
+ * is idempotent. The v1→v2 step seeds the sources list from the legacy scalar
+ * `baseUrl` so an existing single-source config keeps working and a bare
+ * `agentman` invocation resolves what the user last pointed at. `baseUrl` is
+ * left in place for backward compatibility.
+ */
+function migrateConfig(config: AgentmanConfig): AgentmanConfig {
+    if (config.sources === undefined && config.baseUrl) {
+        const seeded: StoredSource = { kind: "discovery", value: config.baseUrl };
+        config.sources = [seeded];
+        if (config.activeSource === undefined) {
+            config.activeSource = seeded;
+        }
+    }
+    return config;
+}
+
+/**
+ * Write the agentman config file. Writes via a temp file + rename so a crash
+ * or a concurrent reader never observes a partially-written file.
  */
 export async function writeConfig(config: AgentmanConfig): Promise<void> {
     await mkdir(getAgentmanDir(), { recursive: true });
-    await writeFile(getConfigPath(), JSON.stringify(config, null, 2));
+    const stamped: AgentmanConfig = { ...config, schemaVersion: CONFIG_SCHEMA_VERSION };
+    await writeFileAtomic(getConfigPath(), JSON.stringify(stamped, null, 2));
+}
+
+/**
+ * Read-modify-write the agentman config under an exclusive lock, so that a
+ * concurrent agentman process (e.g. the one-liner running alongside an open
+ * TUI session) cannot clobber changes made in between the read and the write.
+ * `mutate` may mutate `config` in place and return nothing, or return a
+ * replacement config.
+ */
+export async function updateConfig(
+    mutate: (config: AgentmanConfig) => AgentmanConfig | void,
+): Promise<AgentmanConfig> {
+    return withLock(getConfigLockPath(), async () => {
+        const config = await readConfig();
+        const result = mutate(config) ?? config;
+        await writeConfig(result);
+        return result;
+    });
+}
+
+/**
+ * Add a source to the persisted list, idempotently. Re-adding a known source is
+ * a no-op for the list (never duplicated); `setActive` still repoints the
+ * active source so re-running the one-liner with a known URL makes it current.
+ */
+export async function addSource(source: StoredSource, options: { setActive?: boolean } = {}): Promise<void> {
+    await updateConfig((config) => {
+        const sources = config.sources ?? [];
+        if (!sources.some((s) => sameStoredSource(s, source))) {
+            sources.push(source);
+        }
+        config.sources = sources;
+        if (options.setActive) {
+            config.activeSource = source;
+        }
+    });
+}
+
+/**
+ * Remove a source from the persisted list. If it was the active source, the
+ * active pointer moves to the first remaining source (or is cleared).
+ */
+export async function removeSource(source: StoredSource): Promise<void> {
+    await updateConfig((config) => {
+        config.sources = (config.sources ?? []).filter((s) => !sameStoredSource(s, source));
+        if (config.activeSource && sameStoredSource(config.activeSource, source)) {
+            config.activeSource = config.sources[0];
+        }
+    });
+}
+
+/** Point the active source (what a bare `agentman` invocation resolves) at `source`. */
+export async function setActiveSource(source: StoredSource): Promise<void> {
+    await updateConfig((config) => {
+        config.activeSource = source;
+        const sources = config.sources ?? [];
+        if (!sources.some((s) => sameStoredSource(s, source))) {
+            sources.push(source);
+        }
+        config.sources = sources;
+    });
+}
+
+/**
+ * The persisted sources ordered for resolution: the active source first, then
+ * the rest. A bare `agentman` invocation tries them in this order.
+ */
+export function orderedSources(config: AgentmanConfig): StoredSource[] {
+    const sources = config.sources ?? [];
+    const active = config.activeSource;
+    if (!active) return sources;
+    return [active, ...sources.filter((s) => !sameStoredSource(s, active))];
 }
 
 /**
  * Record an installation in the config.
  */
 export async function recordInstall(toolId: string, skillName: string, record: InstallRecord): Promise<void> {
-    const config = await readConfig();
-    if (!config.installations[toolId]) {
-        config.installations[toolId] = {};
-    }
-    config.installations[toolId][skillName] = record;
-    await writeConfig(config);
+    await updateConfig((config) => {
+        if (!config.installations[toolId]) {
+            config.installations[toolId] = {};
+        }
+        config.installations[toolId][skillName] = record;
+    });
 }
 
 /**
  * Remove an installation record from the config.
  */
 export async function removeInstallRecord(toolId: string, skillName: string): Promise<void> {
-    const config = await readConfig();
-    if (config.installations[toolId]) {
-        delete config.installations[toolId][skillName];
-    }
-    await writeConfig(config);
+    await updateConfig((config) => {
+        if (config.installations[toolId]) {
+            delete config.installations[toolId][skillName];
+        }
+    });
 }

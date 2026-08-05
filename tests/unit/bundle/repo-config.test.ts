@@ -29,11 +29,31 @@ describe("repo-config", () => {
             expect(config).toBeNull();
         });
 
-        it("throws when config exists but contains invalid JSON", async () => {
-            const { writeFile } = await import("node:fs/promises");
+        it("backs up a corrupt config file and returns null instead of throwing", async () => {
+            const { writeFile, readdir } = await import("node:fs/promises");
             await writeFile(path.join(tmpDir, REPO_CONFIG_FILENAME), "{ invalid json");
 
-            await expect(readRepoConfig(tmpDir)).rejects.toThrow();
+            const config = await readRepoConfig(tmpDir);
+            expect(config).toBeNull();
+
+            const entries = await readdir(tmpDir);
+            const backups = entries.filter((e) => e.startsWith(`${REPO_CONFIG_FILENAME}.corrupt-`));
+            expect(backups).toHaveLength(1);
+        });
+
+        // chmod 0o000 does not deny read access on Windows (POSIX bits are ignored),
+        // so this permission-denied scenario is only reproducible on Unix.
+        it.skipIf(process.platform === "win32")("rethrows non-parse read errors (e.g. permission denied)", async () => {
+            const { writeFile, chmod } = await import("node:fs/promises");
+            const configPath = path.join(tmpDir, REPO_CONFIG_FILENAME);
+            await writeFile(configPath, JSON.stringify({ installations: {} }));
+            await chmod(configPath, 0o000);
+
+            try {
+                await expect(readRepoConfig(tmpDir)).rejects.toThrow();
+            } finally {
+                await chmod(configPath, 0o644);
+            }
         });
 
         it("reads an existing config file", async () => {

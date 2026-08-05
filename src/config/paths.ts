@@ -26,6 +26,11 @@ export function getConfigPath(): string {
   return path.join(getAgentmanDir(), 'config.json');
 }
 
+/** Lock file guarding concurrent writes to the user config file */
+export function getConfigLockPath(): string {
+  return path.join(getAgentmanDir(), 'config.json.lock');
+}
+
 /** Temp directory for downloads */
 export function getTempDir(): string {
   return path.join(getAgentmanDir(), 'tmp');

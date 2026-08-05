@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { stat } from 'node:fs/promises';
 import { fetchDiscoveryDocument, type DiscoveryDocument } from '../discovery/index.js';
+import { readConfig, orderedSources, type StoredSource } from './cache.js';
 
 export type BundleSource =
   | { type: 'url'; baseUrl: string }
@@ -48,4 +49,38 @@ export async function resolveSource(input: string): Promise<BundleSource> {
   }
 
   return { type: 'directory', dirPath };
+}
+
+export interface ResolvedPersistedSource {
+  source: BundleSource;
+  stored: StoredSource;
+}
+
+/**
+ * Resolve a source from the persisted config for a bare `agentman` invocation.
+ *
+ * Sources are tried in order (active first). A source that fails to resolve —
+ * host down, discovery document missing, path deleted — does not abort startup;
+ * the next source is tried instead (per-source error isolation). Returns the
+ * first source that resolves, or `null` when there are none configured. Throws
+ * only when every configured source failed, aggregating their errors.
+ */
+export async function resolvePersistedSource(): Promise<ResolvedPersistedSource | null> {
+  const config = await readConfig();
+  const stored = orderedSources(config);
+  if (stored.length === 0) {
+    return null;
+  }
+
+  const failures: string[] = [];
+  for (const entry of stored) {
+    try {
+      const source = await resolveSource(entry.value);
+      return { source, stored: entry };
+    } catch (error) {
+      failures.push(`  - ${entry.value}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  throw new Error(`None of the configured sources could be resolved:\n${failures.join('\n')}`);
 }

@@ -211,7 +211,7 @@ export function createTelemetryClient(options: TelemetryClientOptions = {}) {
     const sessionId = (options.sessionId ?? randomUUID()).replace(/-/g, "").slice(0, 16);
 
     async function send(event: TelemetryEvent): Promise<Response | undefined> {
-        if (!settings.enabled) {
+        if (!settings.enabled || telemetryDisabledByConfig) {
             return;
         }
 
@@ -251,7 +251,7 @@ export function createTelemetryClient(options: TelemetryClientOptions = {}) {
 
     return {
         isEnabled(): boolean {
-            return settings.enabled;
+            return settings.enabled && !telemetryDisabledByConfig;
         },
         send(event: TelemetryEvent): Promise<Response | undefined> {
             return send(event);
@@ -262,6 +262,18 @@ export function createTelemetryClient(options: TelemetryClientOptions = {}) {
             });
         },
     };
+}
+
+/**
+ * Persisted opt-out from `~/.agentman/config.json`, applied after the config is
+ * read at startup. Only ever disables — the env-based gating in
+ * resolveTelemetrySettings still takes precedence, so this can never re-enable
+ * telemetry that the environment turned off.
+ */
+let telemetryDisabledByConfig = false;
+
+export function setTelemetryDisabledByConfig(disabled: boolean): void {
+    telemetryDisabledByConfig = disabled;
 }
 
 const telemetryClient = createTelemetryClient();

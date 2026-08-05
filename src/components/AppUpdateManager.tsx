@@ -6,6 +6,7 @@ import { createSelfUpdatePlan, runSelfUpdate } from "../lib/self-update.js";
 import { trackTelemetryError, trackTelemetryEvent } from "../telemetry.js";
 import { LoadingSpinner } from "./Spinner.js";
 import { StatusMessage } from "./StatusMessage.js";
+import { useEscapeBack } from "../lib/use-escape-back.js";
 
 interface AppUpdateManagerProps {
     onBack: () => void;
@@ -19,6 +20,8 @@ export function AppUpdateManager({ onBack, onExit }: AppUpdateManagerProps) {
     const [isUpdating, setIsUpdating] = useState(false);
     const [message, setMessage] = useState<string | null>(null);
     const [messageType, setMessageType] = useState<MessageType>("success");
+
+    useEscapeBack(onBack, !isUpdating);
 
     if (isUpdating) {
         return <LoadingSpinner message="Updating Agent Manager application..." />;

@@ -3,48 +3,38 @@ import { Box, Text } from "ink";
 import SelectInput from "ink-select-input";
 
 export type MainMenuAction =
-    | "install-skills"
-    | "manage-skill-versions"
-    | "rovo-agents"
-    | "manage-versions"
-    | "update-app"
+    | "search-install"
+    | "maintenance"
+    | "source-management"
+    | "settings"
     | "exit";
 
 interface MainMenuProps {
     hasBundleContents: boolean;
-    hasRovoAgents: boolean;
     onSelect: (action: MainMenuAction) => void;
 }
 
-export function MainMenu({ hasBundleContents, hasRovoAgents, onSelect }: MainMenuProps) {
+export function MainMenu({ hasBundleContents, onSelect }: MainMenuProps) {
     const items = [
         ...(hasBundleContents
             ? [
                   {
-                      label: "Install Agent Skills        Set up skills for your AI coding tools",
-                      value: "install-skills" as MainMenuAction,
-                  },
-                  {
-                      label: "Manage Skill Versions       Change individual skill versions",
-                      value: "manage-skill-versions" as MainMenuAction,
-                  },
-              ]
-            : []),
-        ...(hasRovoAgents
-            ? [
-                  {
-                      label: "Provision Rovo Agents       Create agents in Atlassian Studio",
-                      value: "rovo-agents" as MainMenuAction,
+                      label: "Search & Install            Search skills & agents, then install or provision",
+                      value: "search-install" as MainMenuAction,
                   },
               ]
             : []),
         {
-            label: "Manage Bundle Versions      View installed bundle versions, update or downgrade",
-            value: "manage-versions" as MainMenuAction,
+            label: "Maintenance & Updates       Update, sync, manage versions and installed items",
+            value: "maintenance" as MainMenuAction,
         },
         {
-            label: "Update Agent Manager App    Update this CLI application to the latest version",
-            value: "update-app" as MainMenuAction,
+            label: "Manage Sources              Configure sources (Git repo, HTTP, local archive)",
+            value: "source-management" as MainMenuAction,
+        },
+        {
+            label: "Settings & Config           Startup update checks, telemetry",
+            value: "settings" as MainMenuAction,
         },
         {
             label: "Exit                        See you next time!",
