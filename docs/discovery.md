@@ -65,8 +65,8 @@ When a user provides a base URL to agent-manager, it fetches the discovery docum
 | `projects.exclusiveSource` | boolean | No | When `true` (default `false`), Search & Install and headless installs are limited to skills/agents permitted by at least one project the caller belongs to |
 | `auth` | object | No | Authentication configuration (omit if no auth required) |
 | `auth.required` | boolean | Yes (if auth present) | Whether authentication is needed to access skills |
-| `auth.oidcDiscoveryUrl` | string (URI) | Yes (if auth.required=true) | URL to the standard OIDC discovery document |
-| `auth.clientId` | string | Yes (if auth.required=true) | OAuth2 client ID for agent-manager to use |
+| `auth.oidcDiscoveryUrl` | string (URI) | Yes (if `auth.required` and no `AGENTMAN_ACCESS_TOKEN`) | URL to the standard OIDC discovery document |
+| `auth.clientId` | string | Yes (if `auth.required` and no `AGENTMAN_ACCESS_TOKEN`) | OAuth2 client ID for agent-manager to use |
 | `auth.scopes` | string[] | No | OAuth2 scopes to request (defaults to `["openid"]`) |
 | `telemetry` | object | No | Telemetry configuration (omit to leave unconfigured) |
 | `telemetry.url` | string (URI) | Yes (if telemetry present) | Base URL of the telemetry endpoint |
@@ -279,9 +279,24 @@ shasum -a 256 code-reviewer-1.0.0.zip | awk '{print $1}' > code-reviewer-1.0.0.z
 
 ## Authentication Flow
 
-When `auth.required` is `true`:
+When `auth.required` is `true`, agent-manager obtains a Bearer token before downloading protected sources.
 
-1. Agent-manager fetches the OIDC discovery document from `auth.oidcDiscoveryUrl`.
+### `AGENTMAN_ACCESS_TOKEN`
+
+Set this environment variable to a Bearer token to skip the browser OAuth flow. It works in **interactive** and **headless** mode:
+
+```bash
+AGENTMAN_ACCESS_TOKEN=eyJ... npx -y @ai-agent-manager/cli@latest https://your-bundle-server.com
+AGENTMAN_ACCESS_TOKEN=eyJ... npx -y @ai-agent-manager/cli@latest https://your-bundle-server.com --config .github/ai-skills.yml
+```
+
+When set (non-empty after trimming), agent-manager uses the value directly and does not require `oidcDiscoveryUrl` / `clientId`. This is the usual approach for CI.
+
+### Browser OAuth (OIDC)
+
+If `AGENTMAN_ACCESS_TOKEN` is unset:
+
+1. Agent Manager fetches the OIDC discovery document from `auth.oidcDiscoveryUrl`.
 2. From the OIDC document, it extracts `authorization_endpoint` and `token_endpoint`.
 3. Generates PKCE `code_verifier` and `code_challenge`.
 4. Constructs the authorization URL with:
@@ -300,6 +315,8 @@ When `auth.required` is `true`:
    - Exchanges the code for tokens at the `token_endpoint`
 8. Stores tokens in the OS keychain when available, otherwise under `~/.agentman/auth/` (filesystem, permissions `0600`, with a warning when the keychain is unavailable).
 9. Uses a bearer token (ID token when the provider returns one, otherwise the access token) for subsequent authenticated requests.
+
+In headless mode without a cached token and without `AGENTMAN_ACCESS_TOKEN`, agent-manager prints the authorise URL and exits — there is no browser login in CI.
 
 ### Token Refresh
 
@@ -321,6 +338,7 @@ Primary backend is the OS keychain (macOS Keychain, Windows Credential Manager, 
 ---
 
 ## Authenticated API (`api`)
+
 
 Agent-manager can call the publisher's authenticated REST API using the same OIDC bearer token obtained during login. The API base URL is resolved in this order:
 

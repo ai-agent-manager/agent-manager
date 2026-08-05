@@ -4,9 +4,19 @@ import path from 'node:path';
 import os from 'node:os';
 import { parseHeadlessConfig, buildPinForDirectorySource, runHeadless } from '../../src/headless.js';
 
+// Hoisted so tests can assert on install's actual call arguments, not just that it fired.
+const { installMock, authenticateMock } = vi.hoisted(() => ({
+  installMock: vi.fn(async () => ({
+    installed: [{ name: 'github.com/example-org/repo-a/my-skill', method: 'symlink' as const, path: '/tmp/skills/github.com~example-org~repo-a~my-skill' }],
+    errors: [],
+  })),
+  authenticateMock: vi.fn(),
+}));
+
 vi.mock('../../src/bundle/source.js', () => ({
   resolveSource: vi.fn(async () => ({
     type: 'discovery',
+    baseUrl: 'https://cdn.example.com',
     discovery: {
       version: '1' as const,
       sources: [{ name: 'test-artefact', type: 'artefact', url: 'https://cdn.example.com/skill.zip' }],
@@ -18,12 +28,8 @@ vi.mock('../../src/discovery/index.js', () => ({
   resolveDiscoverySkills: vi.fn(),
 }));
 
-// Hoisted so tests can assert on install's actual call arguments, not just that it fired.
-const { installMock } = vi.hoisted(() => ({
-  installMock: vi.fn(async () => ({
-    installed: [{ name: 'github.com/example-org/repo-a/my-skill', method: 'symlink' as const, path: '/tmp/skills/github.com~example-org~repo-a~my-skill' }],
-    errors: [],
-  })),
+vi.mock('../../src/auth/index.js', () => ({
+  authenticate: authenticateMock,
 }));
 
 vi.mock('../../src/provisioners/registry.js', () => ({
@@ -131,6 +137,7 @@ describe('runHeadless', () => {
   afterEach(async () => {
     await rm(tmpDir, { recursive: true, force: true });
     vi.restoreAllMocks();
+    authenticateMock.mockReset();
   });
 
   it('exits non-zero when a requested skill name is ambiguous across sources', async () => {
@@ -323,5 +330,120 @@ describe('runHeadless', () => {
     expect(warned).toContain('github.com/example-org/example-repo/my-skill');
     expect(warned).toContain('/tmp/source-a/my-skill');
     expect(warned).toContain('/tmp/source-b/my-skill');
+  });
+
+  it('passes the env access token through when authenticate reports fromEnv', async () => {
+    const { resolveSource } = await import('../../src/bundle/source.js');
+    const { resolveDiscoverySkills } = await import('../../src/discovery/index.js');
+
+    vi.mocked(resolveSource).mockResolvedValueOnce({
+      type: 'discovery',
+      baseUrl: 'https://cdn.example.com',
+      discovery: {
+        version: '1',
+        auth: { required: true, oidcDiscoveryUrl: 'https://auth.example.com/.well-known/openid-configuration', clientId: 'client' },
+        sources: [{ name: 'test-artefact', type: 'artefact', url: 'https://cdn.example.com/skill.zip' }],
+      },
+    });
+
+    authenticateMock.mockResolvedValueOnce({
+      bearerToken: 'env-bearer',
+      fromCache: true,
+      fromEnv: true,
+    });
+
+    vi.mocked(resolveDiscoverySkills).mockResolvedValueOnce({
+      skills: [
+        {
+          dirName: 'my-skill',
+          dirPath: '/tmp/my-skill',
+          skillMdPath: '/tmp/my-skill/SKILL.md',
+          meta: null,
+        },
+      ],
+      rovoAgents: [],
+      errors: [],
+      bundleVersion: undefined,
+    });
+
+    const configPath = path.join(tmpDir, 'ai-skills.yml');
+    await writeFile(configPath, 'tools: claude-code\nscope: repo\nskills:\n  - my-skill\n');
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    installMock.mockClear();
+
+    await expect(
+      runHeadless('https://cdn.example.com', configPath, false),
+    ).resolves.toBeUndefined();
+
+    expect(authenticateMock).toHaveBeenCalledTimes(1);
+    expect(resolveDiscoverySkills).toHaveBeenCalledWith(
+      expect.objectContaining({ auth: expect.objectContaining({ required: true }) }),
+      'env-bearer',
+      expect.any(Function),
+      expect.objectContaining({ artefactSha256: undefined }),
+    );
+
+    const logged = logSpy.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(logged).toContain('Using access token from AGENTMAN_ACCESS_TOKEN');
+  });
+
+  it('does not claim an env token when authenticate used a cached OAuth token', async () => {
+    const { resolveSource } = await import('../../src/bundle/source.js');
+    const { resolveDiscoverySkills } = await import('../../src/discovery/index.js');
+
+    vi.mocked(resolveSource).mockResolvedValueOnce({
+      type: 'discovery',
+      baseUrl: 'https://cdn.example.com',
+      discovery: {
+        version: '1',
+        auth: { required: true, oidcDiscoveryUrl: 'https://auth.example.com/.well-known/openid-configuration', clientId: 'client' },
+        sources: [{ name: 'test-artefact', type: 'artefact', url: 'https://cdn.example.com/skill.zip' }],
+      },
+    });
+
+    authenticateMock.mockResolvedValueOnce({
+      bearerToken: 'cached-oauth',
+      fromCache: true,
+    });
+
+    vi.mocked(resolveDiscoverySkills).mockResolvedValueOnce({
+      skills: [
+        {
+          dirName: 'my-skill',
+          dirPath: '/tmp/my-skill',
+          skillMdPath: '/tmp/my-skill/SKILL.md',
+          meta: null,
+        },
+      ],
+      rovoAgents: [],
+      errors: [],
+      bundleVersion: undefined,
+    });
+
+    const configPath = path.join(tmpDir, 'ai-skills.yml');
+    await writeFile(configPath, 'tools: claude-code\nscope: repo\nskills:\n  - my-skill\n');
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    installMock.mockClear();
+
+    await expect(
+      runHeadless('https://cdn.example.com', configPath, false),
+    ).resolves.toBeUndefined();
+
+    expect(resolveDiscoverySkills).toHaveBeenCalledWith(
+      expect.any(Object),
+      undefined,
+      expect.any(Function),
+      expect.objectContaining({
+        authSession: {
+          discoveryBaseUrl: 'https://cdn.example.com',
+          auth: expect.objectContaining({ required: true }),
+        },
+      }),
+    );
+
+    const logged = logSpy.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(logged).not.toContain('Using access token from AGENTMAN_ACCESS_TOKEN');
   });
 });

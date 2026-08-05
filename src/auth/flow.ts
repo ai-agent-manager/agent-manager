@@ -16,6 +16,7 @@ import {
   type StoredTokens,
   type TokenBackend,
 } from './token-store.js';
+import { getEnvAccessToken } from './env-token.js';
 import type { DiscoveryAuth } from '../discovery/types.js';
 import { getPlatform } from '../lib/platform.js';
 
@@ -32,6 +33,8 @@ export interface AuthResult {
   bearerToken: string;
   /** Whether the token was obtained from cache (true) or a fresh login (false). */
   fromCache: boolean;
+  /** Whether the token came from `AGENTMAN_ACCESS_TOKEN` rather than OAuth. */
+  fromEnv?: boolean;
   /** Where the token was persisted — 'keychain' (OS credential store) or 'filesystem' (~/.agentman/auth/). */
   backend?: TokenBackend;
 }
@@ -90,6 +93,14 @@ function requireAuthConfig(auth: DiscoveryAuth): asserts auth is DiscoveryAuth &
   }
 }
 
+function resolveEnvBearerToken(): AuthResult | undefined {
+  const envToken = getEnvAccessToken();
+  if (envToken) {
+    return { bearerToken: envToken, fromCache: true, fromEnv: true };
+  }
+  return undefined;
+}
+
 /**
  * Resolve a usable bearer token (cache → refresh → optional interactive login).
  */
@@ -98,6 +109,11 @@ async function resolveBearerToken(
   auth: DiscoveryAuth,
   options: GetValidBearerTokenOptions = {},
 ): Promise<AuthResult> {
+  const envResult = resolveEnvBearerToken();
+  if (envResult) {
+    return envResult;
+  }
+
   requireAuthConfig(auth);
 
   const { onPrompt, allowInteractive = false, forceRefresh = false, signal } = options;
@@ -175,9 +191,10 @@ export async function getValidBearerToken(
 /**
  * Obtain a valid access token for the given base URL.
  *
- * 1. Check for a cached token — if valid, return it.
- * 2. If expired but has a refresh token, attempt a refresh.
- * 3. Otherwise, run the full interactive authorization flow.
+ * 1. Check `AGENTMAN_ACCESS_TOKEN` — if set, return it (headless/CI and interactive).
+ * 2. Check for a cached token — if valid, return it.
+ * 3. If expired but has a refresh token, attempt a refresh.
+ * 4. Otherwise, run the full interactive authorization flow.
  *
  * @param baseUrl   The base URL of the discovery endpoint.
  * @param auth      The auth configuration from the discovery document.

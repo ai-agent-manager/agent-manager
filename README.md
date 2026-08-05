@@ -144,21 +144,20 @@ npx -y @ai-agent-manager/cli@latest https://bundles.example.com \
 
 ### Authentication
 
-If your bundle server requires authentication, Agent Manager runs an interactive OAuth2/OIDC flow on first use:
+If your bundle server requires login, Agent Manager opens a browser OAuth flow on first use and stores tokens under `~/.agentman/auth/` (permissions `0600`), refreshing them when they expire.
 
 1. A browser window opens to your provider's login page.
 2. After login, a local callback server receives the authorization code.
 3. Tokens are stored in the OS keychain when available, otherwise in `~/.agentman/auth/` (`0600`).
 4. Before each authenticated API or content download, Agent Manager reloads the store and refreshes the token if it is near expiry (or retries once after an HTTP 401).
 
-For headless/CI installs against an auth-protected discovery source, set a bearer directly and skip the browser flow:
+Prefer a token instead of a browser — works in interactive **and** headless mode:
 
 ```bash
-AGENTMAN_ACCESS_TOKEN=... npx -y @ai-agent-manager/cli@latest https://your-bundle-server.com \
-  --config .github/ai-skills.yml
+AGENTMAN_ACCESS_TOKEN=... npx -y @ai-agent-manager/cli@latest <source>
 ```
 
-`AGENTMAN_ACCESS_TOKEN` is used as-is (no store lookup or refresh). See [docs/discovery.md](docs/discovery.md) for the full auth flow.
+Use that in CI with `--config`. `AGENTMAN_ACCESS_TOKEN` is sent as-is (no store lookup or refresh). See [docs/discovery.md](docs/discovery.md) for the full auth flow.
 
 ### Force re-download
 

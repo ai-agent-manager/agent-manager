@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { AGENTMAN_ACCESS_TOKEN_ENV } from '../../../src/auth/env-token.js';
 
 const loadTokens = vi.fn();
 const saveTokens = vi.fn();
@@ -276,5 +277,78 @@ describe('authenticate cancellation', () => {
     ).rejects.toThrow('Authentication cancelled');
 
     expect(waitForCallback).not.toHaveBeenCalled();
+  });
+});
+
+describe('AGENTMAN_ACCESS_TOKEN', () => {
+  const previous = process.env[AGENTMAN_ACCESS_TOKEN_ENV];
+
+  beforeEach(() => {
+    loadTokens.mockReset();
+    isTokenExpired.mockReset();
+    fetchOidcConfiguration.mockReset();
+    mockFetch.mockReset();
+  });
+
+  afterEach(() => {
+    if (previous === undefined) {
+      delete process.env[AGENTMAN_ACCESS_TOKEN_ENV];
+    } else {
+      process.env[AGENTMAN_ACCESS_TOKEN_ENV] = previous;
+    }
+  });
+
+  it('returns AGENTMAN_ACCESS_TOKEN from authenticate without requiring OIDC config', async () => {
+    process.env[AGENTMAN_ACCESS_TOKEN_ENV] = 'env-bearer-token';
+    const onPrompt = vi.fn();
+
+    const result = await authenticate(baseUrl, { required: true }, onPrompt);
+
+    expect(result).toEqual({
+      bearerToken: 'env-bearer-token',
+      fromCache: true,
+      fromEnv: true,
+    });
+    expect(onPrompt).not.toHaveBeenCalled();
+    expect(loadTokens).not.toHaveBeenCalled();
+  });
+
+  it('returns AGENTMAN_ACCESS_TOKEN from getValidBearerToken without store lookup', async () => {
+    process.env[AGENTMAN_ACCESS_TOKEN_ENV] = 'env-bearer-token';
+
+    const token = await getValidBearerToken(baseUrl, auth);
+
+    expect(token).toBe('env-bearer-token');
+    expect(loadTokens).not.toHaveBeenCalled();
+  });
+
+  it('prefers AGENTMAN_ACCESS_TOKEN over a cached token', async () => {
+    process.env[AGENTMAN_ACCESS_TOKEN_ENV] = 'env-wins';
+    loadTokens.mockResolvedValueOnce({
+      bearerToken: 'cached-token',
+      expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+      oidcDiscoveryUrl: auth.oidcDiscoveryUrl,
+      clientId: auth.clientId,
+    });
+    isTokenExpired.mockReturnValueOnce(false);
+
+    const result = await authenticate(baseUrl, auth, () => {
+      throw new Error('onPrompt should not be called');
+    });
+
+    expect(result.bearerToken).toBe('env-wins');
+    expect(result.fromEnv).toBe(true);
+    expect(loadTokens).not.toHaveBeenCalled();
+  });
+
+  it('trims AGENTMAN_ACCESS_TOKEN before using it', async () => {
+    process.env[AGENTMAN_ACCESS_TOKEN_ENV] = '  padded-token  ';
+
+    const result = await authenticate(baseUrl, { required: true }, () => {
+      throw new Error('onPrompt should not be called');
+    });
+
+    expect(result.bearerToken).toBe('padded-token');
+    expect(result.fromEnv).toBe(true);
   });
 });

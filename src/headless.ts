@@ -109,22 +109,21 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
     let authSession: AuthSession | undefined;
 
     if (source.discovery.auth?.required) {
-      const envToken = process.env['AGENTMAN_ACCESS_TOKEN'];
-      if (envToken) {
-        accessToken = envToken;
+      console.log('[agentman] Authenticating...');
+      const authResult = await authenticate(
+        source.baseUrl,
+        source.discovery.auth,
+        (url) => {
+          console.error(`\n[agentman] ERROR: Authentication required. Visit this URL to authorise:`);
+          console.error(`  ${url}\n`);
+          console.error(`  Or set AGENTMAN_ACCESS_TOKEN environment variable.\n`);
+          process.exit(1);
+        },
+      );
+      if (authResult.fromEnv) {
+        accessToken = authResult.bearerToken;
         console.log('[agentman] Using access token from AGENTMAN_ACCESS_TOKEN');
       } else {
-        console.log('[agentman] Attempting cached token authentication...');
-        await authenticate(
-          source.baseUrl,
-          source.discovery.auth,
-          (url) => {
-            console.error(`\n[agentman] ERROR: Authentication required. Visit this URL to authorise:`);
-            console.error(`  ${url}\n`);
-            console.error(`  Or set AGENTMAN_ACCESS_TOKEN environment variable.\n`);
-            process.exit(1);
-          },
-        );
         authSession = {
           discoveryBaseUrl: source.baseUrl,
           auth: source.discovery.auth,

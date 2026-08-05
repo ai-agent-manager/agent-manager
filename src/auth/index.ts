@@ -18,6 +18,10 @@ export type {
   InteractiveAuthOptions,
   DiscoveryAuthContext,
 } from './access-token-provider.js';
+export {
+  AGENTMAN_ACCESS_TOKEN_ENV,
+  getEnvAccessToken,
+} from './env-token.js';
 export { fetchOidcConfiguration, OidcDiscoveryError } from './oidc.js';
 export type { OidcConfiguration } from './oidc.js';
 export { generateCodeVerifier, generateCodeChallenge, generateState } from './pkce.js';
