@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { Box, Text } from "ink";
+import SelectInput from "ink-select-input";
 import { APP_VERSION } from "./app-info.js";
 import { AppUpdateManager } from "./components/AppUpdateManager.js";
 import { AuthPrompt } from "./components/AuthPrompt.js";
@@ -103,7 +104,14 @@ async function acquireDiscoverySkills(
     source: Extract<BundleSource, { type: 'discovery' }>,
     setLoadingMessage: (message: string) => void,
     onAuthPrompt: (authorizeUrl: string) => void,
-): Promise<{ skills: ResolvedSkill[]; rovoAgents: RovoAgentInfo[]; warnings: string[]; bundleVersion?: string }> {
+): Promise<{
+    skills: ResolvedSkill[];
+    rovoAgents: RovoAgentInfo[];
+    warnings: string[];
+    bundleVersion?: string;
+    manifest?: BundleManifest;
+    bundleDir?: string;
+}> {
     let bearerToken: string | undefined;
     const warnings: string[] = [];
 
@@ -132,7 +140,14 @@ async function acquireDiscoverySkills(
         warnings.push(`Failed to resolve source '${source.name}': ${error}`);
     }
 
-    return { skills: result.skills, rovoAgents: result.rovoAgents, warnings, bundleVersion: result.bundleVersion };
+    return {
+        skills: result.skills,
+        rovoAgents: result.rovoAgents,
+        warnings,
+        bundleVersion: result.bundleVersion,
+        manifest: result.manifest,
+        bundleDir: result.bundleDir,
+    };
 }
 
 export function App({ source, forceUpdate, sourceError }: AppProps) {
@@ -260,7 +275,14 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
 
                 // --- Discovery source: resolve skills from discovery document ---
                 if (source.type === "discovery") {
-                    const { skills, rovoAgents, warnings, bundleVersion: discoveredVersion } = await acquireDiscoverySkills(
+                    const {
+                        skills,
+                        rovoAgents,
+                        warnings,
+                        bundleVersion: discoveredVersion,
+                        manifest: discoveredManifest,
+                        bundleDir: discoveredBundleDir,
+                    } = await acquireDiscoverySkills(
                         source,
                         setLoadingMessage,
                         handleAuthPrompt,
@@ -272,6 +294,8 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
 
                     setDiscoverySkills(skills);
                     if (discoveredVersion) setDiscoveryBundleVersion(discoveredVersion);
+                    if (discoveredManifest) setManifest(discoveredManifest);
+                    if (discoveredBundleDir) setBundleDir(discoveredBundleDir);
                     setBundleContents({ skills, rovoAgents });
                     setScreen("main-menu");
                     return;
@@ -677,6 +701,26 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
                     bundleDir={bundleDir}
                     onBack={() => setScreen("rovo-method")}
                 />
+            )}
+
+            {screen === "chrome-extension" && (!bundleContents || !manifest) && (
+                <Box flexDirection="column" marginLeft={2}>
+                    <Text bold>Chrome Extension Bridge</Text>
+                    <Text> </Text>
+                    <StatusMessage
+                        type="error"
+                        message="Cannot start the Chrome Extension bridge: no local bundle is available for this source."
+                    />
+                    <Text> </Text>
+                    <Text dimColor>
+                        Discovery sources need an HTTP bundle that includes Rovo agents. Use &quot;Install from the command line&quot; instead, or switch to a bundle URL/directory source.
+                    </Text>
+                    <Text> </Text>
+                    <SelectInput
+                        items={[{ label: "\u2190 Back to menu", value: "back" }]}
+                        onSelect={() => setScreen("rovo-method")}
+                    />
+                </Box>
             )}
 
             {screen === "chrome-extension-install" && (
