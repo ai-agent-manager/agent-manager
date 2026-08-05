@@ -537,7 +537,7 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
             sourceType: "http" as const,
         }));
     const projectSkills = projectContext
-        ? (filterSkillsForProject(catalogueSkills, projectContext) as ResolvedSkill[])
+        ? filterSkillsForProject(catalogueSkills, projectContext)
         : catalogueSkills;
     const projectRovoAgents = projectContext
         ? filterAgentsForProject(bundleContents?.rovoAgents ?? [], projectContext)

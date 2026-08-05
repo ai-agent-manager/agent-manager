@@ -24,6 +24,15 @@ describe("MainMenu", () => {
             expect(lastFrame()).toContain("My Projects");
         });
 
+        it('shows "My Projects" before "Search & Install" when both are available', () => {
+            const { lastFrame } = render(
+                <MainMenu hasBundleContents={true} hasProjectsAccess={true} onSelect={noop} />,
+            );
+            const frame = lastFrame() ?? "";
+            expect(frame.indexOf("My Projects")).toBeGreaterThanOrEqual(0);
+            expect(frame.indexOf("My Projects")).toBeLessThan(frame.indexOf("Search & Install"));
+        });
+
         it('hides "My Projects" when hasProjectsAccess is false', () => {
             const { lastFrame } = render(
                 <MainMenu hasBundleContents={false} hasProjectsAccess={false} onSelect={noop} />,
