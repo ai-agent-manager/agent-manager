@@ -1,5 +1,1 @@
-engine: native
-version: 5.19.0
-
-cli:
-  version: 1.9.0
+imposter-project.yaml
