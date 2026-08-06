@@ -1,13 +1,14 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Box, Text, useInput } from "ink";
 import SelectInput from "ink-select-input";
+import type { AuthSession } from "../auth/index.js";
 import { listProjects, getProject, type Project } from "../api/index.js";
 import { LoadingSpinner } from "./Spinner.js";
 import { StatusMessage } from "./StatusMessage.js";
 
 interface ProjectsMenuProps {
     apiBaseUrl: string;
-    bearerToken: string;
+    authSession: AuthSession;
     /** Whether the resolved catalogue has skills to install. */
     hasSkills?: boolean;
     /** Whether the resolved catalogue has Rovo agents to provision. */
@@ -32,7 +33,7 @@ type View =
  */
 export function ProjectsMenu({
     apiBaseUrl,
-    bearerToken,
+    authSession,
     hasSkills = false,
     hasRovoAgents = false,
     initialProjectId = null,
@@ -53,7 +54,7 @@ export function ProjectsMenu({
 
         (async () => {
             try {
-                const projects = await listProjects(apiBaseUrl, bearerToken);
+                const projects = await listProjects(apiBaseUrl, authSession);
                 if (!cancelled) {
                     setView({ kind: "list", projects });
                 }
@@ -70,7 +71,7 @@ export function ProjectsMenu({
         return () => {
             cancelled = true;
         };
-    }, [view.kind, apiBaseUrl, bearerToken]);
+    }, [view.kind, apiBaseUrl, authSession]);
 
     useEffect(() => {
         if (view.kind !== "loading-detail") return;
@@ -86,11 +87,11 @@ export function ProjectsMenu({
             try {
                 // When resuming into detail with an empty list, refresh the list first.
                 if (projects.length === 0) {
-                    list = await listProjects(apiBaseUrl, bearerToken);
+                    list = await listProjects(apiBaseUrl, authSession);
                 }
                 listCached = list.find((p) => p.id === projectId) ?? cached;
 
-                const fresh = await getProject(apiBaseUrl, bearerToken, projectId);
+                const fresh = await getProject(apiBaseUrl, authSession, projectId);
                 if (cancelled) return;
 
                 const project = fresh ?? listCached;
@@ -110,7 +111,7 @@ export function ProjectsMenu({
                     return;
                 }
                 try {
-                    list = await listProjects(apiBaseUrl, bearerToken);
+                    list = await listProjects(apiBaseUrl, authSession);
                     listCached = list.find((p) => p.id === projectId);
                     if (listCached) {
                         if (!cancelled) {
@@ -140,7 +141,7 @@ export function ProjectsMenu({
         return () => {
             cancelled = true;
         };
-    }, [view, apiBaseUrl, bearerToken]);
+    }, [view, apiBaseUrl, authSession]);
 
     const goBackFromDetail = useCallback(() => {
         if (view.kind === "detail") {

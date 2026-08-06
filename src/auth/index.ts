@@ -1,5 +1,17 @@
-export { authenticate, openInBrowser, AuthFlowError, AuthCancelledError } from './flow.js';
-export type { AuthResult, TokenResponse, AuthenticateOptions } from './flow.js';
+export {
+  authenticate,
+  getValidBearerToken,
+  openInBrowser,
+  AuthFlowError,
+  AuthCancelledError,
+} from './flow.js';
+export type {
+  AuthResult,
+  AuthSession,
+  GetValidBearerTokenOptions,
+  TokenResponse,
+  AuthenticateOptions,
+} from './flow.js';
 export { createDiscoveryAccessTokenProvider } from './access-token-provider.js';
 export type {
   InteractiveAccessTokenProvider,

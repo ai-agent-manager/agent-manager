@@ -20,6 +20,17 @@ import type { InstallScope } from '../config/scopes.js';
 import type { InstallResult } from '../provisioners/types.js';
 import { createSkillProvisioner } from '../provisioners/registry.js';
 import { findRepoRoot } from '../lib/repo.js';
+import { getValidBearerToken, type AuthSession } from '../auth/index.js';
+
+async function resolveInstallBearer(
+  authSession?: AuthSession,
+  bearerToken?: string,
+): Promise<string | undefined> {
+  if (authSession) {
+    return getValidBearerToken(authSession.discoveryBaseUrl, authSession.auth);
+  }
+  return bearerToken;
+}
 
 export interface InstallFromRepoOpts {
   repoUrl: string;
@@ -58,6 +69,8 @@ export interface InstallFromBundleOpts {
   forceUpdate?: boolean;
   /** Bearer token for bundles hosted on an authenticated origin. */
   bearerToken?: string;
+  /** When set, refresh a bearer before authenticated bundle downloads. */
+  authSession?: AuthSession;
 }
 
 export interface InstallOperationResult {
@@ -133,6 +146,7 @@ export async function installFromBundle(opts: InstallFromBundleOpts): Promise<In
     scope,
     toolId,
     bearerToken,
+    authSession,
   } = opts;
 
   // A declared discovery source is already known to be an HTTP bundle, so its
@@ -152,7 +166,8 @@ export async function installFromBundle(opts: InstallFromBundleOpts): Promise<In
 
   if (source.baseUrl) {
     const sourceKey = sourceName ? bundleSourceKey(sourceName) : undefined;
-    const { zipPath } = await downloadBundle(source.baseUrl, requestedVersion, bearerToken, sourceKey);
+    const bearer = await resolveInstallBearer(authSession, bearerToken);
+    const { zipPath } = await downloadBundle(source.baseUrl, requestedVersion, bearer, sourceKey);
     const extracted = await extractBundle(
       zipPath,
       sourceKey ? { sourceKey, contentRoot: source.baseUrl } : undefined,
@@ -211,6 +226,7 @@ export async function acquireSource(
     bundleVersion?: string;
     forceUpdate?: boolean;
     bearerToken?: string;
+    authSession?: AuthSession;
   } = {},
 ): Promise<AcquireResult> {
   if (isRepoSource(source)) {
@@ -226,9 +242,10 @@ export async function acquireSource(
 
   if (source.type === 'artefact') {
     const artefactSource = opts.sha256 ? { ...source, sha256: opts.sha256 } : source;
+    const bearer = await resolveInstallBearer(opts.authSession, opts.bearerToken);
     const download = await downloadArtefact(artefactSource, {
       forceUpdate: opts.forceUpdate,
-      bearerToken: opts.bearerToken,
+      bearerToken: bearer,
     });
     const scanResult = await scanArtefactForSkills(download.extractDir, artefactSource);
     return {
@@ -244,10 +261,11 @@ export async function acquireSource(
 
   if (source.baseUrl) {
     const sourceKey = source.sourceName ? bundleSourceKey(source.sourceName) : undefined;
+    const bearer = await resolveInstallBearer(opts.authSession, opts.bearerToken);
     const { zipPath } = await downloadBundle(
       source.baseUrl,
       opts.bundleVersion,
-      opts.bearerToken,
+      bearer,
       sourceKey,
     );
     const extracted = await extractBundle(

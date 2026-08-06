@@ -46,7 +46,7 @@ import {
     resolveApiBaseUrl,
     type Project,
 } from "./api/index.js";
-import { authenticate, openInBrowser, createDiscoveryAccessTokenProvider } from "./auth/index.js";
+import { authenticate, openInBrowser, createDiscoveryAccessTokenProvider, type AuthSession } from "./auth/index.js";
 
 export type Screen =
     | "loading"
@@ -120,10 +120,10 @@ async function acquireDiscoverySkills(
     bundleVersion?: string;
     manifest?: BundleManifest;
     bundleDir?: string;
-    bearerToken?: string;
+    authSession?: AuthSession;
 }> {
-    let bearerToken: string | undefined;
     const warnings: string[] = [];
+    let authSession: AuthSession | undefined;
 
     // Handle authentication if required
     if (source.discovery.auth?.required) {
@@ -133,7 +133,10 @@ async function acquireDiscoverySkills(
             source.discovery.auth,
             onAuthPrompt,
         );
-        bearerToken = authResult.bearerToken;
+        authSession = {
+            discoveryBaseUrl: source.baseUrl,
+            auth: source.discovery.auth,
+        };
         if (!authResult.fromCache && authResult.backend === 'filesystem') {
             warnings.push("Tokens stored at ~/.agentman/auth/ (OS keychain unavailable, using filesystem with restricted permissions)");
         }
@@ -142,8 +145,9 @@ async function acquireDiscoverySkills(
     setLoadingMessage("Resolving skills from discovery document...");
     const result = await resolveDiscoverySkills(
         source.discovery,
-        bearerToken,
+        undefined,
         setLoadingMessage,
+        authSession ? { authSession } : undefined,
     );
 
     for (const { source, error } of result.errors) {
@@ -157,7 +161,7 @@ async function acquireDiscoverySkills(
         bundleVersion: result.bundleVersion,
         manifest: result.manifest,
         bundleDir: result.bundleDir,
-        bearerToken,
+        authSession,
     };
 }
 
@@ -182,7 +186,7 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
     // Set when a Rovo agent is picked from the unified catalogue; scopes the Rovo
     // flow to that one agent. Null when Rovo is entered via the standalone menu.
     const [selectedRovoAgent, setSelectedRovoAgent] = useState<RovoAgentInfo | null>(null);
-    const [bearerToken, setBearerToken] = useState<string | null>(null);
+    const [authSession, setAuthSession] = useState<AuthSession | null>(null);
     /** When set, skill/agent install flows are filtered by the project's allowlists. */
     const [projectContext, setProjectContext] = useState<Project | null>(null);
     /** Re-open this project detail after returning from a project-scoped install. */
@@ -334,7 +338,7 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
                         bundleVersion: discoveredVersion,
                         manifest: discoveredManifest,
                         bundleDir: discoveredBundleDir,
-                        bearerToken: token,
+                        authSession: session,
                     } = await acquireDiscoverySkills(
                         source,
                         setLoadingMessage,
@@ -350,7 +354,7 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
                     if (discoveredManifest) setManifest(discoveredManifest);
                     if (discoveredBundleDir) setBundleDir(discoveredBundleDir);
                     setBundleContents({ skills, rovoAgents });
-                    setBearerToken(token ?? null);
+                    setAuthSession(session ?? null);
                     setScreen("main-menu");
                     return;
                 }
@@ -554,7 +558,7 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
             authRequired: source.discovery.auth?.required,
             features: source.discovery.api?.features,
             apiBaseUrl,
-            bearerToken,
+            authSession,
         });
 
     if (screen === "loading") {
@@ -631,10 +635,10 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
                 />
             )}
 
-            {screen === "my-projects" && apiBaseUrl && bearerToken && (
+            {screen === "my-projects" && apiBaseUrl && authSession && (
                 <ProjectsMenu
                     apiBaseUrl={apiBaseUrl}
-                    bearerToken={bearerToken}
+                    authSession={authSession}
                     hasSkills={catalogueSkills.length > 0}
                     hasRovoAgents={(bundleContents?.rovoAgents.length ?? 0) > 0}
                     initialProjectId={resumeProjectId}
@@ -762,6 +766,7 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
                 <VersionManager
                     currentVersion={manifest?.version ?? null}
                     source={source}
+                    authSession={authSession}
                     onBack={() => setScreen("maintenance-menu")}
                     onVersionChanged={handleVersionChanged}
                 />

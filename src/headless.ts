@@ -11,7 +11,7 @@ import { buildPinForDirectorySource, deriveSkillInstallKey, type SkillSourcePin 
 // Re-exported for backward compatibility with existing importers/tests.
 export { buildPinForDirectorySource } from './bundle/skill-source.js';
 import { resolveDiscoverySkills } from './discovery/index.js';
-import { authenticate } from './auth/index.js';
+import { authenticate, type AuthSession } from './auth/index.js';
 import { createSkillProvisioner, formatSupportedSkillToolIds } from './provisioners/registry.js';
 import type { InstallScope } from './config/scopes.js';
 
@@ -95,15 +95,17 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
     // sourcePin stays undefined for discovery installs — added in the namespaced-layout follow-up.
     console.log("[agentman] Discovery document found");
 
-    let bearerToken: string | undefined;
+    let accessToken: string | undefined;
+    let authSession: AuthSession | undefined;
+
     if (source.discovery.auth?.required) {
       const envToken = process.env['AGENTMAN_ACCESS_TOKEN'];
       if (envToken) {
-        bearerToken = envToken;
+        accessToken = envToken;
         console.log('[agentman] Using access token from AGENTMAN_ACCESS_TOKEN');
       } else {
         console.log('[agentman] Attempting cached token authentication...');
-        const authResult = await authenticate(
+        await authenticate(
           source.baseUrl,
           source.discovery.auth,
           (url) => {
@@ -113,16 +115,22 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
             process.exit(1);
           },
         );
-        bearerToken = authResult.bearerToken;
+        authSession = {
+          discoveryBaseUrl: source.baseUrl,
+          auth: source.discovery.auth,
+        };
       }
     }
 
     console.log(`[agentman] Resolving ${source.discovery.sources.length} source(s) from discovery document...`);
     const result = await resolveDiscoverySkills(
       source.discovery,
-      bearerToken,
+      accessToken,
       (msg) => console.log(`[agentman] ${msg}`),
-      { artefactSha256: config.artefactSha256 },
+      {
+        artefactSha256: config.artefactSha256,
+        ...(authSession ? { authSession } : {}),
+      },
     );
 
     for (const { source: failedSource, error, isIntegrity } of result.errors) {

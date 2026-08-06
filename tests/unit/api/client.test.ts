@@ -1,15 +1,38 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import {
+import type { AuthSession } from '../../../src/auth/index.js';
+
+const getValidBearerToken = vi.fn();
+
+vi.mock('../../../src/auth/index.js', async () => {
+  const actual = await vi.importActual<typeof import('../../../src/auth/index.js')>(
+    '../../../src/auth/index.js',
+  );
+  return {
+    ...actual,
+    getValidBearerToken: (...args: unknown[]) => getValidBearerToken(...args),
+  };
+});
+
+const {
   apiRequest,
   normaliseApiBaseUrl,
   resolveApiBaseUrl,
   isProjectsFeatureEnabled,
   canAccessMyProjects,
   ApiError,
-} from '../../../src/api/client.js';
+} = await import('../../../src/api/client.js');
 
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
+
+const authSession: AuthSession = {
+  discoveryBaseUrl: 'https://discovery.example.com',
+  auth: {
+    required: true,
+    oidcDiscoveryUrl: 'https://idp.example.com/.well-known/openid-configuration',
+    clientId: 'agentman-cli',
+  },
+};
 
 describe('normaliseApiBaseUrl', () => {
   it('strips a single trailing slash', () => {
@@ -73,10 +96,10 @@ describe('canAccessMyProjects', () => {
     authRequired: true,
     features: { projects: true },
     apiBaseUrl: 'https://api.example.com',
-    bearerToken: 'token',
+    authSession,
   };
 
-  it('is true when auth, feature flag, API URL, and token are all present', () => {
+  it('is true when auth, feature flag, API URL, and session are all present', () => {
     expect(canAccessMyProjects(ready)).toBe(true);
   });
 
@@ -90,27 +113,33 @@ describe('canAccessMyProjects', () => {
     expect(canAccessMyProjects({ ...ready, authRequired: undefined })).toBe(false);
   });
 
-  it('is false when the API base URL or bearer token is missing', () => {
+  it('is false when the API base URL or auth session is missing', () => {
     expect(canAccessMyProjects({ ...ready, apiBaseUrl: undefined })).toBe(false);
-    expect(canAccessMyProjects({ ...ready, bearerToken: null })).toBe(false);
-    expect(canAccessMyProjects({ ...ready, bearerToken: undefined })).toBe(false);
+    expect(canAccessMyProjects({ ...ready, authSession: null })).toBe(false);
+    expect(canAccessMyProjects({ ...ready, authSession: undefined })).toBe(false);
   });
 });
 
 describe('apiRequest', () => {
   beforeEach(() => {
     mockFetch.mockReset();
+    getValidBearerToken.mockReset();
+    getValidBearerToken.mockResolvedValue('token-123');
   });
 
-  it('calls the API with the normalised base URL and Bearer token', async () => {
+  it('resolves a bearer token before fetch', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       status: 200,
       json: async () => ({ ok: true }),
     });
 
-    await apiRequest('https://api.example.com/', '/projects', 'token-123');
+    await apiRequest('https://api.example.com/', '/projects', authSession);
 
+    expect(getValidBearerToken).toHaveBeenCalledWith(
+      authSession.discoveryBaseUrl,
+      authSession.auth,
+    );
     expect(mockFetch).toHaveBeenCalledWith(
       'https://api.example.com/projects',
       expect.objectContaining({
@@ -130,7 +159,7 @@ describe('apiRequest', () => {
       json: async () => [],
     });
 
-    await apiRequest('https://api.example.com', 'projects', 'token');
+    await apiRequest('https://api.example.com', 'projects', authSession);
 
     expect(mockFetch).toHaveBeenCalledWith(
       'https://api.example.com/projects',
@@ -148,7 +177,7 @@ describe('apiRequest', () => {
     const result = await apiRequest<{ id: string }[]>(
       'https://api.example.com',
       '/projects',
-      'token',
+      authSession,
     );
     expect(result).toEqual([{ id: 'p1' }]);
   });
@@ -162,25 +191,95 @@ describe('apiRequest', () => {
     const result = await apiRequest<void>(
       'https://api.example.com',
       '/projects/x',
-      'token',
+      authSession,
       { method: 'DELETE' },
     );
     expect(result).toBeUndefined();
   });
 
-  it('throws ApiError on non-OK response', async () => {
+  it('force-refreshes once and retries on HTTP 401', async () => {
+    getValidBearerToken
+      .mockResolvedValueOnce('stale-token')
+      .mockResolvedValueOnce('fresh-token');
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        text: async () => 'Unauthorised',
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => [{ id: 'p1' }],
+      });
+
+    const result = await apiRequest<{ id: string }[]>(
+      'https://api.example.com',
+      '/projects',
+      authSession,
+    );
+
+    expect(result).toEqual([{ id: 'p1' }]);
+    expect(getValidBearerToken).toHaveBeenNthCalledWith(
+      1,
+      authSession.discoveryBaseUrl,
+      authSession.auth,
+    );
+    expect(getValidBearerToken).toHaveBeenNthCalledWith(
+      2,
+      authSession.discoveryBaseUrl,
+      authSession.auth,
+      { forceRefresh: true },
+    );
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      2,
+      'https://api.example.com/projects',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer fresh-token',
+        }),
+      }),
+    );
+  });
+
+  it('throws ApiError on non-OK response that is not a recoverable 401', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: false,
-      status: 401,
-      text: async () => 'Unauthorised',
+      status: 500,
+      text: async () => 'boom',
     });
 
     await expect(
-      apiRequest('https://api.example.com', '/projects', 'bad-token'),
+      apiRequest('https://api.example.com', '/projects', authSession),
+    ).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 500,
+      body: 'boom',
+    });
+  });
+
+  it('throws ApiError when the 401 retry also fails', async () => {
+    getValidBearerToken
+      .mockResolvedValueOnce('stale-token')
+      .mockResolvedValueOnce('still-bad');
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        text: async () => 'Unauthorised',
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        text: async () => 'Still unauthorised',
+      });
+
+    await expect(
+      apiRequest('https://api.example.com', '/projects', authSession),
     ).rejects.toMatchObject({
       name: 'ApiError',
       status: 401,
-      body: 'Unauthorised',
+      body: 'Still unauthorised',
     });
   });
 
@@ -188,7 +287,7 @@ describe('apiRequest', () => {
     mockFetch.mockRejectedValueOnce(new Error('ECONNREFUSED'));
 
     await expect(
-      apiRequest('https://api.example.com', '/projects', 'token'),
+      apiRequest('https://api.example.com', '/projects', authSession),
     ).rejects.toThrow(ApiError);
   });
 });

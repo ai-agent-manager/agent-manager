@@ -148,9 +148,17 @@ If your bundle server requires authentication, Agent Manager runs an interactive
 
 1. A browser window opens to your provider's login page.
 2. After login, a local callback server receives the authorization code.
-3. Tokens are stored securely in `~/.agentman/auth/` and refreshed automatically when expired.
+3. Tokens are stored in the OS keychain when available, otherwise in `~/.agentman/auth/` (`0600`).
+4. Before each authenticated API or content download, Agent Manager reloads the store and refreshes the token if it is near expiry (or retries once after an HTTP 401).
 
-Tokens are stored on the filesystem with restrictive permissions (`0600`). See [docs/discovery.md](docs/discovery.md) for the full auth flow.
+For headless/CI installs against an auth-protected discovery source, set a bearer directly and skip the browser flow:
+
+```bash
+AGENTMAN_ACCESS_TOKEN=... npx -y @ai-agent-manager/cli@latest https://your-bundle-server.com \
+  --config .github/ai-skills.yml
+```
+
+`AGENTMAN_ACCESS_TOKEN` is used as-is (no store lookup or refresh). See [docs/discovery.md](docs/discovery.md) for the full auth flow.
 
 ### Force re-download
 

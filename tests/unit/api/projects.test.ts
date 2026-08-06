@@ -1,10 +1,32 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Project } from '../../../src/api/types.js';
+import type { AuthSession } from '../../../src/auth/index.js';
+
+const getValidBearerToken = vi.fn();
+
+vi.mock('../../../src/auth/index.js', async () => {
+  const actual = await vi.importActual<typeof import('../../../src/auth/index.js')>(
+    '../../../src/auth/index.js',
+  );
+  return {
+    ...actual,
+    getValidBearerToken: (...args: unknown[]) => getValidBearerToken(...args),
+  };
+});
 
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
 const { listProjects, getProject } = await import('../../../src/api/projects.js');
+
+const authSession: AuthSession = {
+  discoveryBaseUrl: 'https://discovery.example.com',
+  auth: {
+    required: true,
+    oidcDiscoveryUrl: 'https://idp.example.com/.well-known/openid-configuration',
+    clientId: 'agentman-cli',
+  },
+};
 
 const sampleProject: Project = {
   id: 'proj-1',
@@ -19,6 +41,8 @@ const sampleProject: Project = {
 describe('listProjects', () => {
   beforeEach(() => {
     mockFetch.mockReset();
+    getValidBearerToken.mockReset();
+    getValidBearerToken.mockResolvedValue('bearer-token');
   });
 
   it('GETs /projects from the API base URL', async () => {
@@ -28,7 +52,7 @@ describe('listProjects', () => {
       json: async () => [sampleProject],
     });
 
-    const projects = await listProjects('https://api.example.com', 'bearer-token');
+    const projects = await listProjects('https://api.example.com', authSession);
 
     expect(projects).toHaveLength(1);
     expect(projects[0]).toMatchObject(sampleProject);
@@ -38,6 +62,10 @@ describe('listProjects', () => {
       allowedAgentIds: [],
       allowedSkillIds: [],
     });
+    expect(getValidBearerToken).toHaveBeenCalledWith(
+      authSession.discoveryBaseUrl,
+      authSession.auth,
+    );
     expect(mockFetch).toHaveBeenCalledWith(
       'https://api.example.com/projects',
       expect.objectContaining({
@@ -55,7 +83,7 @@ describe('listProjects', () => {
       json: async () => [],
     });
 
-    const projects = await listProjects('https://api.example.com', 'token');
+    const projects = await listProjects('https://api.example.com', authSession);
     expect(projects).toEqual([]);
   });
 
@@ -66,7 +94,7 @@ describe('listProjects', () => {
       json: async () => [{ ...sampleProject }],
     });
 
-    const projects = await listProjects('https://api.example.com', 'token');
+    const projects = await listProjects('https://api.example.com', authSession);
     expect(projects[0]).toMatchObject({
       restrictAgents: false,
       restrictSkills: false,
@@ -79,6 +107,8 @@ describe('listProjects', () => {
 describe('getProject', () => {
   beforeEach(() => {
     mockFetch.mockReset();
+    getValidBearerToken.mockReset();
+    getValidBearerToken.mockResolvedValue('token');
   });
 
   it('GETs /projects/{id} from the API base URL', async () => {
@@ -88,7 +118,7 @@ describe('getProject', () => {
       json: async () => sampleProject,
     });
 
-    const project = await getProject('https://api.example.com', 'token', 'proj-1');
+    const project = await getProject('https://api.example.com', authSession, 'proj-1');
 
     expect(project).toMatchObject(sampleProject);
     expect(project).toMatchObject({
@@ -110,7 +140,7 @@ describe('getProject', () => {
       json: async () => sampleProject,
     });
 
-    await getProject('https://api.example.com', 'token', 'proj/with spaces');
+    await getProject('https://api.example.com', authSession, 'proj/with spaces');
 
     expect(mockFetch).toHaveBeenCalledWith(
       'https://api.example.com/projects/proj%2Fwith%20spaces',
@@ -125,7 +155,7 @@ describe('getProject', () => {
       text: async () => 'Not found',
     });
 
-    const project = await getProject('https://api.example.com', 'token', 'missing');
+    const project = await getProject('https://api.example.com', authSession, 'missing');
     expect(project).toBeNull();
   });
 
@@ -137,7 +167,7 @@ describe('getProject', () => {
     });
 
     await expect(
-      getProject('https://api.example.com', 'token', 'proj-1'),
+      getProject('https://api.example.com', authSession, 'proj-1'),
     ).rejects.toThrow('API error 500');
   });
 });

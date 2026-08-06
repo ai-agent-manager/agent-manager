@@ -26,6 +26,15 @@ vi.mock("../../../src/components/StatusMessage.js", () => ({
 
 const { ProjectsMenu } = await import("../../../src/components/ProjectsMenu.js");
 
+const testAuthSession = {
+    discoveryBaseUrl: "https://discovery.example.com",
+    auth: {
+        required: true,
+        oidcDiscoveryUrl: "https://idp.example.com/.well-known/openid-configuration",
+        clientId: "cli",
+    },
+};
+
 const sampleProjects: Project[] = [
     {
         id: "proj-1",
@@ -90,7 +99,7 @@ describe("ProjectsMenu", () => {
         const { lastFrame } = render(
             <ProjectsMenu
                 apiBaseUrl="https://api.example.com"
-                bearerToken="token"
+                authSession={testAuthSession}
                 onBack={vi.fn()}
                 onInstallSkills={vi.fn()}
                 onProvisionAgents={vi.fn()}
@@ -103,7 +112,7 @@ describe("ProjectsMenu", () => {
         expect(frame).toContain("My Projects");
         expect(frame).toContain("Alpha");
         expect(frame).toContain("Beta");
-        expect(listProjects).toHaveBeenCalledWith("https://api.example.com", "token");
+        expect(listProjects).toHaveBeenCalledWith("https://api.example.com", testAuthSession);
     });
 
     it("shows an empty state when there are no projects", async () => {
@@ -112,7 +121,7 @@ describe("ProjectsMenu", () => {
         const { lastFrame } = render(
             <ProjectsMenu
                 apiBaseUrl="https://api.example.com"
-                bearerToken="token"
+                authSession={testAuthSession}
                 onBack={vi.fn()}
                 onInstallSkills={vi.fn()}
                 onProvisionAgents={vi.fn()}
@@ -131,7 +140,7 @@ describe("ProjectsMenu", () => {
         const { lastFrame } = render(
             <ProjectsMenu
                 apiBaseUrl="https://api.example.com"
-                bearerToken="token"
+                authSession={testAuthSession}
                 onBack={vi.fn()}
                 onInstallSkills={vi.fn()}
                 onProvisionAgents={vi.fn()}
@@ -149,7 +158,7 @@ describe("ProjectsMenu", () => {
         const { lastFrame, stdin } = render(
             <ProjectsMenu
                 apiBaseUrl="https://api.example.com"
-                bearerToken="token"
+                authSession={testAuthSession}
                 onBack={vi.fn()}
                 onInstallSkills={vi.fn()}
                 onProvisionAgents={vi.fn()}
@@ -164,7 +173,7 @@ describe("ProjectsMenu", () => {
         expect(frame).toContain("First project");
         expect(frame).not.toContain("Tools");
         expect(frame).not.toContain("Catalogue access");
-        expect(getProject).toHaveBeenCalledWith("https://api.example.com", "token", "proj-1");
+        expect(getProject).toHaveBeenCalledWith("https://api.example.com", testAuthSession, "proj-1");
     });
 
     it("offers install actions and invokes the callbacks", async () => {
@@ -176,7 +185,7 @@ describe("ProjectsMenu", () => {
         const { lastFrame, stdin } = render(
             <ProjectsMenu
                 apiBaseUrl="https://api.example.com"
-                bearerToken="token"
+                authSession={testAuthSession}
                 hasSkills
                 hasRovoAgents
                 onBack={vi.fn()}
@@ -204,7 +213,7 @@ describe("ProjectsMenu", () => {
         const { lastFrame, stdin } = render(
             <ProjectsMenu
                 apiBaseUrl="https://api.example.com"
-                bearerToken="token"
+                authSession={testAuthSession}
                 onBack={vi.fn()}
                 onInstallSkills={vi.fn()}
                 onProvisionAgents={vi.fn()}
@@ -226,7 +235,7 @@ describe("ProjectsMenu", () => {
         const { lastFrame, stdin } = render(
             <ProjectsMenu
                 apiBaseUrl="https://api.example.com"
-                bearerToken="token"
+                authSession={testAuthSession}
                 onBack={vi.fn()}
                 onInstallSkills={vi.fn()}
                 onProvisionAgents={vi.fn()}
@@ -248,7 +257,7 @@ describe("ProjectsMenu", () => {
         const { lastFrame, stdin } = render(
             <ProjectsMenu
                 apiBaseUrl="https://api.example.com"
-                bearerToken="token"
+                authSession={testAuthSession}
                 onBack={onBack}
                 onInstallSkills={vi.fn()}
                 onProvisionAgents={vi.fn()}
@@ -271,7 +280,7 @@ describe("ProjectsMenu", () => {
         const { lastFrame } = render(
             <ProjectsMenu
                 apiBaseUrl="https://api.example.com"
-                bearerToken="token"
+                authSession={testAuthSession}
                 initialProjectId="proj-1"
                 onBack={vi.fn()}
                 onInstallSkills={vi.fn()}
@@ -284,7 +293,7 @@ describe("ProjectsMenu", () => {
         const frame = await waitForFrame(lastFrame, (f) => f.includes("First project"));
         expect(frame).toContain("Alpha");
         expect(listProjects).toHaveBeenCalled();
-        expect(getProject).toHaveBeenCalledWith("https://api.example.com", "token", "proj-1");
+        expect(getProject).toHaveBeenCalledWith("https://api.example.com", testAuthSession, "proj-1");
     });
 
     it("shows an error when a resumed project cannot be found", async () => {
@@ -294,7 +303,7 @@ describe("ProjectsMenu", () => {
         const { lastFrame } = render(
             <ProjectsMenu
                 apiBaseUrl="https://api.example.com"
-                bearerToken="token"
+                authSession={testAuthSession}
                 initialProjectId="missing"
                 onBack={vi.fn()}
                 onInstallSkills={vi.fn()}
@@ -313,7 +322,7 @@ describe("ProjectsMenu", () => {
         const { lastFrame, stdin } = render(
             <ProjectsMenu
                 apiBaseUrl="https://api.example.com"
-                bearerToken="token"
+                authSession={testAuthSession}
                 onBack={vi.fn()}
                 onInstallSkills={vi.fn()}
                 onProvisionAgents={vi.fn()}
@@ -336,7 +345,7 @@ describe("ProjectsMenu", () => {
         const { lastFrame, stdin } = render(
             <ProjectsMenu
                 apiBaseUrl="https://api.example.com"
-                bearerToken="token"
+                authSession={testAuthSession}
                 hasSkills
                 hasRovoAgents
                 onBack={vi.fn()}
@@ -366,7 +375,7 @@ describe("ProjectsMenu", () => {
         const { lastFrame, stdin } = render(
             <ProjectsMenu
                 apiBaseUrl="https://api.example.com"
-                bearerToken="token"
+                authSession={testAuthSession}
                 onBack={vi.fn()}
                 onInstallSkills={vi.fn()}
                 onProvisionAgents={vi.fn()}
@@ -390,7 +399,7 @@ describe("ProjectsMenu", () => {
         const { lastFrame, stdin } = render(
             <ProjectsMenu
                 apiBaseUrl="https://api.example.com"
-                bearerToken="token"
+                authSession={testAuthSession}
                 onBack={vi.fn()}
                 onInstallSkills={vi.fn()}
                 onProvisionAgents={vi.fn()}
@@ -414,7 +423,7 @@ describe("ProjectsMenu", () => {
         const { lastFrame, stdin } = render(
             <ProjectsMenu
                 apiBaseUrl="https://api.example.com"
-                bearerToken="token"
+                authSession={testAuthSession}
                 onBack={onBack}
                 onInstallSkills={vi.fn()}
                 onProvisionAgents={vi.fn()}
@@ -440,7 +449,7 @@ describe("ProjectsMenu", () => {
         const { lastFrame } = render(
             <ProjectsMenu
                 apiBaseUrl="https://api.example.com"
-                bearerToken="token"
+                authSession={testAuthSession}
                 initialProjectId="proj-1"
                 onBack={vi.fn()}
                 onInstallSkills={vi.fn()}

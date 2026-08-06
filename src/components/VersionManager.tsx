@@ -16,6 +16,7 @@ import { readRepoConfig, type RepoAgentmanConfig } from '../bundle/repo-config.j
 import type { BundleSource } from '../bundle/source.js';
 import { getSkillTools } from '../config/tools.js';
 import { findRepoRoot } from '../lib/repo.js';
+import { getValidBearerToken, type AuthSession } from '../auth/index.js';
 import {
   getBundleSourceTelemetryProperties,
   trackTelemetryError,
@@ -27,6 +28,8 @@ import { StatusMessage } from './StatusMessage.js';
 interface VersionManagerProps {
   currentVersion: string | null;
   source: BundleSource;
+  /** When set, refresh a bearer before authenticated index/bundle downloads. */
+  authSession?: AuthSession | null;
   onBack: () => void;
   onVersionChanged?: (newVersion: string) => void;
 }
@@ -69,6 +72,7 @@ export function buildBrowseItems(
 export function VersionManager({
   currentVersion,
   source,
+  authSession,
   onBack,
   onVersionChanged,
 }: VersionManagerProps) {
@@ -88,6 +92,21 @@ export function VersionManager({
   const [browseError, setBrowseError] = useState<string | null>(null);
 
   const bundleTelemetryProps = getBundleSourceTelemetryProperties(source);
+
+  /** Prefer an explicit session; otherwise derive from a discovery source that requires auth. */
+  const downloadAuthSession: AuthSession | undefined =
+    authSession ??
+    (source.type === 'discovery' && source.discovery.auth?.required
+      ? { discoveryBaseUrl: source.baseUrl, auth: source.discovery.auth }
+      : undefined);
+
+  async function resolveDownloadBearer(): Promise<string | undefined> {
+    if (!downloadAuthSession) return undefined;
+    return getValidBearerToken(
+      downloadAuthSession.discoveryBaseUrl,
+      downloadAuthSession.auth,
+    );
+  }
 
   useEffect(() => {
     (async () => {
@@ -250,7 +269,8 @@ export function VersionManager({
             setBrowseLoading(true);
             (async () => {
               try {
-                const { zipPath } = await downloadBundle(source.baseUrl, version);
+                const bearer = await resolveDownloadBearer();
+                const { zipPath } = await downloadBundle(source.baseUrl, version, bearer);
 
                 try {
                   await extractBundle(zipPath);
@@ -654,7 +674,8 @@ export function VersionManager({
             setSubScreen('browse');
             (async () => {
               try {
-                const index = await fetchIndex(source.baseUrl);
+                const bearer = await resolveDownloadBearer();
+                const index = await fetchIndex(source.baseUrl, bearer);
                 setRemoteVersions(index.agents);
               } catch (error) {
                 trackTelemetryError('bundle_version_index_fetch_failed', error, bundleTelemetryProps);

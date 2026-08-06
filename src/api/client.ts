@@ -3,7 +3,12 @@
  *
  * The base URL is resolved from `API_BASE_URL` (env) or `discovery.api.baseUrl`
  * — never hardcoded in application code.
+ *
+ * Bearer tokens are resolved via {@link getValidBearerToken} immediately before
+ * each request (with a single force-refresh retry on HTTP 401).
  */
+
+import { getValidBearerToken, type AuthSession } from '../auth/index.js';
 
 export class ApiError extends Error {
   constructor(
@@ -49,19 +54,19 @@ export function isProjectsFeatureEnabled(
 /**
  * Whether My Projects should appear in the main menu.
  * Requires auth, an explicit projects feature flag, a resolved API base URL,
- * and a bearer token.
+ * and an established auth session (tokens may still be refreshed on use).
  */
 export function canAccessMyProjects(input: {
   authRequired?: boolean;
   features?: { projects?: boolean };
   apiBaseUrl?: string;
-  bearerToken?: string | null;
+  authSession?: AuthSession | null;
 }): boolean {
   return Boolean(
     input.authRequired &&
       isProjectsFeatureEnabled(input.features) &&
       input.apiBaseUrl &&
-      input.bearerToken,
+      input.authSession,
   );
 }
 
@@ -72,19 +77,12 @@ export function normaliseApiBaseUrl(apiBaseUrl: string): string {
   return apiBaseUrl.replace(/\/+$/, '');
 }
 
-/**
- * Perform an authenticated JSON request against the API base URL.
- */
-export async function apiRequest<T>(
-  apiBaseUrl: string,
+async function fetchJson<T>(
+  url: string,
   path: string,
   bearerToken: string,
-  options: RequestInit = {},
-): Promise<T> {
-  const base = normaliseApiBaseUrl(apiBaseUrl);
-  const normalisedPath = path.startsWith('/') ? path : `/${path}`;
-  const url = `${base}${normalisedPath}`;
-
+  options: RequestInit,
+): Promise<{ response: Response; data?: T }> {
   let response: Response;
   try {
     response = await fetch(url, {
@@ -102,6 +100,10 @@ export async function apiRequest<T>(
     );
   }
 
+  if (response.status === 204) {
+    return { response, data: undefined as T };
+  }
+
   if (!response.ok) {
     const body = await response.text().catch(() => '');
     throw new ApiError(
@@ -111,9 +113,43 @@ export async function apiRequest<T>(
     );
   }
 
-  if (response.status === 204) {
-    return undefined as T;
+  return { response, data: (await response.json()) as T };
+}
+
+/**
+ * Perform an authenticated JSON request against the API base URL.
+ * Resolves a fresh bearer token before the request; on HTTP 401, force-refreshes
+ * once and retries.
+ */
+export async function apiRequest<T>(
+  apiBaseUrl: string,
+  path: string,
+  authSession: AuthSession,
+  options: RequestInit = {},
+): Promise<T> {
+  const base = normaliseApiBaseUrl(apiBaseUrl);
+  const normalisedPath = path.startsWith('/') ? path : `/${path}`;
+  const url = `${base}${normalisedPath}`;
+
+  const bearerToken = await getValidBearerToken(
+    authSession.discoveryBaseUrl,
+    authSession.auth,
+  );
+
+  try {
+    const { data } = await fetchJson<T>(url, path, bearerToken, options);
+    return data as T;
+  } catch (err) {
+    if (!(err instanceof ApiError) || err.status !== 401) {
+      throw err;
+    }
   }
 
-  return (await response.json()) as T;
+  const refreshed = await getValidBearerToken(
+    authSession.discoveryBaseUrl,
+    authSession.auth,
+    { forceRefresh: true },
+  );
+  const { data } = await fetchJson<T>(url, path, refreshed, options);
+  return data as T;
 }
