@@ -13,6 +13,7 @@ import {
   sanitiseNamespaceSegment,
   deriveRepoNamespace,
   deriveArtefactNamespace,
+  deriveBundleNamespace,
   deriveInstallNamespace,
   buildInstallKey,
   flattenNamespace,
@@ -346,6 +347,30 @@ describe('buildSourcePin', () => {
     expect(pin.bundleVersion).toBe('dev-202605010900');
     expect(pin.bundleBaseUrl).toBeUndefined();
   });
+
+  it('includes bundleBasePath in the pin for a basePath-qualified bundle source', () => {
+    const source: BundleSkillSource = {
+      type: 'bundle',
+      baseUrl: 'https://content.example.com',
+      basePath: 'my-org/team-skills',
+      installLayout: 'namespaced',
+    };
+    const pin = buildSourcePin(source, '0.1.0');
+    expect(pin.sourceType).toBe('bundle');
+    expect(pin.installLayout).toBe('namespaced');
+    expect(pin.bundleBaseUrl).toBe('https://content.example.com');
+    expect(pin.bundleBasePath).toBe('my-org/team-skills');
+  });
+
+  it('omits bundleBasePath for the unprefixed legacy bundle layout', () => {
+    const source: BundleSkillSource = {
+      type: 'bundle',
+      baseUrl: 'https://content.example.com',
+      installLayout: 'flat',
+    };
+    const pin = buildSourcePin(source, '0.1.0');
+    expect(pin.bundleBasePath).toBeUndefined();
+  });
 });
 
 // ── describeSkillSource ───────────────────────────────────────────────────────
@@ -629,6 +654,32 @@ describe('deriveArtefactNamespace', () => {
   });
 });
 
+// ── deriveBundleNamespace ─────────────────────────────────────────────────────
+
+describe('deriveBundleNamespace', () => {
+  it('returns just the sanitised host when basePath is absent', () => {
+    expect(deriveBundleNamespace('https://content.example.com')).toBe('content.example.com');
+  });
+
+  it('appends sanitised basePath segments to the host', () => {
+    expect(deriveBundleNamespace('https://content.example.com', 'my-org/team-skills')).toBe(
+      'content.example.com/my-org/team-skills',
+    );
+  });
+
+  it('gives two basePath-qualified sources on the same origin distinct namespaces', () => {
+    const ns1 = deriveBundleNamespace('https://content.example.com', 'my-org/team-a');
+    const ns2 = deriveBundleNamespace('https://content.example.com', 'my-org/team-b');
+    expect(ns1).not.toBe(ns2);
+  });
+
+  it('gives the same basePath on different origins distinct namespaces', () => {
+    const ns1 = deriveBundleNamespace('https://content.example.com', 'shared/skills');
+    const ns2 = deriveBundleNamespace('https://other.example.com', 'shared/skills');
+    expect(ns1).not.toBe(ns2);
+  });
+});
+
 // ── deriveInstallNamespace ────────────────────────────────────────────────────
 
 describe('deriveInstallNamespace', () => {
@@ -651,11 +702,29 @@ describe('deriveInstallNamespace', () => {
     expect(ns).toBe('cdn.example.com/my-skill');
   });
 
-  it('returns null for a bundle source pin', () => {
+  it('returns null for a legacy flat bundle source pin', () => {
     const ns = deriveInstallNamespace({
       sourceType: 'bundle',
       installLayout: 'flat',
       bundleVersion: '2026.05.01',
+    });
+    expect(ns).toBeNull();
+  });
+
+  it('returns a host/basePath namespace for a namespaced bundle source pin', () => {
+    const ns = deriveInstallNamespace({
+      sourceType: 'bundle',
+      installLayout: 'namespaced',
+      bundleBaseUrl: 'https://content.example.com',
+      bundleBasePath: 'my-org/team-skills',
+    });
+    expect(ns).toBe('content.example.com/my-org/team-skills');
+  });
+
+  it('returns null for a namespaced bundle source pin missing bundleBaseUrl', () => {
+    const ns = deriveInstallNamespace({
+      sourceType: 'bundle',
+      installLayout: 'namespaced',
     });
     expect(ns).toBeNull();
   });

@@ -234,4 +234,87 @@ describe('resolveDiscoverySkills', () => {
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]!.isIntegrity).toBe(false);
   });
+
+  it('passes basePath through to downloadBundle for a basePath-qualified http source', async () => {
+    const { downloadBundle } = await import('../../../src/bundle/downloader.js');
+    const doc: DiscoveryDocument = {
+      version: '1',
+      sources: [
+        {
+          name: 'community-bundle',
+          type: 'http',
+          url: 'https://content.example.com',
+          basePath: 'my-org/team-skills',
+          status: 'community',
+        },
+      ],
+    };
+
+    await resolveDiscoverySkills(doc, 'tok123');
+
+    expect(downloadBundle).toHaveBeenCalledWith(
+      'https://content.example.com',
+      undefined,
+      'tok123',
+      'my-org/team-skills',
+    );
+  });
+
+  it('gives a basePath-qualified http source a namespaced install layout, and an unqualified one flat', async () => {
+    const doc: DiscoveryDocument = {
+      version: '1',
+      sources: [
+        { name: 'official', type: 'http', url: 'https://content.example.com' },
+        {
+          name: 'community',
+          type: 'http',
+          url: 'https://content.example.com',
+          basePath: 'my-org/team-skills',
+        },
+      ],
+    };
+
+    const result = await resolveDiscoverySkills(doc);
+    expect(result.skills).toHaveLength(2);
+
+    for (const skill of result.skills) {
+      expect(skill.sourcePin?.sourceType).toBe('bundle');
+      expect(skill.sourcePin?.bundleBaseUrl).toBe('https://content.example.com');
+    }
+
+    const officialSkill = result.skills.find((s) => s.sourceName === 'official')!;
+    expect(officialSkill.sourcePin?.installLayout).toBe('flat');
+    expect(officialSkill.sourcePin?.bundleBasePath).toBeUndefined();
+
+    const communitySkill = result.skills.find((s) => s.sourceName === 'community')!;
+    expect(communitySkill.sourcePin?.installLayout).toBe('namespaced');
+    expect(communitySkill.sourcePin?.bundleBasePath).toBe('my-org/team-skills');
+  });
+
+  it('passes the access token through to downloadArtefact for artefact sources', async () => {
+    const { downloadArtefact } = await import('../../../src/bundle/artefact-downloader.js');
+    const doc: DiscoveryDocument = {
+      version: '1',
+      sources: [{ name: 'artefact-source', type: 'artefact', url: 'https://cdn.example.com/skill.zip' }],
+    };
+
+    await resolveDiscoverySkills(doc, 'tok123');
+
+    expect(downloadArtefact).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'artefact', artefactUrl: 'https://cdn.example.com/skill.zip' }),
+      { bearerToken: 'tok123' },
+    );
+  });
+
+  it('passes an undefined bearerToken to downloadArtefact when no access token is available', async () => {
+    const { downloadArtefact } = await import('../../../src/bundle/artefact-downloader.js');
+    const doc: DiscoveryDocument = {
+      version: '1',
+      sources: [{ name: 'artefact-source', type: 'artefact', url: 'https://cdn.example.com/skill.zip' }],
+    };
+
+    await resolveDiscoverySkills(doc);
+
+    expect(downloadArtefact).toHaveBeenCalledWith(expect.anything(), { bearerToken: undefined });
+  });
 });

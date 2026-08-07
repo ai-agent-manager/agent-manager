@@ -30,6 +30,13 @@ export interface DiscoverySource {
   type: SourceType;
   /** Location of the source (bundle URL for http, repository URL for git). */
   url: string;
+  /**
+   * `http` sources only. Path prefix inserted between the `agents/` segment
+   * and `index.json`/`<version>/bundle.zip`, letting several independent
+   * bundle streams live under one origin (e.g. one bucket hosting multiple
+   * teams' skills). Omit for the single-stream layout used today.
+   */
+  basePath?: string;
   /** Trust level indicator. */
   status?: SourceStatus;
 }

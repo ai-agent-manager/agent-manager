@@ -12,6 +12,7 @@ import {
     fetchBundleHash,
     verifyBundleHash,
     downloadBundle,
+    normaliseBasePath,
     IntegrityError,
     type AgentsIndex,
 } from "../../../src/bundle/downloader.js";
@@ -65,6 +66,72 @@ describe("buildIndexUrl", () => {
     it("handles localhost URLs", () => {
         expect(buildIndexUrl("http://localhost:3000")).toBe("http://localhost:3000/agents/index.json");
     });
+
+    it("inserts basePath between agents/ and index.json when provided", () => {
+        expect(buildIndexUrl("https://example.com", "my-org/team-skills")).toBe(
+            "https://example.com/agents/my-org/team-skills/index.json",
+        );
+    });
+
+    it("is byte-identical to the no-basePath form when basePath is omitted", () => {
+        expect(buildIndexUrl("https://example.com")).toBe(buildIndexUrl("https://example.com", undefined));
+    });
+
+    it("strips leading/trailing slashes from basePath", () => {
+        expect(buildIndexUrl("https://example.com", "/my-org/team-skills/")).toBe(
+            "https://example.com/agents/my-org/team-skills/index.json",
+        );
+    });
+
+    it("throws when basePath attempts path traversal", () => {
+        expect(() => buildIndexUrl("https://example.com", "../escape")).toThrow(
+            "basePath must not contain path traversal segments",
+        );
+    });
+
+    it("throws when basePath is an absolute URL", () => {
+        expect(() => buildIndexUrl("https://example.com", "https://evil.example.com")).toThrow(
+            "basePath must be a relative path, not an absolute URL",
+        );
+    });
+});
+
+describe("normaliseBasePath", () => {
+    it("strips leading and trailing slashes", () => {
+        expect(normaliseBasePath("/my-org/team-skills/")).toBe("my-org/team-skills");
+    });
+
+    it("throws on an empty basePath", () => {
+        expect(() => normaliseBasePath("///")).toThrow("basePath must not be empty");
+    });
+
+    it("throws on a '..' traversal segment", () => {
+        expect(() => normaliseBasePath("my-org/../other")).toThrow(
+            "basePath must not contain path traversal segments",
+        );
+    });
+
+    it("throws on a bare '.' segment", () => {
+        expect(() => normaliseBasePath("./my-org")).toThrow("basePath must not contain path traversal segments");
+    });
+
+    it("throws on a protocol-relative value", () => {
+        expect(() => normaliseBasePath("//evil.example.com")).toThrow(
+            "basePath must be a relative path, not an absolute URL",
+        );
+    });
+
+    it("throws on an absolute URL", () => {
+        expect(() => normaliseBasePath("http://evil.example.com")).toThrow(
+            "basePath must be a relative path, not an absolute URL",
+        );
+    });
+
+    it("accepts a plain multi-segment relative path", () => {
+        expect(normaliseBasePath("Deloitte-UK-Innersource/adobe-ai-skill-library")).toBe(
+            "Deloitte-UK-Innersource/adobe-ai-skill-library",
+        );
+    });
 });
 
 describe("buildBundleUrl", () => {
@@ -96,6 +163,18 @@ describe("buildBundleUrl", () => {
 
     it("handles localhost URLs", () => {
         expect(buildBundleUrl("http://localhost:3000", "0.1.0")).toBe("http://localhost:3000/agents/0.1.0/bundle.zip");
+    });
+
+    it("inserts basePath between agents/ and the version segment when provided", () => {
+        expect(buildBundleUrl("https://example.com", "1.0.0", "my-org/team-skills")).toBe(
+            "https://example.com/agents/my-org/team-skills/1.0.0/bundle.zip",
+        );
+    });
+
+    it("is byte-identical to the no-basePath form when basePath is omitted", () => {
+        expect(buildBundleUrl("https://example.com", "1.0.0")).toBe(
+            buildBundleUrl("https://example.com", "1.0.0", undefined),
+        );
     });
 });
 
@@ -187,6 +266,21 @@ describe("fetchIndex", () => {
 
         await expect(fetchIndex("https://example.com")).rejects.toThrow(
             'Invalid index.json: missing or invalid "agents" array',
+        );
+    });
+
+    it("fetches the basePath-prefixed index when basePath is provided", async () => {
+        const mockIndex: AgentsIndex = {
+            lastUpdated: "2025-06-01T00:00:00",
+            agents: [{ version: "0.1.0", published: "2025-06-01T00:00:00" }],
+        };
+        globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => mockIndex });
+
+        await fetchIndex("https://example.com", undefined, "my-org/team-skills");
+
+        expect(globalThis.fetch).toHaveBeenCalledWith(
+            "https://example.com/agents/my-org/team-skills/index.json",
+            undefined,
         );
     });
 });
@@ -298,6 +392,12 @@ describe("buildHashUrl", () => {
             "https://cdn.example.com/my-org/agents/3.0.0/bundle.zip.sha256",
         );
     });
+
+    it("inserts basePath between agents/ and the version segment when provided", () => {
+        expect(buildHashUrl("https://example.com", "1.0.0", "my-org/team-skills")).toBe(
+            "https://example.com/agents/my-org/team-skills/1.0.0/bundle.zip.sha256",
+        );
+    });
 });
 
 // ── fetchBundleHash ──────────────────────────────────────────────────────────
@@ -375,6 +475,22 @@ describe("fetchBundleHash", () => {
 
         const result = await fetchBundleHash("https://example.com", "1.0.0");
         expect(result).toBe("a".repeat(64));
+    });
+
+    it("fetches the basePath-prefixed sidecar when basePath is provided", async () => {
+        const expectedHash = "a".repeat(64);
+        globalThis.fetch = vi.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            text: async () => `${expectedHash}  1.0.0.zip\n`,
+        });
+
+        await fetchBundleHash("https://example.com", "1.0.0", undefined, "my-org/team-skills");
+
+        expect(globalThis.fetch).toHaveBeenCalledWith(
+            "https://example.com/agents/my-org/team-skills/1.0.0/bundle.zip.sha256",
+            undefined,
+        );
     });
 });
 
@@ -619,5 +735,38 @@ describe("downloadBundle", () => {
         });
 
         await expect(downloadBundle("https://example.com")).rejects.toThrow("Failed to download bundle: 403 Forbidden");
+    });
+
+    it("resolves a basePath-qualified source's own index/bundle/hash, independent of the unprefixed stream on the same origin", async () => {
+        const communityIndex: AgentsIndex = {
+            lastUpdated: "2026-01-01T00:00:00",
+            agents: [{ version: "9.9.9", published: "2026-01-01T00:00:00" }],
+        };
+        const communityZip = Buffer.from("community zip bytes");
+        const communityHash = createHash("sha256").update(communityZip).digest("hex");
+
+        globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+            if (url === "https://example.com/agents/my-org/team-skills/index.json") {
+                return Promise.resolve({ ok: true, json: async () => communityIndex });
+            }
+            if (url === "https://example.com/agents/my-org/team-skills/9.9.9/bundle.zip") {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    arrayBuffer: async () =>
+                        communityZip.buffer.slice(communityZip.byteOffset, communityZip.byteOffset + communityZip.byteLength),
+                });
+            }
+            if (url === "https://example.com/agents/my-org/team-skills/9.9.9/bundle.zip.sha256") {
+                return Promise.resolve({ ok: true, status: 200, text: async () => `${communityHash}  9.9.9.zip\n` });
+            }
+            // The unprefixed /agents/index.json etc. must never be hit for a basePath-qualified source.
+            return Promise.reject(new Error(`Unexpected fetch URL for basePath source: ${url}`));
+        });
+
+        const result = await downloadBundle("https://example.com", undefined, undefined, "my-org/team-skills");
+
+        expect(result.version).toBe("9.9.9");
+        expect(result.sha256).toBe(communityHash);
     });
 });

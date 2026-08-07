@@ -14,7 +14,7 @@ import { importGitSkills } from './git-importer.js';
 import { downloadArtefact } from '../bundle/artefact-downloader.js';
 import { IntegrityError } from '../bundle/downloader.js';
 import { scanArtefactForSkills } from '../bundle/artefact-scanner.js';
-import { buildSourcePin, type ArtefactSkillSource, type BundleSkillSource } from '../bundle/skill-source.js';
+import { buildSourcePin, type ArtefactSkillSource, type BundleSkillSource, type InstallLayout } from '../bundle/skill-source.js';
 import type { DiscoveryDocument, DiscoverySource, SourceType, SourceStatus } from './types.js';
 
 /** A skill resolved from a discovery source, tagged with catalogue metadata. */
@@ -77,16 +77,32 @@ export async function resolveDiscoverySkills(
       switch (source.type) {
         case 'http': {
           onProgress?.(`Downloading source bundle: ${source.name}...`);
-          // For HTTP sources, the URL is the base URL for the bundle index
-          const { zipPath, version } = await downloadBundle(source.url, undefined, accessToken);
+          // For HTTP sources, the URL is the base URL for the bundle index.
+          // basePath (when set) addresses one bundle stream among several
+          // hosted under the same origin — see DiscoverySource.basePath.
+          const { zipPath, version } = await downloadBundle(source.url, undefined, accessToken, source.basePath);
           const result = await extractBundle(zipPath);
           if (result.isNew) {
             await setCurrentBundle(result.manifest.version);
           }
+          // KNOWN LIMITATION: extractBundle()/setCurrentBundle() cache and track
+          // the "current" bundle by version alone, with no source identity. Two
+          // http sources (e.g. this one and an official source on the same
+          // discovery document) that happen to publish the same version string
+          // can collide in the cache / current-bundle symlink. Tracked upstream
+          // in https://github.com/ai-agent-manager/agent-manager/issues/50,
+          // which is itself blocked on the basePath source-identity work here.
           bundleVersion = version;
 
           const contents = await scanBundle(result.bundleDir, result.manifest.agents);
-          const httpPin = buildSourcePin({ type: 'bundle', baseUrl: source.url, installLayout: 'flat' } as BundleSkillSource, version);
+          // basePath-qualified sources are namespaced so a community skill can
+          // never collide on disk with an official one sharing the same skillId;
+          // the single-stream legacy layout (no basePath) stays flat, unchanged.
+          const installLayout: InstallLayout = source.basePath ? 'namespaced' : 'flat';
+          const httpPin = buildSourcePin(
+            { type: 'bundle', baseUrl: source.url, basePath: source.basePath, installLayout } as BundleSkillSource,
+            version,
+          );
           allSkills.push(...contents.skills.map((skill) => ({ ...skill, sourcePin: httpPin, ...sourceMeta })));
           allRovoAgents.push(...contents.rovoAgents);
           break;
@@ -114,7 +130,7 @@ export async function resolveDiscoverySkills(
             installLayout: 'namespaced',
             sha256: artefactSha256,
           };
-          const download = await downloadArtefact(artefactSource);
+          const download = await downloadArtefact(artefactSource, { bearerToken: accessToken });
           const resolvedSource: ArtefactSkillSource = {
             ...artefactSource,
             version: download.version,

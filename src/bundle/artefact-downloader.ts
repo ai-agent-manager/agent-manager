@@ -194,6 +194,13 @@ export interface ArtefactDownloadResult {
 export interface ArtefactDownloadOptions {
   /** Force re-download even if already cached */
   forceUpdate?: boolean;
+  /**
+   * Bearer token for authenticated origins — mirrors the token discovery
+   * already threads to `http` bundle sources. Applied to both the artefact
+   * zip request and its `.sha256` sidecar request. Omit for public artefacts;
+   * unauthenticated behaviour is unchanged.
+   */
+  bearerToken?: string;
 }
 
 const SEMVER_RE = /^v?\d+\.\d+\.\d+(?:[-+][\w.]+)?$/;
@@ -255,11 +262,14 @@ export function buildArtefactHashUrl(artefactUrl: string): string {
  * (sidecar unavailable — publishers are not required to provide one).
  * Throws on other HTTP errors.
  */
-export async function fetchArtefactHash(artefactUrl: string): Promise<string | null> {
+export async function fetchArtefactHash(artefactUrl: string, bearerToken?: string): Promise<string | null> {
   const url = buildArtefactHashUrl(artefactUrl);
   enforceArtefactUrl(url);
 
-  const response = await fetch(url, { redirect: 'error' });
+  const response = await fetch(url, {
+    redirect: 'error',
+    ...(bearerToken ? { headers: { Authorization: `Bearer ${bearerToken}` } } : {}),
+  });
 
   if (response.status === 404 || response.status === 403) {
     return null;
@@ -341,7 +351,10 @@ export async function downloadArtefact(
 
     // Download — reject redirects to prevent cross-scheme downgrade
     const response = await fetch(source.artefactUrl, {
-      headers: { 'User-Agent': 'agentman' },
+      headers: {
+        'User-Agent': 'agentman',
+        ...(options.bearerToken ? { Authorization: `Bearer ${options.bearerToken}` } : {}),
+      },
       redirect: 'error',
     });
 
@@ -373,7 +386,7 @@ export async function downloadArtefact(
     const actualSha256 = createHash('sha256').update(new Uint8Array(buffer)).digest('hex');
 
     // Integrity verification: explicit pin takes precedence over the sidecar
-    const expectedHash = source.sha256?.toLowerCase() ?? (await fetchArtefactHash(source.artefactUrl));
+    const expectedHash = source.sha256?.toLowerCase() ?? (await fetchArtefactHash(source.artefactUrl, options.bearerToken));
     if (expectedHash) {
       try {
         await verifyBundleHash(zipPath, expectedHash);

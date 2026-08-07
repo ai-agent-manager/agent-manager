@@ -272,6 +272,24 @@ describe('fetchArtefactHash', () => {
       'Invalid hash sidecar content',
     );
   });
+
+  it('includes an Authorization header when a bearer token is provided', async () => {
+    vi.mocked(fetch).mockResolvedValue(sidecarResponse(ZIP_SHA256));
+
+    await fetchArtefactHash('https://cdn.example.com/x.zip', 'tok123');
+
+    const [, init] = vi.mocked(fetch).mock.calls[0];
+    expect((init as RequestInit).headers).toMatchObject({ Authorization: 'Bearer tok123' });
+  });
+
+  it('omits the Authorization header when no bearer token is provided', async () => {
+    vi.mocked(fetch).mockResolvedValue(sidecarResponse(ZIP_SHA256));
+
+    await fetchArtefactHash('https://cdn.example.com/x.zip');
+
+    const [, init] = vi.mocked(fetch).mock.calls[0];
+    expect((init as RequestInit | undefined)?.headers).toBeUndefined();
+  });
 });
 
 // ── downloadArtefact ──────────────────────────────────────────────────────────
@@ -500,6 +518,41 @@ describe('downloadArtefact', () => {
     expect(trackTelemetryEvent).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'artefact_download_succeeded' }),
     );
+  });
+
+  it('sends the bearer token as an Authorization header on both the zip and sidecar requests', async () => {
+    mockFetchFor(okZipResponse(), sidecarResponse(ZIP_SHA256));
+
+    await downloadArtefact(makeSource(), { bearerToken: 'tok123' });
+
+    const calls = vi.mocked(fetch).mock.calls as [string, RequestInit][];
+    const zipCall = calls.find(([url]) => url.endsWith('.zip'));
+    const sidecarCall = calls.find(([url]) => url.endsWith('.sha256'));
+
+    expect(zipCall?.[1]?.headers).toMatchObject({ Authorization: 'Bearer tok123' });
+    expect(sidecarCall?.[1]?.headers).toMatchObject({ Authorization: 'Bearer tok123' });
+  });
+
+  it('sends no Authorization header on either request when no bearer token is provided', async () => {
+    mockFetchFor(okZipResponse(), sidecarResponse(ZIP_SHA256));
+
+    await downloadArtefact(makeSource());
+
+    const calls = vi.mocked(fetch).mock.calls as [string, RequestInit][];
+    const zipCall = calls.find(([url]) => url.endsWith('.zip'));
+    const sidecarCall = calls.find(([url]) => url.endsWith('.sha256'));
+
+    expect(zipCall?.[1]?.headers).not.toHaveProperty('Authorization');
+    expect(sidecarCall?.[1]?.headers).toBeUndefined();
+  });
+
+  it('still succeeds for public artefacts when no bearer token is provided (unauthenticated behaviour unchanged)', async () => {
+    mockFetchFor(okZipResponse(), sidecarResponse(ZIP_SHA256));
+
+    const result = await downloadArtefact(makeSource());
+
+    expect(result.isNew).toBe(true);
+    expect(result.sha256).toBe(ZIP_SHA256);
   });
 });
 

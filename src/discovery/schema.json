@@ -81,6 +81,11 @@
             "format": "uri",
             "description": "Location of the source (bundle URL for http, repository URL for git)"
           },
+          "basePath": {
+            "type": "string",
+            "pattern": "^[^/].*[^/]$|^[^/]$",
+            "description": "http sources only. Path prefix inserted between 'agents/' and 'index.json'/'<version>/bundle.zip', letting several bundle streams live under one origin. No leading/trailing slashes; '..' segments and absolute URLs are rejected at resolve time."
+          },
           "status": {
             "type": "string",
             "enum": ["official", "community"],

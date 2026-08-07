@@ -37,24 +37,62 @@ function stripTrailingSlashes(value: string): string {
 }
 
 /**
- * Build the URL for the agents index.json.
+ * Validate and normalise a `basePath` prefix for use in bundle URL construction.
+ * Strips leading/trailing slashes. Throws on values that would let a discovery
+ * document redirect requests off the configured origin: absolute URLs and
+ * `..` path-traversal segments.
  */
-export function buildIndexUrl(baseUrl: string): string {
-    return `${stripTrailingSlashes(baseUrl)}/agents/index.json`;
+export function normaliseBasePath(basePath: string): string {
+    // Checked on the raw value: stripping leading slashes first would turn a
+    // protocol-relative "//evil.example.com" into the innocuous-looking
+    // "evil.example.com" before this check ever saw the double slash. The
+    // third character must be non-slash (an actual host) so an all-slashes
+    // value like "///" falls through to the empty-value check below instead.
+    if (/^[a-z][a-z0-9+.-]*:/i.test(basePath) || /^\/\/[^/]/.test(basePath)) {
+        throw new Error(`basePath must be a relative path, not an absolute URL: ${basePath}`);
+    }
+
+    const stripped = basePath.replace(/^\/+/, "").replace(/\/+$/, "");
+
+    if (!stripped) {
+        throw new Error("basePath must not be empty");
+    }
+
+    if (stripped.split("/").some((segment) => segment === "." || segment === "..")) {
+        throw new Error(`basePath must not contain path traversal segments: ${basePath}`);
+    }
+
+    return stripped;
+}
+
+/** Build the `agents/[<basePath>/]` prefix shared by the index, bundle, and hash URLs. */
+function buildAgentsPrefix(baseUrl: string, basePath?: string): string {
+    const base = `${stripTrailingSlashes(baseUrl)}/agents`;
+    return basePath ? `${base}/${normaliseBasePath(basePath)}` : base;
+}
+
+/**
+ * Build the URL for the agents index.json.
+ *
+ * `basePath` addresses a bundle stream nested under `agents/` on an origin
+ * that hosts several independent sources (see DiscoverySource.basePath).
+ */
+export function buildIndexUrl(baseUrl: string, basePath?: string): string {
+    return `${buildAgentsPrefix(baseUrl, basePath)}/index.json`;
 }
 
 /**
  * Build the URL for a versioned bundle zip.
  */
-export function buildBundleUrl(baseUrl: string, version: string): string {
-    return `${stripTrailingSlashes(baseUrl)}/agents/${version}/bundle.zip`;
+export function buildBundleUrl(baseUrl: string, version: string, basePath?: string): string {
+    return `${buildAgentsPrefix(baseUrl, basePath)}/${version}/bundle.zip`;
 }
 
 /**
  * Build the URL for a bundle's SHA-256 hash sidecar file.
  */
-export function buildHashUrl(baseUrl: string, version: string): string {
-    return `${stripTrailingSlashes(baseUrl)}/agents/${version}/bundle.zip.sha256`;
+export function buildHashUrl(baseUrl: string, version: string, basePath?: string): string {
+    return `${buildAgentsPrefix(baseUrl, basePath)}/${version}/bundle.zip.sha256`;
 }
 
 /**
@@ -82,8 +120,13 @@ export class IntegrityError extends Error {
  *
  * Throws on other HTTP errors (500, network failures, etc.).
  */
-export async function fetchBundleHash(baseUrl: string, version: string, bearerToken?: string): Promise<string | null> {
-    const url = buildHashUrl(baseUrl, version);
+export async function fetchBundleHash(
+    baseUrl: string,
+    version: string,
+    bearerToken?: string,
+    basePath?: string,
+): Promise<string | null> {
+    const url = buildHashUrl(baseUrl, version, basePath);
 
     const response = await fetch(url, authFetchOpts(bearerToken));
 
@@ -123,8 +166,8 @@ export async function verifyBundleHash(zipPath: string, expectedHash: string): P
 /**
  * Fetch the agents index.json to discover available bundle versions.
  */
-export async function fetchIndex(baseUrl: string, bearerToken?: string): Promise<AgentsIndex> {
-    const url = buildIndexUrl(baseUrl);
+export async function fetchIndex(baseUrl: string, bearerToken?: string, basePath?: string): Promise<AgentsIndex> {
+    const url = buildIndexUrl(baseUrl, basePath);
 
     const response = await fetch(url, authFetchOpts(bearerToken));
     if (!response.ok) {
@@ -167,7 +210,12 @@ export function getLatestVersion(index: AgentsIndex): string {
  * If the hash doesn't match, the downloaded ZIP is deleted and an
  * `IntegrityError` is thrown.
  */
-export async function downloadBundle(baseUrl: string, version?: string, bearerToken?: string): Promise<DownloadResult> {
+export async function downloadBundle(
+    baseUrl: string,
+    version?: string,
+    bearerToken?: string,
+    basePath?: string,
+): Promise<DownloadResult> {
     const requestType = version ? "specific" : "latest";
     let targetVersion = version ?? "latest";
     const bundleEndpoint = getBundleEndpointTelemetryValue(baseUrl);
@@ -184,11 +232,11 @@ export async function downloadBundle(baseUrl: string, version?: string, bearerTo
 
     try {
         if (!version) {
-            const index = await fetchIndex(baseUrl, bearerToken);
+            const index = await fetchIndex(baseUrl, bearerToken, basePath);
             targetVersion = getLatestVersion(index);
         }
 
-        const url = buildBundleUrl(baseUrl, targetVersion);
+        const url = buildBundleUrl(baseUrl, targetVersion, basePath);
         const tempDir = getTempDir();
         await mkdir(tempDir, { recursive: true });
 
@@ -203,7 +251,7 @@ export async function downloadBundle(baseUrl: string, version?: string, bearerTo
         let sha256: string | null = null;
 
         try {
-            const expectedHash = await fetchBundleHash(baseUrl, targetVersion, bearerToken);
+            const expectedHash = await fetchBundleHash(baseUrl, targetVersion, bearerToken, basePath);
 
             if (expectedHash) {
                 await verifyBundleHash(zipPath, expectedHash);

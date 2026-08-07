@@ -79,6 +79,12 @@ export interface BundleSkillSource {
   type: 'bundle';
   /** Base URL of a CDN-hosted bundle (legacy url source). */
   baseUrl?: string;
+  /**
+   * Path prefix identifying one bundle stream among several hosted under the
+   * same baseUrl (see DiscoverySource.basePath). Absent for the single-stream
+   * legacy layout.
+   */
+  basePath?: string;
   /** Absolute path to a local bundle directory (legacy directory source). */
   dirPath?: string;
   installLayout: InstallLayout;
@@ -117,6 +123,8 @@ export interface SkillSourcePin {
   // Bundle fields (legacy)
   bundleVersion?: string;
   bundleBaseUrl?: string;
+  /** Path prefix distinguishing this bundle stream from others on the same bundleBaseUrl. */
+  bundleBasePath?: string;
 }
 
 // ── Type guards ───────────────────────────────────────────────────────────────
@@ -353,6 +361,7 @@ export function buildSourcePin(
     ...base,
     bundleVersion,
     ...(source.baseUrl ? { bundleBaseUrl: source.baseUrl } : {}),
+    ...(source.basePath ? { bundleBasePath: source.basePath } : {}),
   };
 }
 
@@ -517,9 +526,30 @@ export function deriveArtefactNamespace(artefactUrl: string): string {
 }
 
 /**
+ * Derive the install namespace for a bundle (http) source: "<sanitised-host>[/<basePath-segments…>]".
+ *
+ * Only reached for `basePath`-qualified http sources — the single-stream
+ * legacy bundle layout stays on installLayout 'flat' and never calls this
+ * (see deriveInstallNamespace). Without the host+basePath split, two
+ * basePath-qualified sources on different origins that happen to share a
+ * basePath value would collide on install.
+ */
+export function deriveBundleNamespace(baseUrl: string, basePath?: string): string {
+  const parsed = new URL(baseUrl);
+  let host: string;
+  try { host = decodeURIComponent(parsed.hostname); } catch { host = parsed.hostname; }
+  const hostSegment = sanitiseNamespaceSegment(host);
+
+  if (!basePath) return hostSegment;
+
+  const segments = basePath.split('/').filter(Boolean).map(sanitiseNamespaceSegment);
+  return [hostSegment, ...segments].join('/');
+}
+
+/**
  * Derive the install namespace from a persisted SkillSourcePin.
- * Returns null for flat layouts (bundle sources and any source where
- * installLayout is explicitly set to 'flat').
+ * Returns null for flat layouts (legacy single-stream bundle sources and any
+ * source where installLayout is explicitly set to 'flat').
  */
 export function deriveInstallNamespace(pin: SkillSourcePin): string | null {
   if (pin.installLayout !== 'namespaced') return null;
@@ -528,6 +558,9 @@ export function deriveInstallNamespace(pin: SkillSourcePin): string | null {
   }
   if (pin.sourceType === 'artefact' && pin.artefactUrl) {
     return deriveArtefactNamespace(pin.artefactUrl);
+  }
+  if (pin.sourceType === 'bundle' && pin.bundleBaseUrl) {
+    return deriveBundleNamespace(pin.bundleBaseUrl, pin.bundleBasePath);
   }
   return null;
 }
