@@ -84,7 +84,8 @@ OIDC discovery: [http://localhost:8080/oidc/.well-known/openid-configuration](ht
 | Field | Value |
 |-------|--------|
 | `api.baseUrl` | `http://localhost:8080` — same mock host as content |
-| `api.features.projects` | `true` — enables My Projects when authenticated |
+| `projects.enabled` | `true` — enables My Projects when authenticated |
+| `projects.exclusiveSource` | `false` in the mock (set `true` to constrain Search & Install / headless to membership allowlists) |
 | `auth.required` | `true` |
 | `auth.oidcDiscoveryUrl` | `http://localhost:8080/oidc/.well-known/openid-configuration` |
 | `auth.clientId` | `agent-manager` (public client; PKCE, no secret) |

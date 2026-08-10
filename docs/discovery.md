@@ -14,10 +14,11 @@ When a user provides a base URL to agent-manager, it fetches the discovery docum
 {
   "version": "1",
   "api": {
-    "baseUrl": "https://api.example.com",
-    "features": {
-      "projects": true
-    }
+    "baseUrl": "https://api.example.com"
+  },
+  "projects": {
+    "enabled": true,
+    "exclusiveSource": false
   },
   "auth": {
     "required": true,
@@ -59,8 +60,9 @@ When a user provides a base URL to agent-manager, it fetches the discovery docum
 | `version` | `"1"` | Yes | Schema version |
 | `api` | object | No | Authenticated backend API configuration (omit if no API is available) |
 | `api.baseUrl` | string (URI) | Yes (if `api` present) | Base URL of the authenticated REST API (e.g. `https://api.example.com`). Never hardcoded — always taken from the discovery document (or `API_BASE_URL`). |
-| `api.features` | object | No | Feature flags for API-backed UI. Only flags Agent Manager consumes are defined. |
-| `api.features.projects` | boolean | No | When `true`, enable **My Projects** (also requires auth and a resolved API base URL) |
+| `projects` | object | No | Projects feature configuration (omit or set `enabled: false` to hide My Projects) |
+| `projects.enabled` | boolean | Yes (if `projects` present) | When `true`, enable **My Projects** (also requires auth and a resolved API base URL) |
+| `projects.exclusiveSource` | boolean | No | When `true` (default `false`), Search & Install and headless installs are limited to skills/agents permitted by at least one project the caller belongs to |
 | `auth` | object | No | Authentication configuration (omit if no auth required) |
 | `auth.required` | boolean | Yes (if auth present) | Whether authentication is needed to access skills |
 | `auth.oidcDiscoveryUrl` | string (URI) | Yes (if auth.required=true) | URL to the standard OIDC discovery document |
@@ -339,12 +341,21 @@ API_BASE_URL=https://api.example.com npx -y @ai-agent-manager/cli@latest https:/
 
 ### My Projects
 
-When `auth.required` is `true`, the user has an auth session (successful login or usable stored tokens), `api.features.projects` is `true`, and an API base URL is available (env or `api.baseUrl`), the main menu shows **My Projects**. That screen:
+When `auth.required` is `true`, the user has an auth session (successful login or usable stored tokens), `projects.enabled` is `true`, and an API base URL is available (env or `api.baseUrl`), the main menu shows **My Projects**. That screen:
 
 1. Calls `GET {apiBaseUrl}/projects` to list projects the caller can access (bearer refreshed from the token store immediately before the request).
 2. On selection, calls `GET {apiBaseUrl}/projects/{projectId}` for details (same refresh-on-use behaviour).
 3. Shows the project name and description (when present).
 4. Offers **Install Agent Skills** and **Provision Rovo Agents** (same flows as the main menu). When a project restricts agents or skills, the catalogues shown in those flows are filtered client-side using `allowedAgentIds` / `allowedSkillIds` (IDs are catalogue directory names). Unrestricted projects see the full catalogue.
 
-This matches the authenticated backend project API (including project agent/skill restriction fields). Publishers that do not expose projects should omit `api` or set `api.features.projects` to `false` (operators can still set `API_BASE_URL` to override the host when the feature is enabled).
+This matches the authenticated backend project API (including project agent/skill restriction fields). Publishers that do not expose projects should omit the `projects` block or set `projects.enabled` to `false` (operators can still set `API_BASE_URL` to override the host when the feature is enabled).
+
+### Exclusive source (`projects.exclusiveSource`)
+
+When `projects.enabled` is `true` and `exclusiveSource` is `true`:
+
+- **Search & Install** shows only skills and Rovo agents permitted by at least one of the caller's projects (union of project allowlists). The highlighted detail row lists the project name(s) that permit that item.
+- **Headless** installs fail if any requested skill is not permitted by the caller's project memberships (or is absent from the exclusive catalogue). Authentication is required so memberships can be loaded (`AGENTMAN_ACCESS_TOKEN` or a stored session).
+
+When `exclusiveSource` is omitted or `false`, global Search & Install and headless installs use the full discovery catalogue (project allowlists still apply inside My Projects flows).
 

@@ -1,4 +1,5 @@
-export { apiRequest, normaliseApiBaseUrl, resolveApiBaseUrl, isProjectsFeatureEnabled, canAccessMyProjects, ApiError } from './client.js';
+export { apiRequest, normaliseApiBaseUrl, resolveApiBaseUrl, isProjectsFeatureEnabled, isProjectsExclusiveSource, canAccessMyProjects, ApiError } from './client.js';
+export type { ApiAuth } from './client.js';
 export { listProjects, getProject } from './projects.js';
 export {
   normaliseProjectRestrictions,
@@ -6,5 +7,11 @@ export {
   isSkillAllowed,
   filterSkillsForProject,
   filterAgentsForProject,
+  isSkillAllowedByMembership,
+  isAgentAllowedByMembership,
+  filterSkillsForMembership,
+  filterAgentsForMembership,
+  projectNamesAllowingAsset,
+  annotateCatalogueWithProjects,
 } from './project-restrictions.js';
 export type { Project, ProjectRestrictions } from './types.js';

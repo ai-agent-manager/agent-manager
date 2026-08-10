@@ -18,6 +18,7 @@ const {
   normaliseApiBaseUrl,
   resolveApiBaseUrl,
   isProjectsFeatureEnabled,
+  isProjectsExclusiveSource,
   canAccessMyProjects,
   ApiError,
 } = await import('../../../src/api/client.js');
@@ -83,29 +84,39 @@ describe('resolveApiBaseUrl', () => {
 });
 
 describe('isProjectsFeatureEnabled', () => {
-  it('is true only when projects is explicitly true', () => {
-    expect(isProjectsFeatureEnabled({ projects: true })).toBe(true);
-    expect(isProjectsFeatureEnabled({ projects: false })).toBe(false);
+  it('is true only when projects.enabled is explicitly true', () => {
+    expect(isProjectsFeatureEnabled({ enabled: true })).toBe(true);
+    expect(isProjectsFeatureEnabled({ enabled: false })).toBe(false);
     expect(isProjectsFeatureEnabled({})).toBe(false);
     expect(isProjectsFeatureEnabled(undefined)).toBe(false);
+  });
+});
+
+describe('isProjectsExclusiveSource', () => {
+  it('requires projects.enabled and exclusiveSource true', () => {
+    expect(isProjectsExclusiveSource({ enabled: true, exclusiveSource: true })).toBe(true);
+    expect(isProjectsExclusiveSource({ enabled: true, exclusiveSource: false })).toBe(false);
+    expect(isProjectsExclusiveSource({ enabled: true })).toBe(false);
+    expect(isProjectsExclusiveSource({ enabled: false, exclusiveSource: true })).toBe(false);
+    expect(isProjectsExclusiveSource(undefined)).toBe(false);
   });
 });
 
 describe('canAccessMyProjects', () => {
   const ready = {
     authRequired: true,
-    features: { projects: true },
+    projects: { enabled: true },
     apiBaseUrl: 'https://api.example.com',
     authSession,
   };
 
-  it('is true when auth, feature flag, API URL, and session are all present', () => {
+  it('is true when auth, projects.enabled, API URL, and session are all present', () => {
     expect(canAccessMyProjects(ready)).toBe(true);
   });
 
   it('is false when the projects feature is disabled', () => {
-    expect(canAccessMyProjects({ ...ready, features: { projects: false } })).toBe(false);
-    expect(canAccessMyProjects({ ...ready, features: undefined })).toBe(false);
+    expect(canAccessMyProjects({ ...ready, projects: { enabled: false } })).toBe(false);
+    expect(canAccessMyProjects({ ...ready, projects: undefined })).toBe(false);
   });
 
   it('is false when auth is not required or missing', () => {

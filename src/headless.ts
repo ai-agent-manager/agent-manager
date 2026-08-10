@@ -12,6 +12,13 @@ import { buildPinForDirectorySource, deriveSkillInstallKey, type SkillSourcePin 
 export { buildPinForDirectorySource } from './bundle/skill-source.js';
 import { resolveDiscoverySkills } from './discovery/index.js';
 import { authenticate, type AuthSession } from './auth/index.js';
+import {
+  isProjectsExclusiveSource,
+  isSkillAllowedByMembership,
+  listProjects,
+  resolveApiBaseUrl,
+  type ApiAuth,
+} from './api/index.js';
 import { createSkillProvisioner, formatSupportedSkillToolIds } from './provisioners/registry.js';
 import type { InstallScope } from './config/scopes.js';
 
@@ -148,6 +155,46 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
 
     allSkills = result.skills;
     bundleVersion = result.bundleVersion ?? "discovery";
+
+    if (isProjectsExclusiveSource(source.discovery.projects)) {
+      const apiBaseUrl = resolveApiBaseUrl(source.discovery.api?.baseUrl);
+      if (!apiBaseUrl) {
+        console.error(
+          '\n[agentman] ERROR: projects.exclusiveSource is enabled but no API base URL is configured.\n' +
+            '  Set api.baseUrl in the discovery document or API_BASE_URL.\n',
+        );
+        process.exit(1);
+      }
+
+      let apiAuth: ApiAuth | undefined;
+      if (accessToken) {
+        apiAuth = { bearerToken: accessToken };
+      } else if (authSession) {
+        apiAuth = authSession;
+      } else {
+        console.error(
+          '\n[agentman] ERROR: projects.exclusiveSource requires authentication to resolve project memberships.\n' +
+            '  Set AGENTMAN_ACCESS_TOKEN or complete interactive login first.\n',
+        );
+        process.exit(1);
+      }
+
+      console.log('[agentman] Loading project memberships (exclusiveSource)...');
+      const membershipProjects = await listProjects(apiBaseUrl, apiAuth);
+      const forbidden = allSkills.filter(
+        (skill) => !isSkillAllowedByMembership(membershipProjects, skill.dirName),
+      );
+      // Narrow the available catalogue before matching config skill names.
+      allSkills = allSkills.filter((skill) =>
+        isSkillAllowedByMembership(membershipProjects, skill.dirName),
+      );
+      if (forbidden.length > 0) {
+        console.log(
+          `[agentman] Exclusive catalogue: ${allSkills.length} skill(s) permitted by project membership ` +
+            `(${forbidden.length} excluded)`,
+        );
+      }
+    }
   } else {
     let bundleDir: string;
 
@@ -225,6 +272,19 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
       console.warn(`  - ${name}`);
     }
     console.warn(`\n  Available skills: ${[...availableSkills.keys()].join(", ")}`);
+  }
+
+  if (
+    source.type === 'discovery' &&
+    isProjectsExclusiveSource(source.discovery.projects) &&
+    notFound.length > 0
+  ) {
+    console.error(
+      `\n[agentman] ERROR: projects.exclusiveSource is enabled — refusing to install skills that are ` +
+        `not permitted by your project memberships (or were not found in the exclusive catalogue):\n` +
+        notFound.map((name) => `  - ${name}`).join('\n'),
+    );
+    process.exit(1);
   }
 
   if (toInstall.length === 0) {

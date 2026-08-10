@@ -172,12 +172,15 @@ describe('fetchDiscoveryDocument', () => {
     );
   });
 
-  it('returns a document with api.baseUrl and features.projects', async () => {
+  it('returns a document with api.baseUrl and projects.enabled', async () => {
     const docWithApi: DiscoveryDocument = {
       ...validDocumentWithAuth,
       api: {
         baseUrl: 'https://api.example.com',
-        features: { projects: true },
+      },
+      projects: {
+        enabled: true,
+        exclusiveSource: true,
       },
     };
     mockFetch.mockResolvedValueOnce({
@@ -187,7 +190,8 @@ describe('fetchDiscoveryDocument', () => {
 
     const result = await fetchDiscoveryDocument('https://example.com');
     expect(result.api?.baseUrl).toBe('https://api.example.com');
-    expect(result.api?.features?.projects).toBe(true);
+    expect(result.projects?.enabled).toBe(true);
+    expect(result.projects?.exclusiveSource).toBe(true);
   });
 
   it('rejects an invalid api.baseUrl', async () => {
@@ -204,7 +208,7 @@ describe('fetchDiscoveryDocument', () => {
     ).rejects.toThrow('validation failed');
   });
 
-  it('accepts api without a features block', async () => {
+  it('accepts api without a projects block', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -215,17 +219,35 @@ describe('fetchDiscoveryDocument', () => {
 
     const result = await fetchDiscoveryDocument('https://example.com');
     expect(result.api?.baseUrl).toBe('https://api.example.com');
-    expect(result.api?.features).toBeUndefined();
+    expect(result.projects).toBeUndefined();
   });
 
-  it('rejects unknown api.features keys', async () => {
+  it('rejects unknown projects keys', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ...validDocument,
+        projects: {
+          enabled: true,
+          exclusiveSource: true,
+          teams: true,
+        },
+      }),
+    });
+
+    await expect(
+      fetchDiscoveryDocument('https://example.com'),
+    ).rejects.toThrow('validation failed');
+  });
+
+  it('rejects the legacy api.features.projects field', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
         ...validDocument,
         api: {
           baseUrl: 'https://api.example.com',
-          features: { projects: true, teams: true },
+          features: { projects: true },
         },
       }),
     });

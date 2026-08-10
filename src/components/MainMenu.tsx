@@ -12,7 +12,7 @@ export type MainMenuAction =
 
 interface MainMenuProps {
     hasBundleContents: boolean;
-    /** Show My Projects when authenticated, api.features.projects is enabled, and an API base URL is available. */
+    /** Show My Projects when authenticated, projects.enabled is true, and an API base URL is available. */
     hasProjectsAccess?: boolean;
     onSelect: (action: MainMenuAction) => void;
 }

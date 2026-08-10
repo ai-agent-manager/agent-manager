@@ -25,6 +25,11 @@ interface BaseCatalogueEntry {
   skillId: string;
   displayName: string;
   description: string;
+  /**
+   * When Search & Install is constrained by `projects.exclusiveSource`, the
+   * names of membership projects that permit this item.
+   */
+  projectNames?: string[];
 }
 
 /** A skill entry: one identity offered by one or more installable sources. */

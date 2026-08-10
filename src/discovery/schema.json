@@ -20,17 +20,23 @@
           "type": "string",
           "format": "uri",
           "description": "Base URL of the authenticated REST API (e.g. https://api.example.com). Can be overridden by API_BASE_URL."
+        }
+      },
+      "additionalProperties": false
+    },
+    "projects": {
+      "type": "object",
+      "description": "Projects feature. Omit or set enabled false to hide My Projects.",
+      "required": ["enabled"],
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "When true, enable My Projects (requires auth and a resolved API base URL)."
         },
-        "features": {
-          "type": "object",
-          "description": "Feature flags for API-backed UI. Only flags consumed by Agent Manager are defined here.",
-          "properties": {
-            "projects": {
-              "type": "boolean",
-              "description": "When true, enable My Projects (requires auth and a resolved API base URL)."
-            }
-          },
-          "additionalProperties": false
+        "exclusiveSource": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, Search & Install and headless installs are limited to skills/agents permitted by the caller's project memberships."
         }
       },
       "additionalProperties": false

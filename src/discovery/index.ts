@@ -16,7 +16,7 @@ export type {
   DiscoveryDocument,
   DiscoveryAuth,
   DiscoveryApi,
-  DiscoveryApiFeatures,
+  DiscoveryProjects,
   DiscoverySource,
   HttpDiscoverySource,
   GitDiscoverySource,

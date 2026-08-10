@@ -1,10 +1,11 @@
 {
   "version": "1",
   "api": {
-    "baseUrl": "http://localhost:8080",
-    "features": {
-      "projects": true
-    }
+    "baseUrl": "http://localhost:8080"
+  },
+  "projects": {
+    "enabled": true,
+    "exclusiveSource": false
   },
   "auth": {
     "required": true,

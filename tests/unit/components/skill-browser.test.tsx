@@ -153,6 +153,26 @@ describe('SkillBrowser', () => {
     });
   });
 
+  it('shows membership project names on the highlighted detail row', async () => {
+    const annotated = buildCatalogue([
+      makeSkill({
+        dirName: 'shared-skill',
+        sourceName: 'acme-repo',
+        meta: { name: 'Shared Skill', description: 'Used by two projects' },
+      }),
+    ]).map((entry) => ({ ...entry, projectNames: ['Alpha', 'Beta'] }));
+
+    const { lastFrame } = render(
+      <SkillBrowser entries={annotated} onSelect={() => {}} onBack={() => {}} />,
+    );
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain('Shared Skill');
+    });
+
+    expect(lastFrame()).toContain('Projects: Alpha, Beta');
+    expect(lastFrame()).toContain('Used by two projects');
+  });
+
   describe('viewport windowing', () => {
     // A frame taller than the terminal cannot be fully cleared on re-render,
     // which corrupts the display — so the list must be windowed.

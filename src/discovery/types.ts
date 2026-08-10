@@ -69,10 +69,18 @@ export interface DiscoveryTelemetry {
   siteId: string;
 }
 
-/** Feature flags for the authenticated backend API. Only list flags Agent Manager uses. */
-export interface DiscoveryApiFeatures {
-  /** When true, My Projects is available (requires auth + a resolved API base URL). */
-  projects?: boolean;
+/**
+ * Projects feature configuration.
+ * When present with `enabled: true`, My Projects is available (requires auth + API base URL).
+ */
+export interface DiscoveryProjects {
+  /** When true, enable My Projects in the interactive menu. */
+  enabled: boolean;
+  /**
+   * When true, Search & Install (and headless installs) are limited to skills/agents
+   * permitted by at least one project the user belongs to. Defaults to false.
+   */
+  exclusiveSource?: boolean;
 }
 
 /** Authenticated backend API configuration from the discovery document. */
@@ -82,8 +90,6 @@ export interface DiscoveryApi {
    * Can be overridden by the `API_BASE_URL` environment variable.
    */
   baseUrl: string;
-  /** Optional feature flags. Omit or set `projects: false` to hide My Projects. */
-  features?: DiscoveryApiFeatures;
 }
 
 export interface DiscoveryDocument {
@@ -91,6 +97,11 @@ export interface DiscoveryDocument {
   version: '1';
   /** Authenticated backend API configuration. Omit if no API is available. */
   api?: DiscoveryApi;
+  /**
+   * Projects feature. Omit or set `enabled: false` to hide My Projects.
+   * Use `exclusiveSource: true` to constrain Search & Install / headless to membership allowlists.
+   */
+  projects?: DiscoveryProjects;
   /** Authentication configuration. Omit if no auth required. */
   auth?: DiscoveryAuth;
   /** Telemetry configuration. Omit to leave telemetry unconfigured. */

@@ -43,28 +43,39 @@ export function resolveApiBaseUrl(
 
 /**
  * Whether the discovery document enables the My Projects feature.
- * Requires an explicit `api.features.projects: true`.
+ * Requires an explicit `projects.enabled: true`.
  */
 export function isProjectsFeatureEnabled(
-  features?: { projects?: boolean },
+  projects?: { enabled?: boolean } | null,
 ): boolean {
-  return features?.projects === true;
+  return projects?.enabled === true;
+}
+
+/**
+ * Whether Search & Install / headless must be limited to the caller's
+ * project membership allowlists (`projects.exclusiveSource: true`).
+ * Only meaningful when projects are enabled.
+ */
+export function isProjectsExclusiveSource(
+  projects?: { enabled?: boolean; exclusiveSource?: boolean } | null,
+): boolean {
+  return isProjectsFeatureEnabled(projects) && projects?.exclusiveSource === true;
 }
 
 /**
  * Whether My Projects should appear in the main menu.
- * Requires auth, an explicit projects feature flag, a resolved API base URL,
+ * Requires auth, `projects.enabled`, a resolved API base URL,
  * and an established auth session (tokens may still be refreshed on use).
  */
 export function canAccessMyProjects(input: {
   authRequired?: boolean;
-  features?: { projects?: boolean };
+  projects?: { enabled?: boolean } | null;
   apiBaseUrl?: string;
   authSession?: AuthSession | null;
 }): boolean {
   return Boolean(
     input.authRequired &&
-      isProjectsFeatureEnabled(input.features) &&
+      isProjectsFeatureEnabled(input.projects) &&
       input.apiBaseUrl &&
       input.authSession,
   );
@@ -117,39 +128,52 @@ async function fetchJson<T>(
 }
 
 /**
+ * Auth for API calls: a discovery session (store-backed refresh) or a static
+ * bearer (e.g. AGENTMAN_ACCESS_TOKEN in headless/CI).
+ */
+export type ApiAuth = AuthSession | { bearerToken: string };
+
+function isAuthSession(auth: ApiAuth): auth is AuthSession {
+  return 'discoveryBaseUrl' in auth && 'auth' in auth;
+}
+
+async function resolveApiBearer(auth: ApiAuth, forceRefresh = false): Promise<string> {
+  if (!isAuthSession(auth)) {
+    return auth.bearerToken;
+  }
+  if (forceRefresh) {
+    return getValidBearerToken(auth.discoveryBaseUrl, auth.auth, { forceRefresh: true });
+  }
+  return getValidBearerToken(auth.discoveryBaseUrl, auth.auth);
+}
+
+/**
  * Perform an authenticated JSON request against the API base URL.
- * Resolves a fresh bearer token before the request; on HTTP 401, force-refreshes
- * once and retries.
+ * Resolves a fresh bearer token before the request; on HTTP 401 with a session,
+ * force-refreshes once and retries. Static bearers are not refreshed.
  */
 export async function apiRequest<T>(
   apiBaseUrl: string,
   path: string,
-  authSession: AuthSession,
+  auth: ApiAuth,
   options: RequestInit = {},
 ): Promise<T> {
   const base = normaliseApiBaseUrl(apiBaseUrl);
   const normalisedPath = path.startsWith('/') ? path : `/${path}`;
   const url = `${base}${normalisedPath}`;
 
-  const bearerToken = await getValidBearerToken(
-    authSession.discoveryBaseUrl,
-    authSession.auth,
-  );
+  const bearerToken = await resolveApiBearer(auth);
 
   try {
     const { data } = await fetchJson<T>(url, path, bearerToken, options);
     return data as T;
   } catch (err) {
-    if (!(err instanceof ApiError) || err.status !== 401) {
+    if (!(err instanceof ApiError) || err.status !== 401 || !isAuthSession(auth)) {
       throw err;
     }
   }
 
-  const refreshed = await getValidBearerToken(
-    authSession.discoveryBaseUrl,
-    authSession.auth,
-    { forceRefresh: true },
-  );
+  const refreshed = await resolveApiBearer(auth, true);
   const { data } = await fetchJson<T>(url, path, refreshed, options);
   return data as T;
 }

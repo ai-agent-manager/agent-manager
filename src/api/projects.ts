@@ -3,7 +3,7 @@
  * via the backend REST API (`GET /projects`, `GET /projects/{projectId}`).
  */
 
-import type { AuthSession } from '../auth/index.js';
+import type { ApiAuth } from './client.js';
 import { apiRequest, ApiError } from './client.js';
 import { normaliseProjectRestrictions } from './project-restrictions.js';
 import type { Project } from './types.js';
@@ -14,9 +14,9 @@ import type { Project } from './types.js';
  */
 export async function listProjects(
   apiBaseUrl: string,
-  authSession: AuthSession,
+  auth: ApiAuth,
 ): Promise<Project[]> {
-  const projects = await apiRequest<Project[]>(apiBaseUrl, '/projects', authSession);
+  const projects = await apiRequest<Project[]>(apiBaseUrl, '/projects', auth);
   return projects.map(normaliseProjectRestrictions);
 }
 
@@ -26,14 +26,14 @@ export async function listProjects(
  */
 export async function getProject(
   apiBaseUrl: string,
-  authSession: AuthSession,
+  auth: ApiAuth,
   projectId: string,
 ): Promise<Project | null> {
   try {
     const project = await apiRequest<Project>(
       apiBaseUrl,
       `/projects/${encodeURIComponent(projectId)}`,
-      authSession,
+      auth,
     );
     return normaliseProjectRestrictions(project);
   } catch (err) {

@@ -40,9 +40,14 @@ import { featureFlags } from "./lib/feature-flags.js";
 import { resolveDiscoverySkills, buildUnifiedCatalogue, type ResolvedSkill } from "./discovery/index.js";
 import { buildPinForDirectorySource, buildSourcePin, type BundleSkillSource } from "./bundle/skill-source.js";
 import {
+    annotateCatalogueWithProjects,
     canAccessMyProjects,
+    filterAgentsForMembership,
     filterAgentsForProject,
+    filterSkillsForMembership,
     filterSkillsForProject,
+    isProjectsExclusiveSource,
+    listProjects,
     resolveApiBaseUrl,
     type Project,
 } from "./api/index.js";
@@ -191,6 +196,11 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
     const [projectContext, setProjectContext] = useState<Project | null>(null);
     /** Re-open this project detail after returning from a project-scoped install. */
     const [resumeProjectId, setResumeProjectId] = useState<string | null>(null);
+    /**
+     * Membership projects for `projects.exclusiveSource` filtering of global
+     * Search & Install. Null until loaded (or when exclusiveSource is off).
+     */
+    const [membershipProjects, setMembershipProjects] = useState<Project[] | null>(null);
 
     const bundleTelemetryProps: Record<string, TelemetryValue> = source ? getBundleSourceTelemetryProperties(source) : {};
 
@@ -207,6 +217,44 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
         setSelectedRovoAgent(null);
         setScreen("main-menu");
     }, []);
+
+    const discoveryProjectsConfig =
+        source?.type === "discovery" ? source.discovery.projects : undefined;
+    const exclusiveSource = isProjectsExclusiveSource(discoveryProjectsConfig);
+    const apiBaseUrl =
+        source?.type === "discovery"
+            ? resolveApiBaseUrl(source.discovery.api?.baseUrl)
+            : undefined;
+
+    useEffect(() => {
+        if (!exclusiveSource || !apiBaseUrl || !authSession) {
+            setMembershipProjects(null);
+            return;
+        }
+
+        let cancelled = false;
+        (async () => {
+            try {
+                const projects = await listProjects(apiBaseUrl, authSession);
+                if (!cancelled) {
+                    setMembershipProjects(projects);
+                }
+            } catch (error) {
+                if (!cancelled) {
+                    setMembershipProjects([]);
+                    setWarning(
+                        `Could not load project memberships for exclusive catalogue filtering:\n${
+                            error instanceof Error ? error.message : String(error)
+                        }`,
+                    );
+                }
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [exclusiveSource, apiBaseUrl, authSession]);
 
     const leaveInstallFlow = useCallback(() => {
         if (projectContext) {
@@ -540,23 +588,35 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
             sourceName: "bundle",
             sourceType: "http" as const,
         }));
-    const projectSkills = projectContext
-        ? filterSkillsForProject(catalogueSkills, projectContext)
-        : catalogueSkills;
-    const projectRovoAgents = projectContext
-        ? filterAgentsForProject(bundleContents?.rovoAgents ?? [], projectContext)
-        : (bundleContents?.rovoAgents ?? []);
-    const catalogueEntries = buildUnifiedCatalogue(projectSkills, projectRovoAgents);
+    const allRovoAgents = bundleContents?.rovoAgents ?? [];
 
-    const apiBaseUrl =
-        source?.type === "discovery"
-            ? resolveApiBaseUrl(source.discovery.api?.baseUrl)
-            : undefined;
+    let scopedSkills = catalogueSkills;
+    let scopedAgents = allRovoAgents;
+    let annotateProjects: Project[] | null = null;
+
+    if (projectContext) {
+        scopedSkills = filterSkillsForProject(catalogueSkills, projectContext);
+        scopedAgents = filterAgentsForProject(allRovoAgents, projectContext);
+        annotateProjects = [projectContext];
+    } else if (exclusiveSource) {
+        const membership = membershipProjects ?? [];
+        scopedSkills = filterSkillsForMembership(catalogueSkills, membership);
+        scopedAgents = filterAgentsForMembership(allRovoAgents, membership);
+        annotateProjects = membership;
+    }
+
+    const catalogueEntries = annotateProjects
+        ? annotateCatalogueWithProjects(
+            buildUnifiedCatalogue(scopedSkills, scopedAgents),
+            annotateProjects,
+        )
+        : buildUnifiedCatalogue(scopedSkills, scopedAgents);
+
     const hasProjectsAccess =
         source?.type === "discovery" &&
         canAccessMyProjects({
             authRequired: source.discovery.auth?.required,
-            features: source.discovery.api?.features,
+            projects: source.discovery.projects,
             apiBaseUrl,
             authSession,
         });
@@ -810,7 +870,7 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
                     rovoAgents={
                         selectedRovoAgent
                             ? [selectedRovoAgent]
-                            : projectRovoAgents
+                            : scopedAgents
                     }
                     bundleTelemetryProps={bundleTelemetryProps}
                     onBack={() => {
@@ -830,8 +890,8 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
             {screen === "chrome-extension" && bundleContents && manifest && (
                 <ChromeExtensionServer
                     bundleContents={{
-                        skills: projectSkills,
-                        rovoAgents: projectRovoAgents,
+                        skills: scopedSkills,
+                        rovoAgents: scopedAgents,
                     }}
                     manifest={manifest}
                     bundleDir={bundleDir}
