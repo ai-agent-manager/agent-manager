@@ -7,9 +7,6 @@ import {
   isSkillAllowed,
   filterSkillsForProject,
   filterAgentsForProject,
-  filterSkillsForMembership,
-  filterAgentsForMembership,
-  annotateCatalogueWithProjects,
 } from '../../../src/api/project-restrictions.js';
 
 function skill(dirName: string): SkillInfo {
@@ -131,72 +128,5 @@ describe('filterSkillsForProject / filterAgentsForProject', () => {
         allowedAgentIds: ['agent-b'],
       }).map((a) => a.dirName),
     ).toEqual(['agent-b']);
-  });
-});
-
-describe('membership helpers (exclusiveSource)', () => {
-  const skills = [skill('skill-a'), skill('skill-b'), skill('skill-c')];
-  const agents = [agent('agent-a'), agent('agent-b')];
-
-  const alpha = {
-    ...baseProject,
-    id: 'alpha',
-    name: 'Alpha',
-    restrictSkills: true,
-    restrictAgents: true,
-    allowedSkillIds: ['skill-a'],
-    allowedAgentIds: ['agent-a'],
-  };
-  const beta = {
-    ...baseProject,
-    id: 'beta',
-    name: 'Beta',
-    restrictSkills: true,
-    restrictAgents: true,
-    allowedSkillIds: ['skill-b'],
-    allowedAgentIds: ['agent-b'],
-  };
-
-  it('unions allowlists across membership projects', () => {
-    expect(
-      filterSkillsForMembership(skills, [alpha, beta]).map((s) => s.dirName),
-    ).toEqual(['skill-a', 'skill-b']);
-    expect(
-      filterAgentsForMembership(agents, [alpha, beta]).map((a) => a.dirName),
-    ).toEqual(['agent-a', 'agent-b']);
-  });
-
-  it('allows everything when any membership project is unrestricted', () => {
-    expect(
-      filterSkillsForMembership(skills, [
-        alpha,
-        { ...beta, restrictSkills: false, allowedSkillIds: [] },
-      ]),
-    ).toEqual(skills);
-  });
-
-  it('annotates catalogue entries with permitting project names', () => {
-    const entries = annotateCatalogueWithProjects(
-      [
-        {
-          kind: 'skill',
-          skillId: 'skill-a',
-          displayName: 'Skill A',
-          description: 'desc',
-          candidates: [],
-        },
-        {
-          kind: 'rovo-agent',
-          skillId: 'agent-b',
-          displayName: 'Agent B',
-          description: '',
-          agent: agents[1]!,
-        },
-      ],
-      [alpha, beta],
-    );
-
-    expect(entries[0]!.projectNames).toEqual(['Alpha']);
-    expect(entries[1]!.projectNames).toEqual(['Beta']);
   });
 });

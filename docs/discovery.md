@@ -355,7 +355,8 @@ This matches the authenticated backend project API (including project agent/skil
 When `projects.enabled` is `true` and `exclusiveSource` is `true`:
 
 - **Search & Install** shows only skills and Rovo agents permitted by at least one of the caller's projects (union of project allowlists). The highlighted detail row lists the project name(s) that permit that item.
+- **Bulk Sync** (Maintenance → Bulk Sync by Tool) offers the same membership-filtered skill list, so sync cannot install skills outside those allowlists.
 - **Headless** installs fail if any requested skill is not permitted by the caller's project memberships (or is absent from the exclusive catalogue). Authentication is required so memberships can be loaded (`AGENTMAN_ACCESS_TOKEN` or a stored session).
 
-When `exclusiveSource` is omitted or `false`, global Search & Install and headless installs use the full discovery catalogue (project allowlists still apply inside My Projects flows).
+When `exclusiveSource` is omitted or `false`, global Search & Install, Bulk Sync, and headless installs use the full discovery catalogue (project allowlists still apply inside My Projects flows).
 

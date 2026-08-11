@@ -14,11 +14,14 @@ import { resolveDiscoverySkills } from './discovery/index.js';
 import { authenticate, type AuthSession } from './auth/index.js';
 import {
   isProjectsExclusiveSource,
-  isSkillAllowedByMembership,
   listProjects,
   resolveApiBaseUrl,
   type ApiAuth,
 } from './api/index.js';
+import {
+  partitionSkillsByScope,
+  resolveCatalogueScope,
+} from './catalogue-scope/index.js';
 import { createSkillProvisioner, formatSupportedSkillToolIds } from './provisioners/registry.js';
 import type { InstallScope } from './config/scopes.js';
 
@@ -181,17 +184,16 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
 
       console.log('[agentman] Loading project memberships (exclusiveSource)...');
       const membershipProjects = await listProjects(apiBaseUrl, apiAuth);
-      const forbidden = allSkills.filter(
-        (skill) => !isSkillAllowedByMembership(membershipProjects, skill.dirName),
-      );
-      // Narrow the available catalogue before matching config skill names.
-      allSkills = allSkills.filter((skill) =>
-        isSkillAllowedByMembership(membershipProjects, skill.dirName),
-      );
-      if (forbidden.length > 0) {
+      const scope = resolveCatalogueScope({
+        exclusiveSource: true,
+        membershipProjects,
+      });
+      const { permitted, excluded } = partitionSkillsByScope(allSkills, scope);
+      allSkills = permitted;
+      if (excluded.length > 0) {
         console.log(
-          `[agentman] Exclusive catalogue: ${allSkills.length} skill(s) permitted by project membership ` +
-            `(${forbidden.length} excluded)`,
+          `[agentman] Exclusive catalogue: ${permitted.length} skill(s) permitted by project membership ` +
+            `(${excluded.length} excluded)`,
         );
       }
     }

@@ -37,20 +37,21 @@ import type { StartupUpdateNotice } from "./lib/startup-update-checks.js";
 import { checkForStartupUpdates, shouldRunStartupUpdateChecks } from "./lib/startup-update-checks.js";
 import { getBundleSourceTelemetryProperties, setTelemetryDisabledByConfig, trackTelemetryError, trackTelemetryEvent, type TelemetryValue } from "./telemetry.js";
 import { featureFlags } from "./lib/feature-flags.js";
-import { resolveDiscoverySkills, buildUnifiedCatalogue, type ResolvedSkill } from "./discovery/index.js";
+import { resolveDiscoverySkills, type ResolvedSkill } from "./discovery/index.js";
 import { buildPinForDirectorySource, buildSourcePin, type BundleSkillSource } from "./bundle/skill-source.js";
 import {
-    annotateCatalogueWithProjects,
     canAccessMyProjects,
-    filterAgentsForMembership,
-    filterAgentsForProject,
-    filterSkillsForMembership,
-    filterSkillsForProject,
     isProjectsExclusiveSource,
     listProjects,
     resolveApiBaseUrl,
     type Project,
 } from "./api/index.js";
+import {
+    buildScopedCatalogue,
+    resolveCatalogueScope,
+    scopeCatalogueAssets,
+    scopeSkills,
+} from "./catalogue-scope/index.js";
 import { authenticate, openInBrowser, createDiscoveryAccessTokenProvider, type AuthSession } from "./auth/index.js";
 
 export type Screen =
@@ -590,27 +591,18 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
         }));
     const allRovoAgents = bundleContents?.rovoAgents ?? [];
 
-    let scopedSkills = catalogueSkills;
-    let scopedAgents = allRovoAgents;
-    let annotateProjects: Project[] | null = null;
-
-    if (projectContext) {
-        scopedSkills = filterSkillsForProject(catalogueSkills, projectContext);
-        scopedAgents = filterAgentsForProject(allRovoAgents, projectContext);
-        annotateProjects = [projectContext];
-    } else if (exclusiveSource) {
-        const membership = membershipProjects ?? [];
-        scopedSkills = filterSkillsForMembership(catalogueSkills, membership);
-        scopedAgents = filterAgentsForMembership(allRovoAgents, membership);
-        annotateProjects = membership;
-    }
-
-    const catalogueEntries = annotateProjects
-        ? annotateCatalogueWithProjects(
-            buildUnifiedCatalogue(scopedSkills, scopedAgents),
-            annotateProjects,
-        )
-        : buildUnifiedCatalogue(scopedSkills, scopedAgents);
+    const catalogueScope = resolveCatalogueScope({
+        projectContext,
+        exclusiveSource,
+        membershipProjects,
+    });
+    const { skills: scopedSkills, agents: scopedAgents } = scopeCatalogueAssets(
+        catalogueSkills,
+        allRovoAgents,
+        catalogueScope,
+    );
+    const catalogueEntries = buildScopedCatalogue(catalogueSkills, allRovoAgents, catalogueScope);
+    const bulkSyncSkills = scopeSkills(effectiveContents?.skills ?? [], catalogueScope);
 
     const hasProjectsAccess =
         source?.type === "discovery" &&
@@ -804,7 +796,7 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
                             ? { index: toolsQueueTotal - toolsQueue.length + 1, total: toolsQueueTotal }
                             : undefined
                     }
-                    skills={effectiveContents.skills}
+                    skills={bulkSyncSkills}
                     bundleVersion={effectiveVersion}
                     scope={installScope}
                     repoRoot={repoRoot}

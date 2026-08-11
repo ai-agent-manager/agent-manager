@@ -7,11 +7,5 @@ export {
   isSkillAllowed,
   filterSkillsForProject,
   filterAgentsForProject,
-  isSkillAllowedByMembership,
-  isAgentAllowedByMembership,
-  filterSkillsForMembership,
-  filterAgentsForMembership,
-  projectNamesAllowingAsset,
-  annotateCatalogueWithProjects,
 } from './project-restrictions.js';
 export type { Project, ProjectRestrictions } from './types.js';
