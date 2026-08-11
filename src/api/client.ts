@@ -21,6 +21,21 @@ export class ApiError extends Error {
   }
 }
 
+/** 404 or 403 — resource missing or caller is forbidden from it. */
+export function isApiNotFoundOrForbidden(err: unknown): boolean {
+  return err instanceof ApiError && (err.status === 404 || err.status === 403);
+}
+
+/** 401 after the client has already attempted its refresh retry. */
+export function isApiAuthFailure(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 401;
+}
+
+/** Network failures (no status) or server errors (5xx). */
+export function isApiTransientFailure(err: unknown): boolean {
+  return err instanceof ApiError && (err.status === undefined || err.status >= 500);
+}
+
 /**
  * Resolve the API base URL.
  *

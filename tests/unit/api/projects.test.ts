@@ -159,7 +159,18 @@ describe('getProject', () => {
     expect(project).toBeNull();
   });
 
-  it('rethrows non-404 errors', async () => {
+  it('returns null on 403', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      text: async () => 'Forbidden',
+    });
+
+    const project = await getProject('https://api.example.com', authSession, 'blocked');
+    expect(project).toBeNull();
+  });
+
+  it('rethrows auth and transient errors', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: false,
       status: 500,
@@ -169,5 +180,21 @@ describe('getProject', () => {
     await expect(
       getProject('https://api.example.com', authSession, 'proj-1'),
     ).rejects.toThrow('API error 500');
+
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      text: async () => 'Unauthorised',
+    });
+    // Session auth retries once on 401; both attempts fail.
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      text: async () => 'Unauthorised',
+    });
+
+    await expect(
+      getProject('https://api.example.com', authSession, 'proj-1'),
+    ).rejects.toThrow('API error 401');
   });
 });

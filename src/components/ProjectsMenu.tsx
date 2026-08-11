@@ -2,7 +2,12 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Box, Text, useInput } from "ink";
 import SelectInput from "ink-select-input";
 import type { AuthSession } from "../auth/index.js";
-import { listProjects, getProject, type Project } from "../api/index.js";
+import {
+    listProjects,
+    getProject,
+    isApiAuthFailure,
+    type Project,
+} from "../api/index.js";
 import { LoadingSpinner } from "./Spinner.js";
 import { StatusMessage } from "./StatusMessage.js";
 
@@ -78,63 +83,41 @@ export function ProjectsMenu({
 
         let cancelled = false;
         const { projectId, projects } = view;
-        const cached = projects.find((p) => p.id === projectId);
 
         (async () => {
             let list = projects;
-            let listCached = cached;
 
             try {
-                // When resuming into detail with an empty list, refresh the list first.
+                // When resuming into detail with an empty list, refresh the list first
+                // so Esc can return to a populated list after a successful detail load.
                 if (projects.length === 0) {
                     list = await listProjects(apiBaseUrl, authSession);
                 }
-                listCached = list.find((p) => p.id === projectId) ?? cached;
 
-                const fresh = await getProject(apiBaseUrl, authSession, projectId);
+                const project = await getProject(apiBaseUrl, authSession, projectId);
                 if (cancelled) return;
 
-                const project = fresh ?? listCached;
                 if (!project) {
                     setView({
                         kind: "error",
-                        message: `Project not found: ${projectId}`,
-                        projects: list,
+                        message: "Project not found or inaccessible",
+                        projects: list.filter((p) => p.id !== projectId),
                     });
                     return;
                 }
                 setView({ kind: "detail", project, projects: list });
             } catch (err) {
                 if (cancelled) return;
-                if (listCached) {
-                    setView({ kind: "detail", project: listCached, projects: list });
+                const message = err instanceof Error ? err.message : String(err);
+                if (isApiAuthFailure(err)) {
+                    setView({ kind: "error", message });
                     return;
                 }
-                try {
-                    list = await listProjects(apiBaseUrl, authSession);
-                    listCached = list.find((p) => p.id === projectId);
-                    if (listCached) {
-                        if (!cancelled) {
-                            setView({ kind: "detail", project: listCached, projects: list });
-                        }
-                        return;
-                    }
-                    if (!cancelled) {
-                        setView({
-                            kind: "error",
-                            message: err instanceof Error ? err.message : String(err),
-                            projects: list,
-                        });
-                    }
-                } catch (listErr) {
-                    if (!cancelled) {
-                        setView({
-                            kind: "error",
-                            message:
-                                listErr instanceof Error ? listErr.message : String(listErr),
-                        });
-                    }
-                }
+                setView({
+                    kind: "error",
+                    message,
+                    projects: list.length > 0 ? list : undefined,
+                });
             }
         })();
 

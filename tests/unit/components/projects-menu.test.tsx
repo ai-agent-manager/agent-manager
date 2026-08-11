@@ -2,15 +2,22 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render } from "ink-testing-library";
 import { Text } from "ink";
+import { ApiError } from "../../../src/api/client.js";
 import type { Project } from "../../../src/api/types.js";
 
 const listProjects = vi.fn();
 const getProject = vi.fn();
 
-vi.mock("../../../src/api/index.js", () => ({
-    listProjects: (...args: unknown[]) => listProjects(...args),
-    getProject: (...args: unknown[]) => getProject(...args),
-}));
+vi.mock("../../../src/api/index.js", async () => {
+    const actual = await vi.importActual<typeof import("../../../src/api/index.js")>(
+        "../../../src/api/index.js",
+    );
+    return {
+        ...actual,
+        listProjects: (...args: unknown[]) => listProjects(...args),
+        getProject: (...args: unknown[]) => getProject(...args),
+    };
+});
 
 vi.mock("../../../src/components/Spinner.js", () => ({
     LoadingSpinner: function MockLoadingSpinner({ message }: { message: string }) {
@@ -206,14 +213,15 @@ describe("ProjectsMenu", () => {
         expect(onProvisionAgents).not.toHaveBeenCalled();
     });
 
-    it("falls back to the list payload when detail fetch fails", async () => {
+    it("shows an error when detail fetch fails transiently, without opening stale detail", async () => {
         listProjects.mockResolvedValueOnce(sampleProjects);
-        getProject.mockRejectedValueOnce(new Error("API error 500"));
+        getProject.mockRejectedValueOnce(new ApiError("API error 500", 500));
 
         const { lastFrame, stdin } = render(
             <ProjectsMenu
                 apiBaseUrl="https://api.example.com"
                 authSession={testAuthSession}
+                hasSkills
                 onBack={vi.fn()}
                 onInstallSkills={vi.fn()}
                 onProvisionAgents={vi.fn()}
@@ -223,9 +231,60 @@ describe("ProjectsMenu", () => {
         await waitForFrame(lastFrame, (f) => f.includes("Alpha"));
         stdin.write("\r");
 
-        const frame = await waitForFrame(lastFrame, (f) => f.includes("Alpha"));
-        expect(frame).toContain("Alpha");
-        expect(frame).not.toContain("Tools");
+        const frame = await waitForFrame(lastFrame, (f) => f.includes("API error 500"));
+        expect(frame).toContain("My Projects");
+        expect(frame).not.toContain("Install Agent Skills");
+        expect(frame).not.toContain("First project");
+    });
+
+    it("shows an error when getProject returns null (inaccessible)", async () => {
+        listProjects.mockResolvedValueOnce(sampleProjects);
+        getProject.mockResolvedValueOnce(null);
+
+        const { lastFrame, stdin } = render(
+            <ProjectsMenu
+                apiBaseUrl="https://api.example.com"
+                authSession={testAuthSession}
+                hasSkills
+                onBack={vi.fn()}
+                onInstallSkills={vi.fn()}
+                onProvisionAgents={vi.fn()}
+            />,
+        );
+
+        await waitForFrame(lastFrame, (f) => f.includes("Alpha"));
+        stdin.write("\r");
+
+        const frame = await waitForFrame(lastFrame, (f) =>
+            f.includes("Project not found or inaccessible"),
+        );
+        expect(frame).not.toContain("Install Agent Skills");
+        expect(frame).not.toContain("First project");
+    });
+
+    it("shows an auth error without list cache when detail fetch returns 401", async () => {
+        listProjects.mockResolvedValueOnce(sampleProjects);
+        getProject.mockRejectedValueOnce(new ApiError("API error 401: Unauthorised", 401));
+
+        const { lastFrame, stdin } = render(
+            <ProjectsMenu
+                apiBaseUrl="https://api.example.com"
+                authSession={testAuthSession}
+                hasSkills
+                onBack={vi.fn()}
+                onInstallSkills={vi.fn()}
+                onProvisionAgents={vi.fn()}
+            />,
+        );
+
+        await waitForFrame(lastFrame, (f) => f.includes("Alpha"));
+        stdin.write("\r");
+
+        const frame = await waitForFrame(lastFrame, (f) =>
+            f.includes("API error 401: Unauthorised"),
+        );
+        expect(frame).not.toContain("Install Agent Skills");
+        expect(frame).not.toContain("First project");
     });
 
     it("omits description when a project has none", async () => {
@@ -311,7 +370,9 @@ describe("ProjectsMenu", () => {
             />,
         );
 
-        const frame = await waitForFrame(lastFrame, (f) => f.includes("Project not found: missing"));
+        const frame = await waitForFrame(lastFrame, (f) =>
+            f.includes("Project not found or inaccessible"),
+        );
         expect(frame).toContain("My Projects");
     });
 
@@ -442,14 +503,15 @@ describe("ProjectsMenu", () => {
         expect(onBack).toHaveBeenCalled();
     });
 
-    it("falls back to the list cache when resumed detail fetch fails", async () => {
+    it("shows an error when resumed detail fetch fails, without opening stale detail", async () => {
         listProjects.mockResolvedValueOnce(sampleProjects);
-        getProject.mockRejectedValueOnce(new Error("API error 500"));
+        getProject.mockRejectedValueOnce(new ApiError("API error 500", 500));
 
         const { lastFrame } = render(
             <ProjectsMenu
                 apiBaseUrl="https://api.example.com"
                 authSession={testAuthSession}
+                hasSkills
                 initialProjectId="proj-1"
                 onBack={vi.fn()}
                 onInstallSkills={vi.fn()}
@@ -457,8 +519,10 @@ describe("ProjectsMenu", () => {
             />,
         );
 
-        const frame = await waitForFrame(lastFrame, (f) => f.includes("First project"));
-        expect(frame).toContain("Alpha");
+        const frame = await waitForFrame(lastFrame, (f) => f.includes("API error 500"));
+        expect(frame).toContain("My Projects");
+        expect(frame).not.toContain("Install Agent Skills");
+        expect(frame).not.toContain("First project");
         expect(listProjects).toHaveBeenCalledTimes(1);
     });
 });

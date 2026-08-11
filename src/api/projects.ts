@@ -4,7 +4,7 @@
  */
 
 import type { ApiAuth } from './client.js';
-import { apiRequest, ApiError } from './client.js';
+import { apiRequest, isApiNotFoundOrForbidden } from './client.js';
 import { normaliseProjectRestrictions } from './project-restrictions.js';
 import type { Project } from './types.js';
 
@@ -22,7 +22,8 @@ export async function listProjects(
 
 /**
  * Fetch a single project by ID.
- * Returns `null` when the project does not exist or is not accessible (404).
+ * Returns `null` when the project does not exist or is not accessible (404 / 403).
+ * Auth failures (401) and transient errors still throw.
  */
 export async function getProject(
   apiBaseUrl: string,
@@ -37,7 +38,7 @@ export async function getProject(
     );
     return normaliseProjectRestrictions(project);
   } catch (err) {
-    if (err instanceof ApiError && err.status === 404) {
+    if (isApiNotFoundOrForbidden(err)) {
       return null;
     }
     throw err;

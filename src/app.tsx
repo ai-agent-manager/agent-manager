@@ -41,6 +41,8 @@ import { resolveDiscoverySkills, type ResolvedSkill } from "./discovery/index.js
 import { buildPinForDirectorySource, buildSourcePin, type BundleSkillSource } from "./bundle/skill-source.js";
 import {
     canAccessMyProjects,
+    isApiAuthFailure,
+    isApiTransientFailure,
     isProjectsExclusiveSource,
     listProjects,
     resolveApiBaseUrl,
@@ -243,11 +245,20 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
             } catch (error) {
                 if (!cancelled) {
                     setMembershipProjects([]);
-                    setWarning(
-                        `Could not load project memberships for exclusive catalogue filtering:\n${
-                            error instanceof Error ? error.message : String(error)
-                        }`,
-                    );
+                    const detail =
+                        error instanceof Error ? error.message : String(error);
+                    let warning: string;
+                    if (isApiAuthFailure(error)) {
+                        warning =
+                            `Authentication failed while loading project memberships. Sign in again and retry.\n${detail}`;
+                    } else if (isApiTransientFailure(error)) {
+                        warning =
+                            `Temporarily unable to load project memberships for exclusive catalogue filtering. The catalogue is empty until this succeeds.\n${detail}`;
+                    } else {
+                        warning =
+                            `Could not load project memberships for exclusive catalogue filtering:\n${detail}`;
+                    }
+                    setWarning(warning);
                 }
             }
         })();

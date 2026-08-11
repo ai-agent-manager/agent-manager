@@ -20,6 +20,9 @@ const {
   isProjectsFeatureEnabled,
   isProjectsExclusiveSource,
   canAccessMyProjects,
+  isApiNotFoundOrForbidden,
+  isApiAuthFailure,
+  isApiTransientFailure,
   ApiError,
 } = await import('../../../src/api/client.js');
 
@@ -80,6 +83,31 @@ describe('resolveApiBaseUrl', () => {
     expect(
       resolveApiBaseUrl(undefined, { API_BASE_URL: 'https://env.example.com' }),
     ).toBe('https://env.example.com');
+  });
+});
+
+describe('ApiError classifiers', () => {
+  it('isApiNotFoundOrForbidden matches 404 and 403 only', () => {
+    expect(isApiNotFoundOrForbidden(new ApiError('missing', 404))).toBe(true);
+    expect(isApiNotFoundOrForbidden(new ApiError('forbidden', 403))).toBe(true);
+    expect(isApiNotFoundOrForbidden(new ApiError('unauthorised', 401))).toBe(false);
+    expect(isApiNotFoundOrForbidden(new ApiError('server', 500))).toBe(false);
+    expect(isApiNotFoundOrForbidden(new Error('plain'))).toBe(false);
+  });
+
+  it('isApiAuthFailure matches 401 only', () => {
+    expect(isApiAuthFailure(new ApiError('unauthorised', 401))).toBe(true);
+    expect(isApiAuthFailure(new ApiError('forbidden', 403))).toBe(false);
+    expect(isApiAuthFailure(new Error('plain'))).toBe(false);
+  });
+
+  it('isApiTransientFailure matches missing status and 5xx', () => {
+    expect(isApiTransientFailure(new ApiError('network'))).toBe(true);
+    expect(isApiTransientFailure(new ApiError('server', 500))).toBe(true);
+    expect(isApiTransientFailure(new ApiError('bad gateway', 502))).toBe(true);
+    expect(isApiTransientFailure(new ApiError('client', 400))).toBe(false);
+    expect(isApiTransientFailure(new ApiError('unauthorised', 401))).toBe(false);
+    expect(isApiTransientFailure(new Error('plain'))).toBe(false);
   });
 });
 
