@@ -23,6 +23,14 @@ const bundlePin: SkillSourcePin = {
   bundleVersion: '1.0.0',
 };
 
+const bundlePinWithBasePath: SkillSourcePin = {
+  sourceType: 'bundle',
+  installLayout: 'namespaced',
+  bundleBaseUrl: 'https://content.example.com',
+  bundleBasePath: 'my-org/team-skills',
+  bundleVersion: '1.0.0',
+};
+
 const systemConfig = {
   installations: {
     'claude-code': {
@@ -54,6 +62,20 @@ const repoConfig = {
         installedAt: '2026-01-03T00:00:00.000Z',
         method: 'copy' as const,
         sourcePin: bundlePin,
+      },
+    },
+  },
+};
+
+/** Isolated repo-config used only by the basePath-update test, so it doesn't
+ * shift the record counts other listInstalled tests assert against. */
+const repoConfigWithBasePathSkill = {
+  installations: {
+    'claude-code': {
+      'content.example.com/my-org/team-skills/basepath-skill': {
+        installedAt: '2026-01-04T00:00:00.000Z',
+        method: 'copy' as const,
+        sourcePin: bundlePinWithBasePath,
       },
     },
   },
@@ -105,6 +127,7 @@ const { installFromRepo, installFromArtefact, installFromBundle } = await import
 );
 const { findRepoRoot } = await import('../../../src/lib/repo.js');
 const { readConfig } = await import('../../../src/bundle/cache.js');
+const { readRepoConfig } = await import('../../../src/bundle/repo-config.js');
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -267,6 +290,28 @@ describe('updateInstalled', () => {
     expect(opts.skillNames).toEqual(['bundle-skill']);
     expect(opts.repoRoot).toBe('/tmp/my-repo');
     expect(opts.bundleVersion).toBeUndefined();
+  });
+
+  it('updates a basePath-qualified bundle-pinned skill, forwarding the pinned basePath', async () => {
+    // Regression for a PR #55 review finding: the update path used to drop
+    // sourcePin.bundleBasePath entirely, so re-fetching hit the unprefixed
+    // /agents/index.json stream instead of the one the skill was installed from.
+    vi.mocked(readRepoConfig).mockResolvedValueOnce(repoConfigWithBasePathSkill);
+
+    await updateInstalled('basepath-skill');
+
+    expect(installFromBundle).toHaveBeenCalledTimes(1);
+    const opts = vi.mocked(installFromBundle).mock.calls[0]![0];
+    expect(opts.bundleUrl).toBe('https://content.example.com');
+    expect(opts.basePath).toBe('my-org/team-skills');
+    expect(opts.skillNames).toEqual(['basepath-skill']);
+  });
+
+  it('passes an undefined basePath when updating a legacy flat bundle pin (no regression)', async () => {
+    await updateInstalled('bundle-skill');
+
+    const opts = vi.mocked(installFromBundle).mock.calls[0]![0];
+    expect(opts.basePath).toBeUndefined();
   });
 
   it('rejects updating a record without a source pin', async () => {

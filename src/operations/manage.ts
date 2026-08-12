@@ -200,6 +200,7 @@ export async function updateInstalled(
     }
     const opResult = await installFromBundle({
       bundleUrl,
+      basePath: sourcePin.bundleBasePath,
       skillNames: [record.skillId],
       scope,
       toolId,

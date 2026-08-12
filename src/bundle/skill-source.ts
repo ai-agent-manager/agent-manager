@@ -536,13 +536,24 @@ export function deriveArtefactNamespace(artefactUrl: string): string {
  */
 export function deriveBundleNamespace(baseUrl: string, basePath?: string): string {
   const parsed = new URL(baseUrl);
+  // `host` (not `hostname`) so a non-default port keeps two otherwise-identical
+  // origins distinct — see the same rationale on deriveRepoNamespace above.
   let host: string;
-  try { host = decodeURIComponent(parsed.hostname); } catch { host = parsed.hostname; }
+  try { host = decodeURIComponent(parsed.host); } catch { host = parsed.host; }
   const hostSegment = sanitiseNamespaceSegment(host);
 
   if (!basePath) return hostSegment;
 
-  const segments = basePath.split('/').filter(Boolean).map(sanitiseNamespaceSegment);
+  // Percent-encode each raw segment before sanitising. sanitiseNamespaceSegment
+  // collapses every run of non-alphanumeric characters to a single '-', so two
+  // distinct basePath values differing only in punctuation (e.g. "team+a" vs
+  // "team=a") would otherwise sanitise to the identical segment and collide on
+  // install. Encoding first turns each distinguishing character into a distinct
+  // hex pair that survives sanitisation intact.
+  const segments = basePath
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => sanitiseNamespaceSegment(encodeURIComponent(segment)));
   return [hostSegment, ...segments].join('/');
 }
 

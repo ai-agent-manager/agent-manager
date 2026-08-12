@@ -678,6 +678,34 @@ describe('deriveBundleNamespace', () => {
     const ns2 = deriveBundleNamespace('https://other.example.com', 'shared/skills');
     expect(ns1).not.toBe(ns2);
   });
+
+  it('keeps a non-default port distinct from the same host without one', () => {
+    const withPort = deriveBundleNamespace('https://content.example.com:8443');
+    const withoutPort = deriveBundleNamespace('https://content.example.com');
+    expect(withPort).not.toBe(withoutPort);
+  });
+
+  it('gives two different hosts+ports distinct namespaces even with colliding basePath punctuation', () => {
+    // Regression for a review finding on PR #55: sanitisation used to collapse
+    // "team+a" and "team=a" to the identical "team-a" segment, and the host
+    // derivation dropped the port — so these two entirely different sources
+    // used to derive the exact same install namespace.
+    const ns1 = deriveBundleNamespace('https://content.example.com:8443/tenant-a', 'team+a');
+    const ns2 = deriveBundleNamespace('https://content.example.com:9443/tenant-b', 'team=a');
+    expect(ns1).not.toBe(ns2);
+  });
+
+  it('gives basePath segments differing only in punctuation distinct namespaces on the same origin', () => {
+    const ns1 = deriveBundleNamespace('https://content.example.com', 'team+a');
+    const ns2 = deriveBundleNamespace('https://content.example.com', 'team=a');
+    expect(ns1).not.toBe(ns2);
+  });
+
+  it('leaves an alphanumeric/hyphen basePath unchanged (no regression for the common case)', () => {
+    expect(deriveBundleNamespace('https://content.example.com', 'my-org/team-skills')).toBe(
+      'content.example.com/my-org/team-skills',
+    );
+  });
 });
 
 // ── deriveInstallNamespace ────────────────────────────────────────────────────

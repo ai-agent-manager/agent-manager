@@ -7,6 +7,7 @@ import {
   buildSourcePin,
   isRepoSource,
   resolveSkillSource,
+  type BundleSkillSource,
   type SkillSource,
   type SkillSourcePin,
 } from '../bundle/skill-source.js';
@@ -42,6 +43,13 @@ export interface InstallFromArtefactOpts {
 export interface InstallFromBundleOpts {
   bundleUrl: string;
   bundleVersion?: string;
+  /**
+   * Path prefix identifying one bundle stream among several hosted on the
+   * same origin (see DiscoverySource.basePath). Not derivable from bundleUrl
+   * alone — callers reinstalling/updating a basePath-qualified pin must pass
+   * it explicitly, or the request falls back to the unprefixed stream.
+   */
+  basePath?: string;
   skillNames?: string[];
   scope: InstallScope;
   toolId: string;
@@ -111,15 +119,22 @@ export async function installFromArtefact(opts: InstallFromArtefactOpts): Promis
  * Download and install from a legacy bundle URL or local directory for one tool.
  */
 export async function installFromBundle(opts: InstallFromBundleOpts): Promise<InstallOperationResult> {
-  const { bundleUrl, bundleVersion: requestedVersion, skillNames, scope, toolId } = opts;
+  const { bundleUrl, bundleVersion: requestedVersion, basePath, skillNames, scope, toolId } = opts;
 
-  const source = await resolveSkillSourceStrict(bundleUrl, 'bundle');
+  const resolved = await resolveSkillSourceStrict(bundleUrl, 'bundle');
+  // basePath isn't derivable from a bare URL string, so it must be threaded
+  // through explicitly (e.g. from a pinned update) — otherwise a reinstall of
+  // a basePath-qualified source silently falls back to the unprefixed stream,
+  // and its namespaced on-disk layout would be lost on top of that.
+  const source: BundleSkillSource = resolved.baseUrl
+    ? { ...resolved, basePath, installLayout: basePath ? 'namespaced' : resolved.installLayout }
+    : resolved;
 
   let bundleVersion: string;
   let skills: SkillInfo[];
 
   if (source.baseUrl) {
-    const { zipPath } = await downloadBundle(source.baseUrl, requestedVersion);
+    const { zipPath } = await downloadBundle(source.baseUrl, requestedVersion, undefined, source.basePath);
     const extracted = await extractBundle(zipPath);
     bundleVersion = extracted.manifest.version;
     if (extracted.isNew) await setCurrentBundle(bundleVersion);

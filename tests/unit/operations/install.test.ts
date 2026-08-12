@@ -292,6 +292,44 @@ describe('installFromBundle', () => {
     const [installed] = mockProvisioner.install.mock.calls[0]! as unknown as [SkillInfo[]];
     expect(installed.map((s) => s.dirName)).toEqual(['bundle-skill']);
   });
+
+  it('passes basePath through to downloadBundle and records it (plus namespaced layout) in the pin', async () => {
+    const { downloadBundle } = await import('../../../src/bundle/downloader.js');
+
+    const result = await installFromBundle({
+      bundleUrl: 'https://bundles.example.com',
+      basePath: 'my-org/team-skills',
+      scope: 'system',
+      toolId: 'claude-code',
+    });
+
+    expect(downloadBundle).toHaveBeenCalledWith(
+      'https://bundles.example.com',
+      undefined,
+      undefined,
+      'my-org/team-skills',
+    );
+    expect(result.sourcePin).toMatchObject({
+      sourceType: 'bundle',
+      installLayout: 'namespaced',
+      bundleBaseUrl: 'https://bundles.example.com',
+      bundleBasePath: 'my-org/team-skills',
+    });
+  });
+
+  it('keeps the flat layout and passes no basePath when none is given (no regression)', async () => {
+    const { downloadBundle } = await import('../../../src/bundle/downloader.js');
+
+    const result = await installFromBundle({
+      bundleUrl: 'https://bundles.example.com',
+      scope: 'system',
+      toolId: 'claude-code',
+    });
+
+    expect(downloadBundle).toHaveBeenCalledWith('https://bundles.example.com', undefined, undefined, undefined);
+    expect(result.sourcePin).toMatchObject({ installLayout: 'flat' });
+    expect(result.sourcePin.bundleBasePath).toBeUndefined();
+  });
 });
 
 describe('installResolvedSkills', () => {
