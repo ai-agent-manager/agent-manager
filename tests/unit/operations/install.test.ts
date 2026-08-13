@@ -263,6 +263,37 @@ describe('installFromArtefact', () => {
       }),
     ).rejects.toThrow(/Not a artefact URL/);
   });
+
+  it('forwards a bearer token to downloadArtefact for an authenticated origin', async () => {
+    const { downloadArtefact } = await import('../../../src/bundle/artefact-downloader.js');
+
+    await installFromArtefact({
+      artefactUrl: 'https://cdn.example.com/my-skill-1.2.0.zip',
+      bearerToken: 'tok123',
+      scope: 'system',
+      toolId: 'claude-code',
+    });
+
+    expect(downloadArtefact).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'artefact' }),
+      expect.objectContaining({ bearerToken: 'tok123' }),
+    );
+  });
+
+  it('forwards no bearer token to downloadArtefact when none is given', async () => {
+    const { downloadArtefact } = await import('../../../src/bundle/artefact-downloader.js');
+
+    await installFromArtefact({
+      artefactUrl: 'https://cdn.example.com/my-skill-1.2.0.zip',
+      scope: 'system',
+      toolId: 'claude-code',
+    });
+
+    expect(downloadArtefact).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ bearerToken: undefined }),
+    );
+  });
 });
 
 describe('installFromBundle', () => {
@@ -329,6 +360,19 @@ describe('installFromBundle', () => {
     expect(downloadBundle).toHaveBeenCalledWith('https://bundles.example.com', undefined, undefined, undefined);
     expect(result.sourcePin).toMatchObject({ installLayout: 'flat' });
     expect(result.sourcePin.bundleBasePath).toBeUndefined();
+  });
+
+  it('forwards a bearer token to downloadBundle for an authenticated origin', async () => {
+    const { downloadBundle } = await import('../../../src/bundle/downloader.js');
+
+    await installFromBundle({
+      bundleUrl: 'https://bundles.example.com',
+      bearerToken: 'tok123',
+      scope: 'system',
+      toolId: 'claude-code',
+    });
+
+    expect(downloadBundle).toHaveBeenCalledWith('https://bundles.example.com', undefined, 'tok123', undefined);
   });
 });
 

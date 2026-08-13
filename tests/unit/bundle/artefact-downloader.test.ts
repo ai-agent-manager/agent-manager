@@ -624,6 +624,24 @@ describe('checkArtefactUpdate', () => {
     expect(pin).toEqual(snapshot);
   });
 
+  it('sends the bearer token on the sidecar request when one is provided', async () => {
+    vi.mocked(fetch).mockResolvedValue(sidecarResponse(ZIP_SHA256));
+
+    await checkArtefactUpdate(makePin(), 'tok123');
+
+    const [, init] = vi.mocked(fetch).mock.calls[0];
+    expect((init as RequestInit).headers).toMatchObject({ Authorization: 'Bearer tok123' });
+  });
+
+  it('sends no Authorization header when no bearer token is provided', async () => {
+    vi.mocked(fetch).mockResolvedValue(sidecarResponse(ZIP_SHA256));
+
+    await checkArtefactUpdate(makePin());
+
+    const [, init] = vi.mocked(fetch).mock.calls[0];
+    expect((init as RequestInit | undefined)?.headers).toBeUndefined();
+  });
+
   it('throws for a non-artefact pin', async () => {
     const pin: SkillSourcePin = {
       sourceType: 'repo',

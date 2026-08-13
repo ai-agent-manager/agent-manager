@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import SelectInput from 'ink-select-input';
-import type { InstalledSkillRecord } from '../operations/manage.js';
+import type { AccessTokenProvider, InstalledSkillRecord } from '../operations/manage.js';
 import { updateInstalled, removeInstalled } from '../operations/manage.js';
 import { LoadingSpinner } from './Spinner.js';
 import { InfoView } from './InfoView.js';
@@ -14,9 +14,11 @@ interface ManageActionsProps {
   record: InstalledSkillRecord;
   onBack: () => void;
   onDone: () => void;
+  /** Supplies a bearer token when re-downloading from an authenticated origin. */
+  getAccessToken?: AccessTokenProvider;
 }
 
-export function ManageActions({ record, onBack, onDone }: ManageActionsProps) {
+export function ManageActions({ record, onBack, onDone, getAccessToken }: ManageActionsProps) {
   const [screen, setScreen] = useState<Screen>('menu');
   const [loadingMessage, setLoadingMessage] = useState('');
   const [resultMessage, setResultMessage] = useState('');
@@ -125,7 +127,7 @@ export function ManageActions({ record, onBack, onDone }: ManageActionsProps) {
           if (item.value === 'update') {
             void runAction(
               'Updating',
-              () => updateInstalled(record.installKey, record.scope, record.toolId),
+              () => updateInstalled(record.installKey, record.scope, record.toolId, getAccessToken),
               `Updated ${record.skillId} successfully.`,
             );
             return;

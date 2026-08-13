@@ -314,6 +314,55 @@ describe('updateInstalled', () => {
     expect(opts.basePath).toBeUndefined();
   });
 
+  it('asks the token provider for the bundle URL and forwards the result', async () => {
+    const getAccessToken = vi.fn(async () => 'tok123');
+
+    await updateInstalled('bundle-skill', undefined, undefined, getAccessToken);
+
+    expect(getAccessToken).toHaveBeenCalledWith('https://bundles.example.com');
+    expect(vi.mocked(installFromBundle).mock.calls[0]![0].bearerToken).toBe('tok123');
+  });
+
+  it('asks the token provider for the artefact URL and forwards the result', async () => {
+    const getAccessToken = vi.fn(async () => 'tok123');
+
+    await updateInstalled('cdn.example.com/my-skill/my-skill', undefined, undefined, getAccessToken);
+
+    expect(getAccessToken).toHaveBeenCalledWith('https://cdn.example.com/my-skill-1.2.0.zip');
+    expect(vi.mocked(installFromArtefact).mock.calls[0]![0].bearerToken).toBe('tok123');
+  });
+
+  it('forwards no token when the provider declines the origin', async () => {
+    // Mirrors the origin guard refusing to hand over a credential for a host the
+    // loaded discovery document does not list.
+    const getAccessToken = vi.fn(async () => undefined);
+
+    await updateInstalled('bundle-skill', undefined, undefined, getAccessToken);
+
+    expect(getAccessToken).toHaveBeenCalled();
+    expect(vi.mocked(installFromBundle).mock.calls[0]![0].bearerToken).toBeUndefined();
+  });
+
+  it('updates without a token when no provider is supplied (unauthenticated behaviour unchanged)', async () => {
+    await updateInstalled('bundle-skill');
+
+    expect(vi.mocked(installFromBundle).mock.calls[0]![0].bearerToken).toBeUndefined();
+  });
+
+  it('does not consult the token provider for a repo-pinned skill', async () => {
+    // Repo installs authenticate via GITHUB_TOKEN, not the discovery token.
+    const getAccessToken = vi.fn(async () => 'tok123');
+
+    await updateInstalled(
+      'github.com/example-org/example-repo/my-skill',
+      undefined,
+      undefined,
+      getAccessToken,
+    );
+
+    expect(getAccessToken).not.toHaveBeenCalled();
+  });
+
   it('rejects updating a record without a source pin', async () => {
     await expect(updateInstalled('legacy-skill')).rejects.toThrow(/no source pin recorded/);
   });

@@ -493,12 +493,15 @@ export interface ArtefactUpdateCheckResult {
  * Returns updateAvailable: false when the pin has no hash or the remote
  * sidecar is unavailable (no way to compare).
  */
-export async function checkArtefactUpdate(pin: SkillSourcePin): Promise<ArtefactUpdateCheckResult> {
+export async function checkArtefactUpdate(
+  pin: SkillSourcePin,
+  bearerToken?: string,
+): Promise<ArtefactUpdateCheckResult> {
   if (pin.sourceType !== 'artefact' || !pin.artefactUrl) {
     throw new Error('checkArtefactUpdate requires an artefact source pin with an artefactUrl');
   }
 
-  const remoteSha256 = await fetchArtefactHash(pin.artefactUrl);
+  const remoteSha256 = await fetchArtefactHash(pin.artefactUrl, bearerToken);
 
   return {
     updateAvailable: Boolean(remoteSha256 && pin.sha256 && remoteSha256 !== pin.sha256.toLowerCase()),

@@ -49,9 +49,20 @@ async function press(stdin: Stdin, input: string): Promise<void> {
   await flushInkInput();
 }
 
-async function renderReady(props: { onBack?: () => void; onDone?: () => void } = {}) {
+async function renderReady(
+  props: {
+    onBack?: () => void;
+    onDone?: () => void;
+    getAccessToken?: (contentUrl: string) => Promise<string | undefined>;
+  } = {},
+) {
   const result = render(
-    <ManageActions record={record} onBack={props.onBack ?? (() => {})} onDone={props.onDone ?? (() => {})} />,
+    <ManageActions
+      record={record}
+      onBack={props.onBack ?? (() => {})}
+      onDone={props.onDone ?? (() => {})}
+      getAccessToken={props.getAccessToken}
+    />,
   );
   await vi.waitFor(() => {
     expect(result.lastFrame()).toContain('Update    Re-pull from pinned source');
@@ -80,13 +91,31 @@ describe('ManageActions', () => {
     });
     // toolId is passed so the lookup stays unambiguous when the same skill is
     // installed for more than one tool.
-    expect(updateInstalled).toHaveBeenCalledWith(record.installKey, 'system', record.toolId);
+    expect(updateInstalled).toHaveBeenCalledWith(record.installKey, 'system', record.toolId, undefined);
     await flushInkInput();
 
     await press(stdin, ENTER);
     await vi.waitFor(() => {
       expect(onDone).toHaveBeenCalled();
     });
+  });
+
+  it('forwards the access token provider to the update so authenticated origins can be re-pulled', async () => {
+    const getAccessToken = vi.fn(async () => 'tok123');
+    const { lastFrame, stdin } = await renderReady({ getAccessToken });
+
+    await press(stdin, ENTER);
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain('✓ Updated my-skill successfully.');
+    });
+
+    expect(updateInstalled).toHaveBeenCalledWith(
+      record.installKey,
+      'system',
+      record.toolId,
+      getAccessToken,
+    );
+    await flushInkInput();
   });
 
   it('surfaces update errors', async () => {

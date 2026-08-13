@@ -7,6 +7,18 @@ import type { InstallResult, UninstallResult } from '../provisioners/types.js';
 import { createSkillProvisioner } from '../provisioners/registry.js';
 import { installFromRepo, installFromArtefact, installFromBundle } from './install.js';
 
+/**
+ * Supplies a bearer token for a pinned content URL, or `undefined` when the
+ * caller has no token to offer for that origin.
+ *
+ * Deliberately a callback rather than a token value: the token may need to be
+ * refreshed — or re-acquired interactively — at the moment the update runs,
+ * long after the screen offering the action was rendered. Callers are also
+ * responsible for deciding whether the target origin is one they hold a token
+ * for (see `isOriginInDiscovery`).
+ */
+export type AccessTokenProvider = (contentUrl: string) => Promise<string | undefined>;
+
 export interface InstalledSkillRecord {
   /** Config key, e.g. "github.com/org/repo/my-skill" or "my-skill" */
   installKey: string;
@@ -153,6 +165,7 @@ export async function updateInstalled(
   id: string,
   scopeHint?: InstallScope,
   toolIdHint?: string,
+  getAccessToken?: AccessTokenProvider,
 ): Promise<InstallResult> {
   const record = await resolveIdentifier(id, scopeHint, toolIdHint);
   const { sourcePin, toolId, scope, repoRoot } = record;
@@ -187,6 +200,7 @@ export async function updateInstalled(
       toolId,
       repoRoot,
       forceUpdate: true,
+      bearerToken: await getAccessToken?.(sourcePin.artefactUrl),
     });
     return opResult.result;
   }
@@ -201,6 +215,7 @@ export async function updateInstalled(
     const opResult = await installFromBundle({
       bundleUrl,
       basePath: sourcePin.bundleBasePath,
+      bearerToken: await getAccessToken?.(bundleUrl),
       skillNames: [record.skillId],
       scope,
       toolId,
