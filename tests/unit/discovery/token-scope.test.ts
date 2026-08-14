@@ -56,4 +56,29 @@ describe('isOriginInDiscovery', () => {
   it('returns false for a document with no sources', () => {
     expect(isOriginInDiscovery(makeDiscovery([]), 'https://content.example.com/x.zip')).toBe(false);
   });
+
+  it('does not treat a git source host as token-eligible', () => {
+    const discovery: DiscoveryDocument = {
+      version: '1',
+      sources: [
+        { name: 'community-repo', type: 'git', url: 'https://github.com/org/repo' },
+        { name: 'official', type: 'http', url: 'https://content.example.com' },
+      ],
+    };
+    expect(isOriginInDiscovery(discovery, 'https://github.com/org/other/releases/download/v1/skill.zip')).toBe(false);
+    expect(isOriginInDiscovery(discovery, 'https://content.example.com/agents/index.json')).toBe(true);
+  });
+
+  it('matches an artefact source origin', () => {
+    const discovery: DiscoveryDocument = {
+      version: '1',
+      sources: [{ name: 'packaged', type: 'artefact', url: 'https://cdn.example.com/skills/tool.zip' }],
+    };
+    expect(isOriginInDiscovery(discovery, 'https://cdn.example.com/skills/other.zip')).toBe(true);
+  });
+
+  it('does not match http and https on the same host', () => {
+    const discovery = makeDiscovery(['https://content.example.com']);
+    expect(isOriginInDiscovery(discovery, 'http://content.example.com/x.zip')).toBe(false);
+  });
 });

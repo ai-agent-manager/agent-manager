@@ -13,31 +13,46 @@
  * origin — a credential the operator never authorised for that host.
  *
  * These helpers keep token forwarding within the currently-loaded document:
- * a token is attached only when the target URL's origin is one the document
- * itself lists.
+ * a token is attached only when the target URL's origin is one an `http` or
+ * `artefact` source in the document lists.
  */
 
-import type { DiscoveryDocument } from './types.js';
+import type { DiscoveryDocument, SourceType } from './types.js';
 
-/** Host (including any non-default port) of a URL, or null when unparseable. */
-function hostOf(url: string): string | null {
+/** Source types that actually receive the discovery access token. */
+const TOKEN_ELIGIBLE_TYPES: ReadonlySet<SourceType> = new Set(['http', 'artefact']);
+
+/**
+ * Origin of a URL (`protocol` + `host`, so scheme and non-default port both
+ * distinguish), or null when unparseable.
+ */
+function originOf(url: string): string | null {
   try {
-    return new URL(url).host.toLowerCase();
+    return new URL(url).origin.toLowerCase();
   } catch {
     return null;
   }
 }
 
 /**
- * Whether `targetUrl` sits on an origin listed in this discovery document.
+ * Whether `targetUrl` sits on an origin listed in this discovery document
+ * by an `http` or `artefact` source — the only types that receive this token.
  *
- * Compares `host` rather than `hostname`, so a source on a non-default port is
- * not treated as the same origin as one on the default port. Unparseable URLs —
- * on either side — never match, so a malformed pin cannot attract a token.
+ * `git` hosts are ignored: a document that lists `https://github.com/org/repo`
+ * must not attach the discovery credential when updating an artefact whose pin
+ * happens to also be on github.com.
+ *
+ * Compares `origin` rather than `host`, so `http://` cannot inherit a match
+ * from `https://` on the same host. A non-default port remains distinct.
+ * Unparseable URLs — on either side — never match, so a malformed pin cannot
+ * attract a token.
  */
 export function isOriginInDiscovery(discovery: DiscoveryDocument, targetUrl: string): boolean {
-  const target = hostOf(targetUrl);
+  const target = originOf(targetUrl);
   if (!target) return false;
 
-  return discovery.sources.some((source) => hostOf(source.url) === target);
+  return discovery.sources.some((source) => {
+    if (!TOKEN_ELIGIBLE_TYPES.has(source.type)) return false;
+    return originOf(source.url) === target;
+  });
 }
