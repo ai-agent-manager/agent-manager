@@ -39,6 +39,7 @@ export function InfoView({ record, onBack }: InfoViewProps) {
           {pin.artefactVersion && <Row label="Version">{pin.artefactVersion}</Row>}
           {pin.sha256 && <Row label="SHA-256">{pin.sha256}</Row>}
           {pin.bundleBaseUrl && <Row label="Bundle URL">{pin.bundleBaseUrl}</Row>}
+          {pin.bundleIndexUrl && <Row label="Index URL">{pin.bundleIndexUrl}</Row>}
           {pin.bundleVersion && <Row label="Bundle ver">{pin.bundleVersion}</Row>}
         </>
       ) : (

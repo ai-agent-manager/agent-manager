@@ -15,6 +15,9 @@ export type {
   DiscoveryDocument,
   DiscoveryAuth,
   DiscoverySource,
+  HttpDiscoverySource,
+  GitDiscoverySource,
+  ArtefactDiscoverySource,
   SourceType,
   SourceStatus,
 } from './types.js';

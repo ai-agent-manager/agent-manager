@@ -23,16 +23,40 @@ export interface DiscoveryAuth {
 export type SourceType = 'http' | 'git' | 'artefact';
 export type SourceStatus = 'official' | 'community';
 
-export interface DiscoverySource {
+interface DiscoverySourceBase {
   /** Source identifier. */
   name: string;
-  /** How to fetch the source. */
-  type: SourceType;
-  /** Location of the source (bundle URL for http, repository URL for git). */
-  url: string;
   /** Trust level indicator. */
   status?: SourceStatus;
 }
+
+/**
+ * HTTP bundle source. Prefer `indexUrl`, which is the exact URL of index.json.
+ * `url` is the legacy base-URL form and resolves to `<url>/agents/index.json`.
+ */
+export type HttpDiscoverySource = DiscoverySourceBase & {
+  type: 'http';
+} & (
+  | { indexUrl: string; url?: never }
+  | { url: string; indexUrl?: never }
+);
+
+export interface GitDiscoverySource extends DiscoverySourceBase {
+  type: 'git';
+  /** Git repository URL. */
+  url: string;
+}
+
+export interface ArtefactDiscoverySource extends DiscoverySourceBase {
+  type: 'artefact';
+  /** Direct URL to the packaged skill zip. */
+  url: string;
+}
+
+export type DiscoverySource =
+  | HttpDiscoverySource
+  | GitDiscoverySource
+  | ArtefactDiscoverySource;
 
 export interface DiscoveryTelemetry {
   /** Base URL of the telemetry endpoint. */

@@ -37,24 +37,72 @@ function stripTrailingSlashes(value: string): string {
 }
 
 /**
+ * Validate and canonicalise an explicit bundle index URL.
+ *
+ * Fragments are removed because they are never sent in an HTTP request and
+ * therefore cannot distinguish bundle streams. Query strings are retained.
+ */
+export function canonicaliseIndexUrl(indexUrl: string): string {
+    const parsed = new URL(indexUrl);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        throw new Error(`Bundle index URL must use http or https: ${indexUrl}`);
+    }
+    if (parsed.username || parsed.password) {
+        throw new Error(`Bundle index URL must not contain credentials: ${indexUrl}`);
+    }
+    if (!parsed.pathname.endsWith("/index.json")) {
+        throw new Error(`Bundle index URL must point exactly to index.json: ${indexUrl}`);
+    }
+    parsed.hash = "";
+    return parsed.toString();
+}
+
+/** Stable cache discriminator for a canonical bundle index URL. */
+export function indexUrlSourceKey(indexUrl: string): string {
+    const digest = createHash("sha256").update(canonicaliseIndexUrl(indexUrl)).digest("hex").slice(0, 24);
+    return `http-${digest}`;
+}
+
+/**
  * Build the URL for the agents index.json.
  */
 export function buildIndexUrl(baseUrl: string): string {
-    return `${stripTrailingSlashes(baseUrl)}/agents/index.json`;
+    const parsed = new URL(baseUrl);
+    parsed.pathname = `${stripTrailingSlashes(parsed.pathname)}/agents/index.json`;
+    parsed.search = "";
+    parsed.hash = "";
+    return canonicaliseIndexUrl(parsed.toString());
+}
+
+function buildVersionedUrl(indexUrl: string, version: string, fileName: string): string {
+    if (!version) {
+        throw new Error("Bundle version must not be empty");
+    }
+    return new URL(`${encodeURIComponent(version)}/${fileName}`, canonicaliseIndexUrl(indexUrl)).toString();
+}
+
+/** Build a versioned bundle URL relative to an exact index URL. */
+export function buildBundleUrlFromIndex(indexUrl: string, version: string): string {
+    return buildVersionedUrl(indexUrl, version, "bundle.zip");
+}
+
+/** Build a bundle hash-sidecar URL relative to an exact index URL. */
+export function buildHashUrlFromIndex(indexUrl: string, version: string): string {
+    return buildVersionedUrl(indexUrl, version, "bundle.zip.sha256");
 }
 
 /**
  * Build the URL for a versioned bundle zip.
  */
 export function buildBundleUrl(baseUrl: string, version: string): string {
-    return `${stripTrailingSlashes(baseUrl)}/agents/${version}/bundle.zip`;
+    return buildBundleUrlFromIndex(buildIndexUrl(baseUrl), version);
 }
 
 /**
  * Build the URL for a bundle's SHA-256 hash sidecar file.
  */
 export function buildHashUrl(baseUrl: string, version: string): string {
-    return `${stripTrailingSlashes(baseUrl)}/agents/${version}/bundle.zip.sha256`;
+    return buildHashUrlFromIndex(buildIndexUrl(baseUrl), version);
 }
 
 /**
@@ -83,7 +131,16 @@ export class IntegrityError extends Error {
  * Throws on other HTTP errors (500, network failures, etc.).
  */
 export async function fetchBundleHash(baseUrl: string, version: string, bearerToken?: string): Promise<string | null> {
-    const url = buildHashUrl(baseUrl, version);
+    return fetchBundleHashFromIndex(buildIndexUrl(baseUrl), version, bearerToken);
+}
+
+/** Fetch a bundle hash sidecar relative to an exact index URL. */
+export async function fetchBundleHashFromIndex(
+    indexUrl: string,
+    version: string,
+    bearerToken?: string,
+): Promise<string | null> {
+    const url = buildHashUrlFromIndex(indexUrl, version);
 
     const response = await fetch(url, authFetchOpts(bearerToken));
 
@@ -124,7 +181,12 @@ export async function verifyBundleHash(zipPath: string, expectedHash: string): P
  * Fetch the agents index.json to discover available bundle versions.
  */
 export async function fetchIndex(baseUrl: string, bearerToken?: string): Promise<AgentsIndex> {
-    const url = buildIndexUrl(baseUrl);
+    return fetchIndexUrl(buildIndexUrl(baseUrl), bearerToken);
+}
+
+/** Fetch an exact bundle index URL. */
+export async function fetchIndexUrl(indexUrl: string, bearerToken?: string): Promise<AgentsIndex> {
+    const url = canonicaliseIndexUrl(indexUrl);
 
     const response = await fetch(url, authFetchOpts(bearerToken));
     if (!response.ok) {
@@ -168,9 +230,33 @@ export function getLatestVersion(index: AgentsIndex): string {
  * `IntegrityError` is thrown.
  */
 export async function downloadBundle(baseUrl: string, version?: string, bearerToken?: string): Promise<DownloadResult> {
+    return downloadBundleAtIndex(buildIndexUrl(baseUrl), version, bearerToken, baseUrl, false);
+}
+
+/**
+ * Download a bundle using an explicit exact URL to index.json.
+ *
+ * Versioned bundle and hash URLs are resolved from the index URL's directory.
+ */
+export async function downloadBundleFromIndex(
+    indexUrl: string,
+    version?: string,
+    bearerToken?: string,
+): Promise<DownloadResult> {
+    const canonicalIndexUrl = canonicaliseIndexUrl(indexUrl);
+    return downloadBundleAtIndex(canonicalIndexUrl, version, bearerToken, canonicalIndexUrl, true);
+}
+
+async function downloadBundleAtIndex(
+    indexUrl: string,
+    version: string | undefined,
+    bearerToken: string | undefined,
+    telemetryEndpoint: string,
+    distinguishTempFile: boolean,
+): Promise<DownloadResult> {
     const requestType = version ? "specific" : "latest";
     let targetVersion = version ?? "latest";
-    const bundleEndpoint = getBundleEndpointTelemetryValue(baseUrl);
+    const bundleEndpoint = getBundleEndpointTelemetryValue(telemetryEndpoint);
 
     trackTelemetryEvent({
         action: "bundle_download_started",
@@ -184,15 +270,18 @@ export async function downloadBundle(baseUrl: string, version?: string, bearerTo
 
     try {
         if (!version) {
-            const index = await fetchIndex(baseUrl, bearerToken);
+            const index = await fetchIndexUrl(indexUrl, bearerToken);
             targetVersion = getLatestVersion(index);
         }
 
-        const url = buildBundleUrl(baseUrl, targetVersion);
+        const url = buildBundleUrlFromIndex(indexUrl, targetVersion);
         const tempDir = getTempDir();
         await mkdir(tempDir, { recursive: true });
 
-        const zipPath = path.join(tempDir, `${targetVersion}.zip`);
+        const sourceSuffix = distinguishTempFile
+            ? `-${indexUrlSourceKey(indexUrl).slice(0, 12)}`
+            : "";
+        const zipPath = path.join(tempDir, `${targetVersion}${sourceSuffix}.zip`);
         const response = await fetch(url, authFetchOpts(bearerToken));
         if (!response.ok) {
             throw new Error(`Failed to download bundle: ${response.status} ${response.statusText} from ${url}`);
@@ -203,7 +292,7 @@ export async function downloadBundle(baseUrl: string, version?: string, bearerTo
         let sha256: string | null = null;
 
         try {
-            const expectedHash = await fetchBundleHash(baseUrl, targetVersion, bearerToken);
+            const expectedHash = await fetchBundleHashFromIndex(indexUrl, targetVersion, bearerToken);
 
             if (expectedHash) {
                 await verifyBundleHash(zipPath, expectedHash);

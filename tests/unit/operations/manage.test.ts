@@ -269,6 +269,40 @@ describe('updateInstalled', () => {
     expect(opts.bundleVersion).toBeUndefined();
   });
 
+  it('retains an explicit bundle index URL when updating', async () => {
+    vi.mocked(readConfig).mockResolvedValueOnce({
+      installations: {
+        'claude-code': {
+          'content.example.com/catalogues/team-a/index/abc123/explicit-skill': {
+            installedAt: '2026-01-04T00:00:00.000Z',
+            method: 'symlink' as const,
+            sourcePin: {
+              sourceType: 'bundle' as const,
+              installLayout: 'namespaced' as const,
+              bundleIndexUrl: 'https://content.example.com/catalogues/team-a/index.json',
+              bundleVersion: '1.0.0',
+            },
+          },
+        },
+      },
+    });
+
+    await updateInstalled(
+      'content.example.com/catalogues/team-a/index/abc123/explicit-skill',
+      'system',
+      'claude-code',
+    );
+
+    expect(installFromBundle).toHaveBeenCalledWith({
+      bundleIndexUrl: 'https://content.example.com/catalogues/team-a/index.json',
+      skillNames: ['explicit-skill'],
+      scope: 'system',
+      toolId: 'claude-code',
+      repoRoot: undefined,
+      forceUpdate: true,
+    });
+  });
+
   it('rejects updating a record without a source pin', async () => {
     await expect(updateInstalled('legacy-skill')).rejects.toThrow(/no source pin recorded/);
   });

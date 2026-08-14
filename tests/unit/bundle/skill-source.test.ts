@@ -13,6 +13,7 @@ import {
   sanitiseNamespaceSegment,
   deriveRepoNamespace,
   deriveArtefactNamespace,
+  deriveBundleIndexNamespace,
   deriveInstallNamespace,
   buildInstallKey,
   flattenNamespace,
@@ -337,6 +338,19 @@ describe('buildSourcePin', () => {
     expect(pin.installLayout).toBe('flat');
     expect(pin.bundleVersion).toBe('2026.05.01');
     expect(pin.bundleBaseUrl).toBe('https://cdn.example.com/agents');
+    expect(pin.bundleIndexUrl).toBe('https://cdn.example.com/agents/agents/index.json');
+  });
+
+  it('preserves a canonical explicit index URL in a namespaced bundle pin', () => {
+    const source: BundleSkillSource = {
+      type: 'bundle',
+      indexUrl: 'HTTPS://EXAMPLE.COM:443/catalogues/team-a/index.json#ignored',
+      installLayout: 'namespaced',
+    };
+    const pin = buildSourcePin(source, '1.2.3');
+    expect(pin.bundleIndexUrl).toBe('https://example.com/catalogues/team-a/index.json');
+    expect(pin.bundleBaseUrl).toBeUndefined();
+    expect(pin.installLayout).toBe('namespaced');
   });
 
   it('builds a pin for a bundle directory source', async () => {
@@ -658,6 +672,38 @@ describe('deriveInstallNamespace', () => {
       bundleVersion: '2026.05.01',
     });
     expect(ns).toBeNull();
+  });
+
+  it('uses the complete canonical index URL for namespaced HTTP bundles', () => {
+    const first = deriveBundleIndexNamespace(
+      'https://content.example.com/catalogues/team+a/index.json?channel=stable',
+    );
+    const second = deriveBundleIndexNamespace(
+      'https://content.example.com/catalogues/team=a/index.json?channel=stable',
+    );
+    const differentQuery = deriveBundleIndexNamespace(
+      'https://content.example.com/catalogues/team+a/index.json?channel=next',
+    );
+
+    expect(first).toMatch(/^content\.example\.com\/catalogues\/team-a\/index\/[0-9a-f]{12}$/);
+    expect(new Set([first, second, differentQuery]).size).toBe(3);
+  });
+
+  it('derives distinct install namespaces for two index URLs on one origin', () => {
+    const a = deriveInstallNamespace({
+      sourceType: 'bundle',
+      installLayout: 'namespaced',
+      bundleIndexUrl: 'https://content.example.com/catalogues/team-a/index.json',
+    });
+    const b = deriveInstallNamespace({
+      sourceType: 'bundle',
+      installLayout: 'namespaced',
+      bundleIndexUrl: 'https://content.example.com/catalogues/team-b/index.json',
+    });
+
+    expect(a).toContain('content.example.com/catalogues/team-a/index/');
+    expect(b).toContain('content.example.com/catalogues/team-b/index/');
+    expect(a).not.toBe(b);
   });
 
   it('returns null when installLayout is flat regardless of source type', () => {

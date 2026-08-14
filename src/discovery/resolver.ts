@@ -6,7 +6,13 @@
  * for authenticated endpoints.
  */
 
-import { downloadBundle } from '../bundle/downloader.js';
+import {
+  buildIndexUrl,
+  canonicaliseIndexUrl,
+  downloadBundle,
+  downloadBundleFromIndex,
+  indexUrlSourceKey,
+} from '../bundle/downloader.js';
 import { extractBundle } from '../bundle/extractor.js';
 import { scanBundle, type SkillInfo, type RovoAgentInfo } from '../bundle/scanner.js';
 import { setCurrentBundle } from '../bundle/cache.js';
@@ -77,16 +83,37 @@ export async function resolveDiscoverySkills(
       switch (source.type) {
         case 'http': {
           onProgress?.(`Downloading source bundle: ${source.name}...`);
-          // For HTTP sources, the URL is the base URL for the bundle index
-          const { zipPath, version } = await downloadBundle(source.url, undefined, accessToken);
-          const result = await extractBundle(zipPath);
-          if (result.isNew) {
+          const hasIndexUrl = typeof source.indexUrl === 'string';
+          const hasLegacyUrl = typeof source.url === 'string';
+          if (hasIndexUrl === hasLegacyUrl) {
+            throw new Error(`HTTP source '${source.name}' must define exactly one of url or indexUrl`);
+          }
+
+          const indexUrl = hasIndexUrl
+            ? canonicaliseIndexUrl(source.indexUrl!)
+            : buildIndexUrl(source.url!);
+          const { zipPath, version } = hasIndexUrl
+            ? await downloadBundleFromIndex(indexUrl, undefined, accessToken)
+            : await downloadBundle(source.url!, undefined, accessToken);
+          const result = await extractBundle(
+            zipPath,
+            hasIndexUrl ? { sourceKey: indexUrlSourceKey(indexUrl) } : undefined,
+          );
+          if (result.isNew && !hasIndexUrl) {
             await setCurrentBundle(result.manifest.version);
           }
           bundleVersion = version;
 
           const contents = await scanBundle(result.bundleDir, result.manifest.agents);
-          const httpPin = buildSourcePin({ type: 'bundle', baseUrl: source.url, installLayout: 'flat' } as BundleSkillSource, version);
+          const httpSource: BundleSkillSource = hasIndexUrl
+            ? { type: 'bundle', indexUrl, installLayout: 'namespaced' }
+            : {
+                type: 'bundle',
+                baseUrl: source.url!,
+                indexUrl,
+                installLayout: 'flat',
+              };
+          const httpPin = buildSourcePin(httpSource, version);
           allSkills.push(...contents.skills.map((skill) => ({ ...skill, sourcePin: httpPin, ...sourceMeta })));
           allRovoAgents.push(...contents.rovoAgents);
           break;

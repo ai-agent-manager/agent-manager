@@ -192,14 +192,16 @@ export async function updateInstalled(
   }
 
   if (sourcePin.sourceType === 'bundle') {
+    const bundleIndexUrl =
+      sourcePin.installLayout === 'namespaced' ? sourcePin.bundleIndexUrl : undefined;
     const bundleUrl = sourcePin.bundleBaseUrl;
-    if (!bundleUrl) {
+    if (!bundleIndexUrl && !bundleUrl) {
       throw new Error(
         `Cannot update '${id}': bundle source has no URL (local directory installs cannot be updated).`,
       );
     }
     const opResult = await installFromBundle({
-      bundleUrl,
+      ...(bundleIndexUrl ? { bundleIndexUrl } : { bundleUrl: bundleUrl! }),
       skillNames: [record.skillId],
       scope,
       toolId,

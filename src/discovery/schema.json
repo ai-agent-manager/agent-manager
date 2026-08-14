@@ -64,30 +64,85 @@
       "type": "array",
       "description": "List of available sources",
       "items": {
-        "type": "object",
-        "required": ["name", "type", "url"],
-        "properties": {
-          "name": {
-            "type": "string",
-            "description": "Source identifier (kebab-case recommended)"
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["name", "type", "indexUrl"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Source identifier (kebab-case recommended)"
+              },
+              "type": {
+                "const": "http",
+                "description": "HTTP bundle source"
+              },
+              "indexUrl": {
+                "type": "string",
+                "format": "uri",
+                "pattern": "^https?://.+/index\\.json(?:[?#].*)?$",
+                "description": "Preferred exact HTTP(S) URL to the bundle index.json"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["official", "community"],
+                "description": "Trust level indicator"
+              }
+            },
+            "additionalProperties": false
           },
-          "type": {
-            "type": "string",
-            "enum": ["http", "git", "artefact"],
-            "description": "How to fetch the source. 'http' downloads a bundle directly. 'git' clones a repository in Claude Code plugin marketplace format. 'artefact' downloads a packaged skill zip."
+          {
+            "type": "object",
+            "required": ["name", "type", "url"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Source identifier (kebab-case recommended)"
+              },
+              "type": {
+                "const": "http",
+                "description": "Legacy HTTP bundle source"
+              },
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "description": "Legacy base URL; the index is resolved at <url>/agents/index.json"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["official", "community"],
+                "description": "Trust level indicator"
+              }
+            },
+            "additionalProperties": false
           },
-          "url": {
-            "type": "string",
-            "format": "uri",
-            "description": "Location of the source (bundle URL for http, repository URL for git)"
-          },
-          "status": {
-            "type": "string",
-            "enum": ["official", "community"],
-            "description": "Trust level indicator"
+          {
+            "type": "object",
+            "required": ["name", "type", "url"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Source identifier (kebab-case recommended)"
+              },
+              "type": {
+                "type": "string",
+                "enum": ["git", "artefact"],
+                "description": "How to fetch the source"
+              },
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "description": "Repository URL for git or direct zip URL for artefact"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["official", "community"],
+                "description": "Trust level indicator"
+              }
+            },
+            "additionalProperties": false
           }
-        },
-        "additionalProperties": false
+        ]
       }
     }
   },

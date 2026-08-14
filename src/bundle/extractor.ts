@@ -1,6 +1,7 @@
 import { mkdir, readFile, rm, rename } from 'node:fs/promises';
 import extractZip from 'extract-zip';
-import { getBundleVersionDir, getTempDir } from '../config/paths.js';
+import path from 'node:path';
+import { getBundlesDir, getBundleVersionDir, getTempDir } from '../config/paths.js';
 import { parseManifest, type BundleManifest } from './manifest.js';
 
 export interface ExtractResult {
@@ -9,12 +10,33 @@ export interface ExtractResult {
   isNew: boolean;
 }
 
+export interface ExtractBundleOptions {
+  /**
+   * Stable HTTP source key for source-scoped caches. Omit to preserve
+   * the legacy global cache keyed only by manifest version.
+   */
+  sourceKey?: string;
+}
+
+function assertSafeCacheSegment(value: string, label: string): void {
+  if (
+    !value ||
+    value === '.' ||
+    value === '..' ||
+    value.includes('/') ||
+    value.includes('\\') ||
+    value.includes('\0')
+  ) {
+    throw new Error(`${label} must be a safe single path segment: ${value}`);
+  }
+}
+
 /**
  * Extract an agents.zip file, read its manifest, and cache it
  * under ~/.agentman/bundles/<version>/.
  * Returns early if this version is already cached.
  */
-export async function extractBundle(zipPath: string): Promise<ExtractResult> {
+export async function extractBundle(zipPath: string, options: ExtractBundleOptions = {}): Promise<ExtractResult> {
   // First, extract to a temp dir to read the manifest
   const tempExtractDir = `${getTempDir()}/extract-${Date.now()}`;
   await mkdir(tempExtractDir, { recursive: true });
@@ -25,9 +47,17 @@ export async function extractBundle(zipPath: string): Promise<ExtractResult> {
     // Read manifest
     const manifestRaw = await readFile(`${tempExtractDir}/manifest.json`, 'utf-8');
     const manifest = parseManifest(manifestRaw);
+    assertSafeCacheSegment(manifest.version, 'Bundle manifest version');
+    if (options.sourceKey) {
+      if (!/^http-[0-9a-f]{24}$/.test(options.sourceKey)) {
+        throw new Error(`Invalid HTTP bundle source key: ${options.sourceKey}`);
+      }
+    }
 
     // Check if this version is already cached
-    const targetDir = getBundleVersionDir(manifest.version);
+    const targetDir = options.sourceKey
+      ? path.join(getBundlesDir(), 'sources', options.sourceKey, manifest.version)
+      : getBundleVersionDir(manifest.version);
     const alreadyCached = await dirExists(targetDir);
 
     if (alreadyCached) {

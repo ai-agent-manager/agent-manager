@@ -30,6 +30,10 @@ vi.mock('../../../src/bundle/downloader.js', async () => {
       zipPath: '/tmp/bundle.zip',
       version: '1.0.0',
     })),
+    downloadBundleFromIndex: vi.fn(async (indexUrl: string) => ({
+      zipPath: `/tmp/${indexUrl.includes('team-a') ? 'team-a' : 'explicit'}.zip`,
+      version: '1.0.0',
+    })),
   };
 });
 
@@ -103,6 +107,35 @@ describe('resolveDiscoverySkills', () => {
     expect(result.skills[0]!.sourcePin?.sourceType).toBe('bundle');
     expect(result.bundleVersion).toBe('1.0.0');
     expect(result.errors).toHaveLength(0);
+  });
+
+  it('resolves an explicit HTTP index URL and persists its canonical pin', async () => {
+    const { downloadBundleFromIndex } = await import('../../../src/bundle/downloader.js');
+    const doc: DiscoveryDocument = {
+      version: '1',
+      sources: [
+        {
+          name: 'explicit-bundle',
+          type: 'http',
+          indexUrl: 'HTTPS://CDN.EXAMPLE.COM:443/catalogues/team-a/index.json#ignored',
+        },
+      ],
+    };
+
+    const result = await resolveDiscoverySkills(doc, 'token');
+
+    expect(downloadBundleFromIndex).toHaveBeenCalledWith(
+      'https://cdn.example.com/catalogues/team-a/index.json',
+      undefined,
+      'token',
+    );
+    expect(result.skills[0]!.sourcePin).toMatchObject({
+      sourceType: 'bundle',
+      installLayout: 'namespaced',
+      bundleIndexUrl: 'https://cdn.example.com/catalogues/team-a/index.json',
+      bundleVersion: '1.0.0',
+    });
+    expect(result.skills[0]!.sourcePin?.bundleBaseUrl).toBeUndefined();
   });
 
   it('resolves mixed http and git skills', async () => {
@@ -233,5 +266,61 @@ describe('resolveDiscoverySkills', () => {
 
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]!.isIntegrity).toBe(false);
+  });
+
+  it('keeps two explicit index URLs on one origin as distinct streams and install identities', async () => {
+    const { downloadBundleFromIndex } = await import('../../../src/bundle/downloader.js');
+    const { extractBundle } = await import('../../../src/bundle/extractor.js');
+    const { scanBundle } = await import('../../../src/bundle/scanner.js');
+    const { deriveSkillInstallKey } = await import('../../../src/bundle/skill-source.js');
+
+    vi.mocked(downloadBundleFromIndex)
+      .mockResolvedValueOnce({ zipPath: '/tmp/team-a.zip', version: '1.0.0', sha256: null })
+      .mockResolvedValueOnce({ zipPath: '/tmp/team-b.zip', version: '1.0.0', sha256: null });
+    vi.mocked(extractBundle)
+      .mockResolvedValueOnce({
+        bundleDir: '/tmp/bundles/team-a',
+        manifest: { version: '1.0.0', agents: [] },
+        isNew: true,
+      })
+      .mockResolvedValueOnce({
+        bundleDir: '/tmp/bundles/team-b',
+        manifest: { version: '1.0.0', agents: [] },
+        isNew: true,
+      });
+    vi.mocked(scanBundle)
+      .mockResolvedValueOnce({
+        skills: [{ ...mockBundleSkills[0]!, dirPath: '/tmp/bundles/team-a/http-skill-a' }],
+        rovoAgents: [],
+      })
+      .mockResolvedValueOnce({
+        skills: [{ ...mockBundleSkills[0]!, dirPath: '/tmp/bundles/team-b/http-skill-a' }],
+        rovoAgents: [],
+      });
+
+    const result = await resolveDiscoverySkills({
+      version: '1',
+      sources: [
+        {
+          name: 'team-a',
+          type: 'http',
+          indexUrl: 'https://content.example.com/catalogues/team-a/index.json',
+        },
+        {
+          name: 'team-b',
+          type: 'http',
+          indexUrl: 'https://content.example.com/catalogues/team-b/index.json',
+        },
+      ],
+    });
+
+    expect(result.errors).toEqual([]);
+    expect(result.skills.map((skill) => skill.dirPath)).toEqual([
+      '/tmp/bundles/team-a/http-skill-a',
+      '/tmp/bundles/team-b/http-skill-a',
+    ]);
+    const identities = result.skills.map(deriveSkillInstallKey);
+    expect(identities[0]).not.toBe(identities[1]);
+    expect(identities.every((identity) => identity.endsWith('/http-skill-a'))).toBe(true);
   });
 });

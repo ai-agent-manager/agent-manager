@@ -33,7 +33,7 @@ When a user provides a base URL to agent-manager, it fetches the discovery docum
     {
       "name": "deployment-tools",
       "type": "http",
-      "url": "https://skills.example.com/bundles/deployment-tools",
+      "indexUrl": "https://skills.example.com/catalogues/deployment-tools/index.json",
       "status": "community"
     },
     {
@@ -62,14 +62,29 @@ When a user provides a base URL to agent-manager, it fetches the discovery docum
 | `sources` | array | Yes | List of available sources |
 | `sources[].name` | string | Yes | Source identifier |
 | `sources[].type` | `"http"` \| `"git"` \| `"artefact"` | Yes | How to fetch the source |
-| `sources[].url` | string (URI) | Yes | Location of the source |
+| `sources[].url` | string (URI) | Git, artefact, or legacy HTTP | Repository/artefact location, or a legacy HTTP base URL |
+| `sources[].indexUrl` | string (HTTP(S) URI ending in `/index.json`) | Preferred for HTTP | Exact URL of the HTTP bundle index |
 | `sources[].status` | `"official"` \| `"community"` | No | Informational label set by the discovery document publisher — agentman does not enforce or act on this value |
 
 ### Source Types
 
-- **`http`** — URL points to a skill bundle (ZIP or similar) that agent-manager downloads directly. If auth is required, agent-manager passes the access token as a Bearer header. Supports both skills and rovo agents.
+- **`http`** — `indexUrl` points to the exact `index.json` for a versioned bundle stream. For a version `1.2.3`, agent-manager resolves `1.2.3/bundle.zip` and `1.2.3/bundle.zip.sha256` relative to the index URL's directory. It does not search for or insert an `agents` path segment. Legacy HTTP entries with `url` remain supported and resolve their index at `<url>/agents/index.json`. HTTP entries must define exactly one of `indexUrl` or `url`. If auth is required, agent-manager passes the access token as a Bearer header. Supports both skills and rovo agents.
 - **`git`** — URL points to a git repository in the [Claude Code plugin marketplace format](https://code.claude.com/docs/en/plugin-marketplaces). Agent-manager clones the repo and scans for skills (`.claude-plugin/` directory, `skills/<name>/SKILL.md` files). Only skills are supported in this model.
 - **`artefact`** — URL points directly to a `.zip` file containing one or more packaged skills. Artefact URLs must use `https://` (plain `http://` is only allowed for `localhost` during development). Agent-manager downloads the zip, checks integrity against a `.sha256` sidecar if one exists (the install proceeds with a warning if no sidecar is found — publish a sidecar or set `artefact-sha256` for stronger guarantees), then extracts and scans for skills. Artefact sources are **untrusted third-party packages** — review the source before adding it to your discovery document. Artefact sources produce skills only (no rovo agents).
+
+### HTTP bundle layout
+
+For `"indexUrl": "https://skills.example.com/catalogues/team-a/index.json"`:
+
+```text
+https://skills.example.com/catalogues/team-a/index.json
+https://skills.example.com/catalogues/team-a/1.2.3/bundle.zip
+https://skills.example.com/catalogues/team-a/1.2.3/bundle.zip.sha256
+```
+
+The canonical index URL is stored in each installed skill's source pin. Explicit
+HTTP sources use a readable namespace plus a short digest of the complete URL,
+so separate indexes on the same origin remain separate install identities.
 
 ---
 

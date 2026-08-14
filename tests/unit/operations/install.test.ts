@@ -74,6 +74,10 @@ vi.mock('../../../src/bundle/artefact-scanner.js', () => ({
 
 vi.mock('../../../src/bundle/downloader.js', () => ({
   downloadBundle: vi.fn(async () => ({ zipPath: '/tmp/bundle.zip', version: '2.0.0' })),
+  downloadBundleFromIndex: vi.fn(async () => ({ zipPath: '/tmp/explicit-bundle.zip', version: '2.0.0' })),
+  canonicaliseIndexUrl: vi.fn((url: string) => new URL(url).toString()),
+  buildIndexUrl: vi.fn((url: string) => `${url.replace(/\/+$/, '')}/agents/index.json`),
+  indexUrlSourceKey: vi.fn(() => 'explicit-source-key'),
 }));
 
 vi.mock('../../../src/bundle/extractor.js', () => ({
@@ -291,6 +295,31 @@ describe('installFromBundle', () => {
 
     const [installed] = mockProvisioner.install.mock.calls[0]! as unknown as [SkillInfo[]];
     expect(installed.map((s) => s.dirName)).toEqual(['bundle-skill']);
+  });
+
+  it('reinstalls from an explicit index URL without converting it to a base URL', async () => {
+    const { downloadBundleFromIndex } = await import('../../../src/bundle/downloader.js');
+    const { extractBundle } = await import('../../../src/bundle/extractor.js');
+
+    const result = await installFromBundle({
+      bundleIndexUrl: 'https://bundles.example.com/catalogues/team-a/index.json',
+      scope: 'system',
+      toolId: 'claude-code',
+    });
+
+    expect(downloadBundleFromIndex).toHaveBeenCalledWith(
+      'https://bundles.example.com/catalogues/team-a/index.json',
+      undefined,
+    );
+    expect(extractBundle).toHaveBeenCalledWith('/tmp/explicit-bundle.zip', {
+      sourceKey: 'explicit-source-key',
+    });
+    expect(result.sourcePin).toMatchObject({
+      sourceType: 'bundle',
+      installLayout: 'namespaced',
+      bundleIndexUrl: 'https://bundles.example.com/catalogues/team-a/index.json',
+    });
+    expect(result.sourcePin.bundleBaseUrl).toBeUndefined();
   });
 });
 

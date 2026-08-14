@@ -130,9 +130,15 @@ vi.mock("../../src/components/StartupNoticePanel.js", () => ({
     },
 }));
 
-vi.mock("../../src/bundle/downloader.js", () => ({
-    downloadBundle: vi.fn(),
-}));
+vi.mock("../../src/bundle/downloader.js", async () => {
+    const actual = await vi.importActual<typeof import("../../src/bundle/downloader.js")>(
+        "../../src/bundle/downloader.js",
+    );
+    return {
+        ...actual,
+        downloadBundle: vi.fn(),
+    };
+});
 
 vi.mock("../../src/bundle/extractor.js", () => ({
     extractBundle: vi.fn(),

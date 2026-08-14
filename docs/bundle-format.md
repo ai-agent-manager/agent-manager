@@ -1,9 +1,14 @@
 # Bundle Format
 
-Agent Manager expects your bundle server to expose two endpoints:
+Agent Manager expects an index and version directories relative to that index:
 
-- `<base-url>/agents/index.json` — version index listing available bundles
-- `<base-url>/agents/<version>/bundle.zip` — the versioned bundle zip
+- `<index-directory>/index.json` — version index listing available bundles
+- `<index-directory>/<version>/bundle.zip` — the versioned bundle zip
+- `<index-directory>/<version>/bundle.zip.sha256` — optional integrity sidecar
+
+Discovery documents should provide the exact index URL with `indexUrl`. Legacy
+HTTP sources using `url` remain supported at `<url>/agents/index.json`, with
+their bundle files under `<url>/agents/<version>/`.
 
 ## Zip contents
 

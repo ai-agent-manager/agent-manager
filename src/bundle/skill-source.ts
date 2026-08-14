@@ -19,6 +19,7 @@
 import { createHash } from 'node:crypto';
 import { stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { buildIndexUrl, canonicaliseIndexUrl } from './downloader.js';
 
 // ── Primitive types ───────────────────────────────────────────────────────────
 
@@ -72,13 +73,16 @@ export interface ArtefactSkillSource {
 
 /**
  * Bundle source: legacy compatibility path.
- * Maps to the previous BundleSource (url | directory) model.
- * Exactly one of baseUrl or dirPath will be set.
+ * Maps to the previous BundleSource (url | directory) model and the preferred
+ * exact-index HTTP discovery contract. One of baseUrl, indexUrl, or dirPath is
+ * set; discovery pins may retain both a legacy baseUrl and its derived indexUrl.
  */
 export interface BundleSkillSource {
   type: 'bundle';
   /** Base URL of a CDN-hosted bundle (legacy url source). */
   baseUrl?: string;
+  /** Canonical exact URL to index.json for an explicit HTTP discovery source. */
+  indexUrl?: string;
   /** Absolute path to a local bundle directory (legacy directory source). */
   dirPath?: string;
   installLayout: InstallLayout;
@@ -94,7 +98,7 @@ export type SkillSource = RepoSkillSource | ArtefactSkillSource | BundleSkillSou
  * install records so agentman can reproduce or track the exact install later.
  *
  * Intentional divergences from the canonical manifest SourceCoordinate shape:
- *   - bundleBaseUrl  present here; absent from SourceCoordinate (local-only concept)
+ *   - bundleBaseUrl/bundleIndexUrl present here; absent from SourceCoordinate
  *   - defaultBranch  present in SourceCoordinate; absent here (not needed at pin time)
  *
  * The pin records what was actually installed locally, while SourceCoordinate
@@ -117,6 +121,8 @@ export interface SkillSourcePin {
   // Bundle fields (legacy)
   bundleVersion?: string;
   bundleBaseUrl?: string;
+  /** Canonical exact URL used to resolve this HTTP bundle stream. */
+  bundleIndexUrl?: string;
 }
 
 // ── Type guards ───────────────────────────────────────────────────────────────
@@ -353,6 +359,9 @@ export function buildSourcePin(
     ...base,
     bundleVersion,
     ...(source.baseUrl ? { bundleBaseUrl: source.baseUrl } : {}),
+    ...(source.indexUrl || source.baseUrl
+      ? { bundleIndexUrl: canonicaliseIndexUrl(source.indexUrl ?? buildIndexUrl(source.baseUrl!)) }
+      : {}),
   };
 }
 
@@ -380,9 +389,11 @@ export function describeSkillSource(source: SkillSource): string {
   if (source.type === 'artefact') {
     return `artefact: ${source.artefactUrl}`;
   }
-  return source.baseUrl
-    ? `bundle: ${source.baseUrl}`
-    : `bundle: ${source.dirPath ?? '(local)'}`;
+  return source.indexUrl
+    ? `bundle index: ${source.indexUrl}`
+    : source.baseUrl
+      ? `bundle: ${source.baseUrl}`
+      : `bundle: ${source.dirPath ?? '(local)'}`;
 }
 
 // ── Namespace derivation ──────────────────────────────────────────────────────
@@ -517,6 +528,31 @@ export function deriveArtefactNamespace(artefactUrl: string): string {
 }
 
 /**
+ * Derive a readable, collision-resistant namespace from a complete canonical
+ * bundle index URL. The readable portion includes the host and full index path;
+ * a digest of the complete URL distinguishes scheme, query, port, encoding, and
+ * values that sanitise to the same filesystem-safe text.
+ */
+export function deriveBundleIndexNamespace(indexUrl: string): string {
+  const canonical = canonicaliseIndexUrl(indexUrl);
+  const parsed = new URL(canonical);
+  const pathSegments = parsed.pathname
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => {
+      let decoded = segment;
+      try { decoded = decodeURIComponent(segment); } catch { /* keep encoded form */ }
+      return sanitiseNamespaceSegment(decoded.replace(/\.json$/i, ''));
+    });
+  const digest = createHash('sha256').update(canonical).digest('hex').slice(0, 12);
+  return [
+    sanitiseNamespaceSegment(parsed.host),
+    ...(pathSegments.length > 0 ? pathSegments : ['index']),
+    digest,
+  ].join('/');
+}
+
+/**
  * Derive the install namespace from a persisted SkillSourcePin.
  * Returns null for flat layouts (bundle sources and any source where
  * installLayout is explicitly set to 'flat').
@@ -528,6 +564,9 @@ export function deriveInstallNamespace(pin: SkillSourcePin): string | null {
   }
   if (pin.sourceType === 'artefact' && pin.artefactUrl) {
     return deriveArtefactNamespace(pin.artefactUrl);
+  }
+  if (pin.sourceType === 'bundle' && pin.bundleIndexUrl) {
+    return deriveBundleIndexNamespace(pin.bundleIndexUrl);
   }
   return null;
 }

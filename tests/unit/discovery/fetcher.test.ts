@@ -95,6 +95,57 @@ describe('fetchDiscoveryDocument', () => {
     expect(result.telemetry?.siteId).toBe('test-site');
   });
 
+  it('accepts an HTTP source with an explicit exact indexUrl', async () => {
+    const document: DiscoveryDocument = {
+      version: '1',
+      sources: [{
+        name: 'team-a',
+        type: 'http',
+        indexUrl: 'https://skills.example.com/catalogues/team-a/index.json',
+      }],
+    };
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => document });
+
+    await expect(fetchDiscoveryDocument('https://example.com')).resolves.toEqual(document);
+  });
+
+  it.each([
+    {
+      name: 'both url and indexUrl',
+      source: {
+        name: 'invalid',
+        type: 'http',
+        url: 'https://skills.example.com',
+        indexUrl: 'https://skills.example.com/catalogues/team-a/index.json',
+      },
+    },
+    {
+      name: 'neither url nor indexUrl',
+      source: { name: 'invalid', type: 'http' },
+    },
+    {
+      name: 'indexUrl does not point to index.json',
+      source: {
+        name: 'invalid',
+        type: 'http',
+        indexUrl: 'https://skills.example.com/catalogues/team-a/catalogue.json',
+      },
+    },
+    {
+      name: 'indexUrl is not HTTP',
+      source: { name: 'invalid', type: 'http', indexUrl: 'file:///tmp/index.json' },
+    },
+  ])('rejects an HTTP source with $name', async ({ source }) => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ version: '1', sources: [source] }),
+    });
+
+    await expect(fetchDiscoveryDocument('https://example.com')).rejects.toThrow(
+      'Discovery document validation failed',
+    );
+  });
+
   it('throws DiscoveryError on network failure', async () => {
     mockFetch.mockRejectedValueOnce(new Error('Network error'));
 

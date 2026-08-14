@@ -6,12 +6,18 @@ import os from "node:os";
 import {
     buildIndexUrl,
     buildBundleUrl,
+    buildBundleUrlFromIndex,
     buildHashUrl,
+    buildHashUrlFromIndex,
+    canonicaliseIndexUrl,
+    indexUrlSourceKey,
     getLatestVersion,
     fetchIndex,
+    fetchIndexUrl,
     fetchBundleHash,
     verifyBundleHash,
     downloadBundle,
+    downloadBundleFromIndex,
     IntegrityError,
     type AgentsIndex,
 } from "../../../src/bundle/downloader.js";
@@ -64,6 +70,49 @@ describe("buildIndexUrl", () => {
 
     it("handles localhost URLs", () => {
         expect(buildIndexUrl("http://localhost:3000")).toBe("http://localhost:3000/agents/index.json");
+    });
+});
+
+describe("explicit index URLs", () => {
+    it("canonicalises an exact HTTP index URL and removes its fragment", () => {
+        expect(canonicaliseIndexUrl("HTTPS://EXAMPLE.COM:443/catalog/index.json?stream=a#section")).toBe(
+            "https://example.com/catalog/index.json?stream=a",
+        );
+    });
+
+    it("rejects non-HTTP and non-index URLs", () => {
+        expect(() => canonicaliseIndexUrl("file:///tmp/index.json")).toThrow("must use http or https");
+        expect(() => canonicaliseIndexUrl("https://example.com/catalog.json")).toThrow(
+            "must point exactly to index.json",
+        );
+    });
+
+    it("rejects credentials embedded in an index URL", () => {
+        expect(() => canonicaliseIndexUrl("https://user:secret@example.com/catalog/index.json")).toThrow(
+            "must not contain credentials",
+        );
+    });
+
+    it("uses a prefixed stable source key that cannot resemble a legacy version", () => {
+        const sourceKey = indexUrlSourceKey("https://example.com/catalog/index.json");
+        expect(sourceKey).toMatch(/^http-[0-9a-f]{24}$/);
+        expect(indexUrlSourceKey("https://example.com/catalog/index.json#ignored")).toBe(sourceKey);
+    });
+
+    it("resolves bundle and hash URLs from the index directory without inserting agents", () => {
+        const indexUrl = "https://example.com/catalogues/team-a/index.json";
+        expect(buildBundleUrlFromIndex(indexUrl, "1.2.3")).toBe(
+            "https://example.com/catalogues/team-a/1.2.3/bundle.zip",
+        );
+        expect(buildHashUrlFromIndex(indexUrl, "1.2.3")).toBe(
+            "https://example.com/catalogues/team-a/1.2.3/bundle.zip.sha256",
+        );
+    });
+
+    it("encodes a version as one path segment", () => {
+        expect(buildBundleUrlFromIndex("https://example.com/a/index.json", "../other")).toBe(
+            "https://example.com/a/..%2Fother/bundle.zip",
+        );
     });
 });
 
@@ -187,6 +236,20 @@ describe("fetchIndex", () => {
 
         await expect(fetchIndex("https://example.com")).rejects.toThrow(
             'Invalid index.json: missing or invalid "agents" array',
+        );
+    });
+
+    it("fetches an explicit index URL exactly", async () => {
+        globalThis.fetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: async () => ({ lastUpdated: "2026-01-01", agents: [] }),
+        });
+
+        await fetchIndexUrl("https://example.com/custom/team/index.json?channel=stable");
+
+        expect(globalThis.fetch).toHaveBeenCalledWith(
+            "https://example.com/custom/team/index.json?channel=stable",
+            undefined,
         );
     });
 });
@@ -619,5 +682,61 @@ describe("downloadBundle", () => {
         });
 
         await expect(downloadBundle("https://example.com")).rejects.toThrow("Failed to download bundle: 403 Forbidden");
+    });
+
+    it("keeps two explicit index streams on one origin distinct", async () => {
+        const streams = [
+            {
+                indexUrl: "https://example.com/catalogues/team-a/index.json",
+                version: "1.0.0",
+                content: Buffer.from("team-a bundle"),
+            },
+            {
+                indexUrl: "https://example.com/catalogues/team-b/index.json",
+                version: "1.0.0",
+                content: Buffer.from("team-b bundle"),
+            },
+        ];
+
+        globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+            const stream = streams.find(({ indexUrl }) => url.startsWith(indexUrl.replace("/index.json", "/")));
+            if (!stream) return Promise.reject(new Error(`Unexpected fetch URL: ${url}`));
+            if (url === stream.indexUrl) {
+                return Promise.resolve({
+                    ok: true,
+                    json: async () => ({
+                        lastUpdated: "2026-01-01",
+                        agents: [{ version: stream.version, published: "2026-01-01" }],
+                    }),
+                });
+            }
+            if (url.endsWith("/bundle.zip.sha256")) {
+                const hash = createHash("sha256").update(stream.content).digest("hex");
+                return Promise.resolve({ ok: true, status: 200, text: async () => hash });
+            }
+            if (url.endsWith("/bundle.zip")) {
+                return Promise.resolve({
+                    ok: true,
+                    arrayBuffer: async () =>
+                        stream.content.buffer.slice(
+                            stream.content.byteOffset,
+                            stream.content.byteOffset + stream.content.byteLength,
+                        ),
+                });
+            }
+            return Promise.reject(new Error(`Unexpected fetch URL: ${url}`));
+        });
+
+        const [a, b] = await Promise.all(
+            streams.map(({ indexUrl }) => downloadBundleFromIndex(indexUrl)),
+        );
+
+        expect(a.zipPath).not.toBe(b.zipPath);
+        expect(await readFile(a.zipPath, "utf8")).toBe("team-a bundle");
+        expect(await readFile(b.zipPath, "utf8")).toBe("team-b bundle");
+        const calls = vi.mocked(globalThis.fetch).mock.calls.map(([url]) => String(url));
+        expect(calls).toContain("https://example.com/catalogues/team-a/1.0.0/bundle.zip");
+        expect(calls).toContain("https://example.com/catalogues/team-b/1.0.0/bundle.zip");
+        expect(calls.some((url) => url.includes("/agents/"))).toBe(false);
     });
 });
