@@ -35,7 +35,7 @@ import type { StartupUpdateNotice } from "./lib/startup-update-checks.js";
 import { checkForStartupUpdates, shouldRunStartupUpdateChecks } from "./lib/startup-update-checks.js";
 import { getBundleSourceTelemetryProperties, setTelemetryDisabledByConfig, trackTelemetryError, trackTelemetryEvent, type TelemetryValue } from "./telemetry.js";
 import { featureFlags } from "./lib/feature-flags.js";
-import { resolveDiscoverySkills, buildUnifiedCatalogue, type ResolvedSkill } from "./discovery/index.js";
+import { resolveDiscoverySkills, buildUnifiedCatalogue, isOriginInDiscovery, type ResolvedSkill } from "./discovery/index.js";
 import { buildPinForDirectorySource, buildSourcePin, type BundleSkillSource } from "./bundle/skill-source.js";
 import { authenticate, openInBrowser } from "./auth/index.js";
 
@@ -151,6 +151,7 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
     const [repoBundleContents, setRepoBundleContents] = useState<BundleContents | null>(null);
     const [repoBundleVersion, setRepoBundleVersion] = useState<string | null>(null);
     const [authorizeUrl, setAuthorizeUrl] = useState<string | null>(null);
+    const [manageAccessToken, setManageAccessToken] = useState<string | undefined>(undefined);
     const [discoverySkills, setDiscoverySkills] = useState<ResolvedSkill[] | null>(null);
     const [discoveryBundleVersion, setDiscoveryBundleVersion] = useState<string | null>(null);
     // Set when a Rovo agent is picked from the unified catalogue; scopes the Rovo
@@ -230,6 +231,40 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
             openInBrowser(authorizeUrl);
         }
     }, [authorizeUrl]);
+
+    const enterManageFlow = useCallback(async () => {
+        if (source?.type === "discovery" && source.discovery.auth?.required) {
+            setLoadingMessage("Authenticating...");
+            setScreen("loading");
+            try {
+                const result = await authenticate(
+                    source.baseUrl,
+                    source.discovery.auth,
+                    handleAuthPrompt,
+                );
+                setManageAccessToken(result.bearerToken);
+            } catch (authError) {
+                setManageAccessToken(undefined);
+                setWarning(
+                    `Could not authenticate for updates: ${authError instanceof Error ? authError.message : String(authError)}`,
+                );
+            }
+            setAuthorizeUrl(null);
+        } else {
+            setManageAccessToken(undefined);
+        }
+        setScreen("manage-installed");
+    }, [source, handleAuthPrompt]);
+
+    const provideAccessToken = useCallback(
+        async (contentUrl: string): Promise<string | undefined> => {
+            if (!manageAccessToken || source?.type !== "discovery") return undefined;
+            return isOriginInDiscovery(source.discovery, contentUrl)
+                ? manageAccessToken
+                : undefined;
+        },
+        [manageAccessToken, source],
+    );
 
     useEffect(() => {
         if (!source) {
@@ -540,7 +575,7 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
                                 setScreen("skill-version-manager");
                                 break;
                             case "manage-installed":
-                                setScreen("manage-installed");
+                                void enterManageFlow();
                                 break;
                             case "bundle-versions":
                                 setScreen("version-manager");
@@ -572,7 +607,12 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
 
             {screen === "settings" && <SettingsScreen onBack={() => setScreen("main-menu")} />}
 
-            {screen === "manage-installed" && <ManageFlow onBack={() => setScreen("maintenance-menu")} />}
+            {screen === "manage-installed" && (
+                <ManageFlow
+                    onBack={() => setScreen("maintenance-menu")}
+                    getAccessToken={provideAccessToken}
+                />
+            )}
 
             {screen === "scope-selector" && (
                 <ScopeSelector onSelect={handleScopeSelect} onBack={() => setScreen("maintenance-menu")} />

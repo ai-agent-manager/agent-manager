@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
 import { ManageList } from './ManageList.js';
 import { ManageActions } from './ManageActions.js';
-import type { InstalledSkillRecord } from '../operations/manage.js';
+import type { AccessTokenProvider, InstalledSkillRecord } from '../operations/manage.js';
 
 interface ManageFlowProps {
   onBack: () => void;
+  getAccessToken?: AccessTokenProvider;
 }
 
 type FlowScreen = 'list' | 'actions';
 
-export function ManageFlow({ onBack }: ManageFlowProps) {
+export function ManageFlow({ onBack, getAccessToken }: ManageFlowProps) {
   const [screen, setScreen] = useState<FlowScreen>('list');
   const [selected, setSelected] = useState<InstalledSkillRecord | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
@@ -18,6 +19,7 @@ export function ManageFlow({ onBack }: ManageFlowProps) {
     return (
       <ManageActions
         record={selected}
+        getAccessToken={getAccessToken}
         onBack={() => setScreen('list')}
         onDone={() => {
           setRefreshToken((t) => t + 1);

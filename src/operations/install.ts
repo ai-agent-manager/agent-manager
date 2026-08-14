@@ -37,6 +37,8 @@ export interface InstallFromArtefactOpts {
   toolId: string;
   repoRoot?: string;
   forceUpdate?: boolean;
+  /** Bearer token for artefacts hosted on an authenticated origin. */
+  bearerToken?: string;
 }
 
 export interface InstallFromBundleOpts {
@@ -47,6 +49,8 @@ export interface InstallFromBundleOpts {
   toolId: string;
   repoRoot?: string;
   forceUpdate?: boolean;
+  /** Bearer token for bundles hosted on an authenticated origin. */
+  bearerToken?: string;
 }
 
 export interface InstallOperationResult {
@@ -92,7 +96,10 @@ export async function installFromArtefact(opts: InstallFromArtefactOpts): Promis
 
   const source = await resolveSkillSourceStrict(artefactUrl, 'artefact');
   const artefactSource = sha256 ? { ...source, sha256 } : source;
-  const download = await downloadArtefact(artefactSource, { forceUpdate });
+  const download = await downloadArtefact(artefactSource, {
+    forceUpdate,
+    bearerToken: opts.bearerToken,
+  });
   const scanResult = await scanArtefactForSkills(download.extractDir, artefactSource);
 
   const sourcePin = buildSourcePin({
@@ -111,7 +118,14 @@ export async function installFromArtefact(opts: InstallFromArtefactOpts): Promis
  * Download and install from a legacy bundle URL or local directory for one tool.
  */
 export async function installFromBundle(opts: InstallFromBundleOpts): Promise<InstallOperationResult> {
-  const { bundleUrl, bundleVersion: requestedVersion, skillNames, scope, toolId } = opts;
+  const {
+    bundleUrl,
+    bundleVersion: requestedVersion,
+    skillNames,
+    scope,
+    toolId,
+    bearerToken,
+  } = opts;
 
   const source = await resolveSkillSourceStrict(bundleUrl, 'bundle');
 
@@ -119,7 +133,7 @@ export async function installFromBundle(opts: InstallFromBundleOpts): Promise<In
   let skills: SkillInfo[];
 
   if (source.baseUrl) {
-    const { zipPath } = await downloadBundle(source.baseUrl, requestedVersion);
+    const { zipPath } = await downloadBundle(source.baseUrl, requestedVersion, bearerToken);
     const extracted = await extractBundle(zipPath);
     bundleVersion = extracted.manifest.version;
     if (extracted.isNew) await setCurrentBundle(bundleVersion);
@@ -168,7 +182,12 @@ export async function installResolvedSkills(opts: InstallResolvedSkillsOpts): Pr
  */
 export async function acquireSource(
   source: SkillSource,
-  opts: { sha256?: string; bundleVersion?: string; forceUpdate?: boolean } = {},
+  opts: {
+    sha256?: string;
+    bundleVersion?: string;
+    forceUpdate?: boolean;
+    bearerToken?: string;
+  } = {},
 ): Promise<AcquireResult> {
   if (isRepoSource(source)) {
     const token = process.env.GITHUB_TOKEN;
@@ -183,7 +202,10 @@ export async function acquireSource(
 
   if (source.type === 'artefact') {
     const artefactSource = opts.sha256 ? { ...source, sha256: opts.sha256 } : source;
-    const download = await downloadArtefact(artefactSource, { forceUpdate: opts.forceUpdate });
+    const download = await downloadArtefact(artefactSource, {
+      forceUpdate: opts.forceUpdate,
+      bearerToken: opts.bearerToken,
+    });
     const scanResult = await scanArtefactForSkills(download.extractDir, artefactSource);
     return {
       skills: scanResult.skills,
@@ -197,7 +219,11 @@ export async function acquireSource(
   }
 
   if (source.baseUrl) {
-    const { zipPath } = await downloadBundle(source.baseUrl, opts.bundleVersion);
+    const { zipPath } = await downloadBundle(
+      source.baseUrl,
+      opts.bundleVersion,
+      opts.bearerToken,
+    );
     const extracted = await extractBundle(zipPath);
     const bundleVersion = extracted.manifest.version;
     if (extracted.isNew) await setCurrentBundle(bundleVersion);

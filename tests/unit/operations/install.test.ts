@@ -108,6 +108,8 @@ const { installFromRepo, installFromArtefact, installFromBundle, installResolved
   await import('../../../src/operations/install.js');
 const { createSkillProvisioner } = await import('../../../src/provisioners/registry.js');
 const { downloadRepoArchive } = await import('../../../src/bundle/repo-downloader.js');
+const { downloadArtefact } = await import('../../../src/bundle/artefact-downloader.js');
+const { downloadBundle } = await import('../../../src/bundle/downloader.js');
 const { findRepoRoot } = await import('../../../src/lib/repo.js');
 
 beforeEach(() => {
@@ -263,6 +265,20 @@ describe('installFromArtefact', () => {
       }),
     ).rejects.toThrow(/Not a artefact URL/);
   });
+
+  it('forwards the bearer token to the artefact downloader', async () => {
+    await installFromArtefact({
+      artefactUrl: 'https://cdn.example.com/my-artefact-skill-1.2.0.zip',
+      bearerToken: 'discovery-token',
+      scope: 'system',
+      toolId: 'claude-code',
+    });
+
+    expect(downloadArtefact).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'artefact' }),
+      expect.objectContaining({ bearerToken: 'discovery-token' }),
+    );
+  });
 });
 
 describe('installFromBundle', () => {
@@ -291,6 +307,21 @@ describe('installFromBundle', () => {
 
     const [installed] = mockProvisioner.install.mock.calls[0]! as unknown as [SkillInfo[]];
     expect(installed.map((s) => s.dirName)).toEqual(['bundle-skill']);
+  });
+
+  it('forwards the bearer token to the bundle downloader', async () => {
+    await installFromBundle({
+      bundleUrl: 'https://bundles.example.com',
+      bearerToken: 'discovery-token',
+      scope: 'system',
+      toolId: 'claude-code',
+    });
+
+    expect(downloadBundle).toHaveBeenCalledWith(
+      'https://bundles.example.com',
+      undefined,
+      'discovery-token',
+    );
   });
 });
 
