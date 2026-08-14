@@ -37,10 +37,39 @@ function stripTrailingSlashes(value: string): string {
 }
 
 /**
+ * True when a path segment would escape its prefix — including after
+ * percent-decoding (so `%2e%2e` and `foo%2f%2e%2e` cannot walk out of
+ * `agents/`). Decoding is repeated a few times to catch double-encoding.
+ */
+function isTraversalSegment(segment: string): boolean {
+    if (isUnsafePathSegment(segment)) return true;
+
+    let current = segment;
+    for (let i = 0; i < 5; i++) {
+        let decoded: string;
+        try {
+            decoded = decodeURIComponent(current);
+        } catch {
+            // Malformed percent-encoding is not traversal; the segment is used literally.
+            return false;
+        }
+        if (decoded === current) return false;
+        if (isUnsafePathSegment(decoded) || decoded.includes("/")) return true;
+        current = decoded;
+    }
+
+    return false;
+}
+
+function isUnsafePathSegment(segment: string): boolean {
+    return segment === "." || segment === ".." || segment.includes("\\");
+}
+
+/**
  * Validate and normalise a `basePath` prefix for use in bundle URL construction.
  * Strips leading/trailing slashes. Throws on values that would let a discovery
  * document redirect requests off the configured origin: absolute URLs and
- * `..` path-traversal segments.
+ * `..` path-traversal segments, including percent-encoded forms.
  */
 export function normaliseBasePath(basePath: string): string {
     // Checked on the raw value: stripping leading slashes first would turn a
@@ -58,7 +87,7 @@ export function normaliseBasePath(basePath: string): string {
         throw new Error("basePath must not be empty");
     }
 
-    if (stripped.split("/").some((segment) => segment === "." || segment === "..")) {
+    if (stripped.split("/").some(isTraversalSegment)) {
         throw new Error(`basePath must not contain path traversal segments: ${basePath}`);
     }
 

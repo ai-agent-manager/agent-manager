@@ -132,6 +132,34 @@ describe("normaliseBasePath", () => {
             "Deloitte-UK-Innersource/adobe-ai-skill-library",
         );
     });
+
+    it("throws on a percent-encoded '..' segment", () => {
+        expect(() => normaliseBasePath("%2e%2e")).toThrow("basePath must not contain path traversal segments");
+    });
+
+    it("throws on a percent-encoded '..' nested in a multi-segment path", () => {
+        expect(() => normaliseBasePath("my-org/%2e%2e/other")).toThrow(
+            "basePath must not contain path traversal segments",
+        );
+    });
+
+    it("throws when a single segment decodes to a slash-containing traversal", () => {
+        expect(() => normaliseBasePath("foo%2f%2e%2e%2fbar")).toThrow(
+            "basePath must not contain path traversal segments",
+        );
+    });
+
+    it("throws on double-encoded '..'", () => {
+        expect(() => normaliseBasePath("%252e%252e")).toThrow("basePath must not contain path traversal segments");
+    });
+
+    it("throws on a percent-encoded '.' segment", () => {
+        expect(() => normaliseBasePath("%2e/my-org")).toThrow("basePath must not contain path traversal segments");
+    });
+
+    it("still accepts a percent-encoded non-traversal segment", () => {
+        expect(normaliseBasePath("my-org/team%20skills")).toBe("my-org/team%20skills");
+    });
 });
 
 describe("buildBundleUrl", () => {
