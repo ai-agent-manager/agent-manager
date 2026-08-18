@@ -258,6 +258,24 @@ describe('updateInstalled', () => {
     expect(opts.sha256).toBeUndefined();
   });
 
+  it('uses the token provider when reinstalling an artefact', async () => {
+    const getAccessToken = vi.fn(async () => 'discovery-token');
+
+    await updateInstalled(
+      'cdn.example.com/my-skill/my-skill',
+      undefined,
+      undefined,
+      getAccessToken,
+    );
+
+    expect(getAccessToken).toHaveBeenCalledWith(
+      'https://cdn.example.com/my-skill-1.2.0.zip',
+    );
+    expect(vi.mocked(installFromArtefact).mock.calls[0]![0].bearerToken).toBe(
+      'discovery-token',
+    );
+  });
+
   it('updates a bundle-pinned skill to the latest version, filtered to that skill', async () => {
     await updateInstalled('bundle-skill');
 
@@ -295,12 +313,75 @@ describe('updateInstalled', () => {
 
     expect(installFromBundle).toHaveBeenCalledWith({
       bundleIndexUrl: 'https://content.example.com/catalogues/team-a/index.json',
+      bearerToken: undefined,
       skillNames: ['explicit-skill'],
       scope: 'system',
       toolId: 'claude-code',
       repoRoot: undefined,
       forceUpdate: true,
     });
+  });
+
+  it('asks the token provider for the index URL on explicit-index updates', async () => {
+    vi.mocked(readConfig).mockResolvedValueOnce({
+      installations: {
+        'claude-code': {
+          'content.example.com/catalogues/team-a/index/abc123/explicit-skill': {
+            installedAt: '2026-01-04T00:00:00.000Z',
+            method: 'symlink' as const,
+            sourcePin: {
+              sourceType: 'bundle' as const,
+              installLayout: 'namespaced' as const,
+              bundleIndexUrl: 'https://content.example.com/catalogues/team-a/index.json',
+              bundleVersion: '1.0.0',
+            },
+          },
+        },
+      },
+    });
+    const getAccessToken = vi.fn(async () => 'discovery-token');
+
+    await updateInstalled(
+      'content.example.com/catalogues/team-a/index/abc123/explicit-skill',
+      'system',
+      'claude-code',
+      getAccessToken,
+    );
+
+    expect(getAccessToken).toHaveBeenCalledWith(
+      'https://content.example.com/catalogues/team-a/index.json',
+    );
+    expect(vi.mocked(installFromBundle).mock.calls[0]![0].bearerToken).toBe('discovery-token');
+  });
+
+  it('uses the same token provider for HTTP bundle updates', async () => {
+    const getAccessToken = vi.fn(async () => 'discovery-token');
+
+    await updateInstalled('bundle-skill', undefined, undefined, getAccessToken);
+
+    expect(getAccessToken).toHaveBeenCalledWith('https://bundles.example.com');
+    expect(vi.mocked(installFromBundle).mock.calls[0]![0].bearerToken).toBe(
+      'discovery-token',
+    );
+  });
+
+  it('keeps unauthenticated updates unchanged when no provider is supplied', async () => {
+    await updateInstalled('bundle-skill');
+
+    expect(vi.mocked(installFromBundle).mock.calls[0]![0].bearerToken).toBeUndefined();
+  });
+
+  it('does not use the discovery token provider for repository updates', async () => {
+    const getAccessToken = vi.fn(async () => 'discovery-token');
+
+    await updateInstalled(
+      'github.com/example-org/example-repo/my-skill',
+      undefined,
+      undefined,
+      getAccessToken,
+    );
+
+    expect(getAccessToken).not.toHaveBeenCalled();
   });
 
   it('rejects updating a record without a source pin', async () => {

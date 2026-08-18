@@ -1,5 +1,11 @@
-export { authenticate, openInBrowser, AuthFlowError } from './flow.js';
-export type { AuthResult, TokenResponse } from './flow.js';
+export { authenticate, openInBrowser, AuthFlowError, AuthCancelledError } from './flow.js';
+export type { AuthResult, TokenResponse, AuthenticateOptions } from './flow.js';
+export { createDiscoveryAccessTokenProvider } from './access-token-provider.js';
+export type {
+  InteractiveAccessTokenProvider,
+  InteractiveAuthOptions,
+  DiscoveryAuthContext,
+} from './access-token-provider.js';
 export { fetchOidcConfiguration, OidcDiscoveryError } from './oidc.js';
 export type { OidcConfiguration } from './oidc.js';
 export { generateCodeVerifier, generateCodeChallenge, generateState } from './pkce.js';

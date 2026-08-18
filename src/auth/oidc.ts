@@ -40,11 +40,13 @@ export class OidcDiscoveryError extends Error {
  */
 export async function fetchOidcConfiguration(
   discoveryUrl: string,
+  options: { signal?: AbortSignal } = {},
 ): Promise<OidcConfiguration> {
   let response: Response;
   try {
     response = await fetch(discoveryUrl, {
       headers: { Accept: 'application/json' },
+      signal: options.signal,
     });
   } catch (err) {
     throw new OidcDiscoveryError(

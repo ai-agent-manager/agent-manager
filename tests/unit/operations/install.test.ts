@@ -112,6 +112,8 @@ const { installFromRepo, installFromArtefact, installFromBundle, installResolved
   await import('../../../src/operations/install.js');
 const { createSkillProvisioner } = await import('../../../src/provisioners/registry.js');
 const { downloadRepoArchive } = await import('../../../src/bundle/repo-downloader.js');
+const { downloadArtefact } = await import('../../../src/bundle/artefact-downloader.js');
+const { downloadBundle } = await import('../../../src/bundle/downloader.js');
 const { findRepoRoot } = await import('../../../src/lib/repo.js');
 
 beforeEach(() => {
@@ -267,6 +269,20 @@ describe('installFromArtefact', () => {
       }),
     ).rejects.toThrow(/Not a artefact URL/);
   });
+
+  it('forwards the bearer token to the artefact downloader', async () => {
+    await installFromArtefact({
+      artefactUrl: 'https://cdn.example.com/my-artefact-skill-1.2.0.zip',
+      bearerToken: 'discovery-token',
+      scope: 'system',
+      toolId: 'claude-code',
+    });
+
+    expect(downloadArtefact).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'artefact' }),
+      expect.objectContaining({ bearerToken: 'discovery-token' }),
+    );
+  });
 });
 
 describe('installFromBundle', () => {
@@ -310,6 +326,7 @@ describe('installFromBundle', () => {
     expect(downloadBundleFromIndex).toHaveBeenCalledWith(
       'https://bundles.example.com/catalogues/team-a/index.json',
       undefined,
+      undefined,
     );
     expect(extractBundle).toHaveBeenCalledWith('/tmp/explicit-bundle.zip', {
       sourceKey: 'explicit-source-key',
@@ -320,6 +337,38 @@ describe('installFromBundle', () => {
       bundleIndexUrl: 'https://bundles.example.com/catalogues/team-a/index.json',
     });
     expect(result.sourcePin.bundleBaseUrl).toBeUndefined();
+  });
+
+  it('forwards the bearer token to the bundle downloader', async () => {
+    await installFromBundle({
+      bundleUrl: 'https://bundles.example.com',
+      bearerToken: 'discovery-token',
+      scope: 'system',
+      toolId: 'claude-code',
+    });
+
+    expect(downloadBundle).toHaveBeenCalledWith(
+      'https://bundles.example.com',
+      undefined,
+      'discovery-token',
+    );
+  });
+
+  it('forwards the bearer token on the explicit index path', async () => {
+    const { downloadBundleFromIndex } = await import('../../../src/bundle/downloader.js');
+
+    await installFromBundle({
+      bundleIndexUrl: 'https://bundles.example.com/catalogues/team-a/index.json',
+      bearerToken: 'discovery-token',
+      scope: 'system',
+      toolId: 'claude-code',
+    });
+
+    expect(downloadBundleFromIndex).toHaveBeenCalledWith(
+      'https://bundles.example.com/catalogues/team-a/index.json',
+      undefined,
+      'discovery-token',
+    );
   });
 });
 

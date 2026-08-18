@@ -7,6 +7,9 @@ import type { InstallResult, UninstallResult } from '../provisioners/types.js';
 import { createSkillProvisioner } from '../provisioners/registry.js';
 import { installFromRepo, installFromArtefact, installFromBundle } from './install.js';
 
+/** Supplies a bearer token for a pinned content URL when one is available. */
+export type AccessTokenProvider = (contentUrl: string) => Promise<string | undefined>;
+
 export interface InstalledSkillRecord {
   /** Config key, e.g. "github.com/org/repo/my-skill" or "my-skill" */
   installKey: string;
@@ -153,6 +156,7 @@ export async function updateInstalled(
   id: string,
   scopeHint?: InstallScope,
   toolIdHint?: string,
+  getAccessToken?: AccessTokenProvider,
 ): Promise<InstallResult> {
   const record = await resolveIdentifier(id, scopeHint, toolIdHint);
   const { sourcePin, toolId, scope, repoRoot } = record;
@@ -187,6 +191,7 @@ export async function updateInstalled(
       toolId,
       repoRoot,
       forceUpdate: true,
+      bearerToken: await getAccessToken?.(sourcePin.artefactUrl),
     });
     return opResult.result;
   }
@@ -200,8 +205,12 @@ export async function updateInstalled(
         `Cannot update '${id}': bundle source has no URL (local directory installs cannot be updated).`,
       );
     }
+    // Token eligibility is decided on the URL this update will actually fetch,
+    // which for an explicit-index pin is the index URL, not the legacy base.
+    const contentUrl = bundleIndexUrl ?? bundleUrl!;
     const opResult = await installFromBundle({
       ...(bundleIndexUrl ? { bundleIndexUrl } : { bundleUrl: bundleUrl! }),
+      bearerToken: await getAccessToken?.(contentUrl),
       skillNames: [record.skillId],
       scope,
       toolId,

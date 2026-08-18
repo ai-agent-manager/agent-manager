@@ -11,6 +11,7 @@ export {
   type RovoCatalogueEntry,
   type SkillCandidate,
 } from './catalogue.js';
+export { isOriginInDiscovery } from './token-scope.js';
 export type {
   DiscoveryDocument,
   DiscoveryAuth,

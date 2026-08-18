@@ -43,6 +43,19 @@ export class AuthFlowError extends Error {
   }
 }
 
+/** Thrown when the flow is cancelled via the abort signal, whichever stage the abort lands in. */
+export class AuthCancelledError extends AuthFlowError {
+  constructor() {
+    super('Authentication cancelled');
+    this.name = 'AuthCancelledError';
+  }
+}
+
+export interface AuthenticateOptions {
+  /** Cancels any in-flight stage (OIDC discovery, callback wait, token exchange/refresh). */
+  signal?: AbortSignal;
+}
+
 /**
  * Obtain a valid access token for the given base URL.
  *
@@ -54,17 +67,23 @@ export class AuthFlowError extends Error {
  * @param auth      The auth configuration from the discovery document.
  * @param onPrompt  Callback invoked with the authorization URL so the
  *                  TUI can display it to the user.
+ * @param options   Optional abort signal covering every network stage.
  */
 export async function authenticate(
   baseUrl: string,
   auth: DiscoveryAuth,
   onPrompt: (authorizeUrl: string) => void,
+  options: AuthenticateOptions = {},
 ): Promise<AuthResult> {
+  const { signal } = options;
+
   if (!auth.oidcDiscoveryUrl || !auth.clientId) {
     throw new AuthFlowError(
       'Discovery document requires authentication but is missing oidcDiscoveryUrl or clientId',
     );
   }
+
+  if (signal?.aborted) throw new AuthCancelledError();
 
   // Check cached tokens first
   const cached = await loadTokens(baseUrl);
@@ -72,27 +91,39 @@ export async function authenticate(
     return { bearerToken: cached.bearerToken, fromCache: true };
   }
 
-  // Fetch OIDC configuration
-  const oidcConfig = await fetchOidcConfiguration(auth.oidcDiscoveryUrl);
+  try {
+    // Fetch OIDC configuration
+    const oidcConfig = await fetchOidcConfiguration(auth.oidcDiscoveryUrl, { signal });
 
-  // Try refresh if we have a refresh token
-  if (cached?.refreshToken) {
-    try {
-      const refreshed = await refreshAccessToken(
-        oidcConfig,
-        auth.clientId,
-        cached.refreshToken,
-      );
-      const tokens = toStoredTokens(refreshed, auth);
-      const backend = await saveTokens(baseUrl, tokens);
-      return { bearerToken: tokens.bearerToken, fromCache: false, backend };
-    } catch {
-      // Refresh failed — fall through to interactive login
+    // Try refresh if we have a refresh token
+    if (cached?.refreshToken) {
+      try {
+        const refreshed = await refreshAccessToken(
+          oidcConfig,
+          auth.clientId,
+          cached.refreshToken,
+          signal,
+        );
+        const tokens = toStoredTokens(refreshed, auth);
+        const backend = await saveTokens(baseUrl, tokens);
+        return { bearerToken: tokens.bearerToken, fromCache: false, backend };
+      } catch (err) {
+        // A cancelled refresh must not fall through and start an interactive
+        // login the user just cancelled — rethrow for the outer normalizer.
+        if (signal?.aborted) throw err;
+        // Refresh failed — fall through to interactive login
+      }
     }
-  }
 
-  // Full interactive authorization code flow
-  return interactiveLogin(baseUrl, auth, oidcConfig, onPrompt);
+    // Full interactive authorization code flow
+    return await interactiveLogin(baseUrl, auth, oidcConfig, onPrompt, signal);
+  } catch (err) {
+    // Whichever stage the abort interrupted (each surfaces it differently —
+    // AbortError from fetch, CallbackServerError from the callback wait),
+    // callers see one normalized cancellation error.
+    if (signal?.aborted) throw new AuthCancelledError();
+    throw err;
+  }
 }
 
 /**
@@ -103,6 +134,7 @@ async function interactiveLogin(
   auth: DiscoveryAuth,
   oidcConfig: OidcConfiguration,
   onPrompt: (authorizeUrl: string) => void,
+  signal?: AbortSignal,
 ): Promise<AuthResult> {
   const codeVerifier = generateCodeVerifier();
   const codeChallenge = generateCodeChallenge(codeVerifier);
@@ -125,14 +157,16 @@ async function interactiveLogin(
   onPrompt(authorizeUrl);
 
   // Wait for the callback
-  const { code } = await waitForCallback(state);
+  const { code } = await waitForCallback(state, { signal });
 
-  // Exchange code for tokens
+  // Exchange code for tokens — still abortable: the inline prompt stays
+  // visible while this fetch runs, so cancel must cover it too.
   const tokenResponse = await exchangeCode(
     oidcConfig,
     auth.clientId!,
     code,
     codeVerifier,
+    signal,
   );
 
   const tokens = toStoredTokens(tokenResponse, auth);
@@ -149,6 +183,7 @@ async function exchangeCode(
   clientId: string,
   code: string,
   codeVerifier: string,
+  signal?: AbortSignal,
 ): Promise<TokenResponse> {
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
@@ -162,6 +197,7 @@ async function exchangeCode(
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: body.toString(),
+    signal,
   });
 
   if (!response.ok) {
@@ -181,6 +217,7 @@ async function refreshAccessToken(
   oidcConfig: OidcConfiguration,
   clientId: string,
   refreshToken: string,
+  signal?: AbortSignal,
 ): Promise<TokenResponse> {
   const body = new URLSearchParams({
     grant_type: 'refresh_token',
@@ -192,6 +229,7 @@ async function refreshAccessToken(
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: body.toString(),
+    signal,
   });
 
   if (!response.ok) {
