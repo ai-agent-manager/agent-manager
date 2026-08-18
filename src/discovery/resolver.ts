@@ -114,7 +114,9 @@ export async function resolveDiscoverySkills(
             installLayout: 'namespaced',
             sha256: artefactSha256,
           };
-          const download = await downloadArtefact(artefactSource);
+          const download = await downloadArtefact(artefactSource, {
+            bearerToken: accessToken,
+          });
           const resolvedSource: ArtefactSkillSource = {
             ...artefactSource,
             version: download.version,

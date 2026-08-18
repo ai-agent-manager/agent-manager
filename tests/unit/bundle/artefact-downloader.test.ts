@@ -272,6 +272,19 @@ describe('fetchArtefactHash', () => {
       'Invalid hash sidecar content',
     );
   });
+
+  it('uses bearer authentication only when a token is provided', async () => {
+    vi.mocked(fetch).mockResolvedValue(sidecarResponse(ZIP_SHA256));
+
+    await fetchArtefactHash('https://cdn.example.com/x.zip', 'discovery-token');
+    expect(vi.mocked(fetch).mock.calls[0]![1]?.headers).toMatchObject({
+      Authorization: 'Bearer discovery-token',
+    });
+
+    vi.mocked(fetch).mockClear();
+    await fetchArtefactHash('https://cdn.example.com/x.zip');
+    expect(vi.mocked(fetch).mock.calls[0]![1]?.headers).toBeUndefined();
+  });
 });
 
 // ── downloadArtefact ──────────────────────────────────────────────────────────
@@ -501,6 +514,36 @@ describe('downloadArtefact', () => {
       expect.objectContaining({ action: 'artefact_download_succeeded' }),
     );
   });
+
+  it('uses the bearer token for both zip and sidecar requests', async () => {
+    mockFetchFor(okZipResponse(), sidecarResponse(ZIP_SHA256));
+
+    await downloadArtefact(makeSource(), { bearerToken: 'discovery-token' });
+
+    const calls = vi.mocked(fetch).mock.calls;
+    const zipRequest = calls.find(([url]) => String(url).endsWith('.zip'));
+    const hashRequest = calls.find(([url]) => String(url).endsWith('.sha256'));
+
+    expect(zipRequest?.[1]?.headers).toMatchObject({
+      Authorization: 'Bearer discovery-token',
+    });
+    expect(hashRequest?.[1]?.headers).toMatchObject({
+      Authorization: 'Bearer discovery-token',
+    });
+  });
+
+  it('keeps public artefact requests unauthenticated', async () => {
+    mockFetchFor(okZipResponse(), sidecarResponse(ZIP_SHA256));
+
+    await downloadArtefact(makeSource());
+
+    const calls = vi.mocked(fetch).mock.calls;
+    const zipRequest = calls.find(([url]) => String(url).endsWith('.zip'));
+    const hashRequest = calls.find(([url]) => String(url).endsWith('.sha256'));
+
+    expect(zipRequest?.[1]?.headers).not.toHaveProperty('Authorization');
+    expect(hashRequest?.[1]?.headers).toBeUndefined();
+  });
 });
 
 // ── checkArtefactUpdate ───────────────────────────────────────────────────────
@@ -569,6 +612,16 @@ describe('checkArtefactUpdate', () => {
     await checkArtefactUpdate(pin);
 
     expect(pin).toEqual(snapshot);
+  });
+
+  it('uses bearer authentication for protected update sidecars', async () => {
+    vi.mocked(fetch).mockResolvedValue(sidecarResponse(ZIP_SHA256));
+
+    await checkArtefactUpdate(makePin(), 'discovery-token');
+
+    expect(vi.mocked(fetch).mock.calls[0]![1]?.headers).toMatchObject({
+      Authorization: 'Bearer discovery-token',
+    });
   });
 
   it('throws for a non-artefact pin', async () => {

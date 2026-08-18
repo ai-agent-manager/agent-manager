@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { Box, Text } from "ink";
 import { APP_VERSION } from "./app-info.js";
 import { AppUpdateManager } from "./components/AppUpdateManager.js";
@@ -37,7 +37,7 @@ import { getBundleSourceTelemetryProperties, setTelemetryDisabledByConfig, track
 import { featureFlags } from "./lib/feature-flags.js";
 import { resolveDiscoverySkills, buildUnifiedCatalogue, type ResolvedSkill } from "./discovery/index.js";
 import { buildPinForDirectorySource, buildSourcePin, type BundleSkillSource } from "./bundle/skill-source.js";
-import { authenticate, openInBrowser } from "./auth/index.js";
+import { authenticate, openInBrowser, createDiscoveryAccessTokenProvider } from "./auth/index.js";
 
 export type Screen =
     | "loading"
@@ -230,6 +230,20 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
             openInBrowser(authorizeUrl);
         }
     }, [authorizeUrl]);
+
+    // Lazy, origin-scoped token provisioning: authentication happens at the
+    // protected operation boundary (an Update requesting a token), never at
+    // screen entry — so list/info/remove are never gated behind a login and
+    // the token is validated or refreshed immediately before the download.
+    const provideAccessToken = useMemo(
+        () =>
+            createDiscoveryAccessTokenProvider(
+                source?.type === "discovery"
+                    ? { baseUrl: source.baseUrl, document: source.discovery }
+                    : null,
+            ),
+        [source],
+    );
 
     useEffect(() => {
         if (!source) {
@@ -572,7 +586,12 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
 
             {screen === "settings" && <SettingsScreen onBack={() => setScreen("main-menu")} />}
 
-            {screen === "manage-installed" && <ManageFlow onBack={() => setScreen("maintenance-menu")} />}
+            {screen === "manage-installed" && (
+                <ManageFlow
+                    onBack={() => setScreen("maintenance-menu")}
+                    getAccessToken={provideAccessToken}
+                />
+            )}
 
             {screen === "scope-selector" && (
                 <ScopeSelector onSelect={handleScopeSelect} onBack={() => setScreen("maintenance-menu")} />

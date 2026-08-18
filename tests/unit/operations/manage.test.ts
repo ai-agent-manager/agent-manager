@@ -258,6 +258,24 @@ describe('updateInstalled', () => {
     expect(opts.sha256).toBeUndefined();
   });
 
+  it('uses the token provider when reinstalling an artefact', async () => {
+    const getAccessToken = vi.fn(async () => 'discovery-token');
+
+    await updateInstalled(
+      'cdn.example.com/my-skill/my-skill',
+      undefined,
+      undefined,
+      getAccessToken,
+    );
+
+    expect(getAccessToken).toHaveBeenCalledWith(
+      'https://cdn.example.com/my-skill-1.2.0.zip',
+    );
+    expect(vi.mocked(installFromArtefact).mock.calls[0]![0].bearerToken).toBe(
+      'discovery-token',
+    );
+  });
+
   it('updates a bundle-pinned skill to the latest version, filtered to that skill', async () => {
     await updateInstalled('bundle-skill');
 
@@ -267,6 +285,36 @@ describe('updateInstalled', () => {
     expect(opts.skillNames).toEqual(['bundle-skill']);
     expect(opts.repoRoot).toBe('/tmp/my-repo');
     expect(opts.bundleVersion).toBeUndefined();
+  });
+
+  it('uses the same token provider for HTTP bundle updates', async () => {
+    const getAccessToken = vi.fn(async () => 'discovery-token');
+
+    await updateInstalled('bundle-skill', undefined, undefined, getAccessToken);
+
+    expect(getAccessToken).toHaveBeenCalledWith('https://bundles.example.com');
+    expect(vi.mocked(installFromBundle).mock.calls[0]![0].bearerToken).toBe(
+      'discovery-token',
+    );
+  });
+
+  it('keeps unauthenticated updates unchanged when no provider is supplied', async () => {
+    await updateInstalled('bundle-skill');
+
+    expect(vi.mocked(installFromBundle).mock.calls[0]![0].bearerToken).toBeUndefined();
+  });
+
+  it('does not use the discovery token provider for repository updates', async () => {
+    const getAccessToken = vi.fn(async () => 'discovery-token');
+
+    await updateInstalled(
+      'github.com/example-org/example-repo/my-skill',
+      undefined,
+      undefined,
+      getAccessToken,
+    );
+
+    expect(getAccessToken).not.toHaveBeenCalled();
   });
 
   it('rejects updating a record without a source pin', async () => {

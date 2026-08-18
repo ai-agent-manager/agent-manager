@@ -119,6 +119,40 @@ describe('resolveDiscoverySkills', () => {
     expect(result.errors).toHaveLength(0);
   });
 
+  it('forwards the discovery token to artefact downloads', async () => {
+    const { downloadArtefact } = await import(
+      '../../../src/bundle/artefact-downloader.js'
+    );
+    vi.mocked(downloadArtefact).mockResolvedValueOnce({
+      extractDir: '/tmp/artefact',
+      name: 'protected-skill',
+      version: '1.0.0',
+      sha256: 'a'.repeat(64),
+      isNew: true,
+    });
+    const doc: DiscoveryDocument = {
+      version: '1',
+      sources: [
+        {
+          name: 'protected-skill',
+          type: 'artefact',
+          url: 'https://cdn.example.com/protected-skill.zip',
+        },
+      ],
+    };
+
+    const result = await resolveDiscoverySkills(doc, 'discovery-token');
+
+    expect(result.errors).toHaveLength(0);
+    expect(downloadArtefact).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'artefact',
+        artefactUrl: 'https://cdn.example.com/protected-skill.zip',
+      }),
+      { bearerToken: 'discovery-token' },
+    );
+  });
+
   it('collects errors without failing the entire resolution', async () => {
     const { importGitSkills } = await import('../../../src/discovery/git-importer.js');
     vi.mocked(importGitSkills).mockRejectedValueOnce(new Error('Clone failed'));

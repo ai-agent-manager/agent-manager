@@ -31,6 +31,15 @@ const skillSelectorState = vi.hoisted(() => ({
     mountEvents: [] as string[],
 }));
 
+const manageFlowState = vi.hoisted(() => ({
+    props: null as null | {
+        getAccessToken?: (
+            contentUrl: string,
+            options: { onAuthPrompt: (url: string) => void; signal: AbortSignal },
+        ) => Promise<string | undefined>;
+    },
+}));
+
 vi.mock("../../src/components/MainMenu.js", () => ({
     MainMenu: function MockMainMenu(props: { onSelect: (action: string) => void }) {
         mainMenuState.props = props;
@@ -75,6 +84,15 @@ vi.mock("../../src/components/SkillSelector.js", () => ({
             null,
             `SkillSelector active=${props.toolId} mountedFor=${mountedForTool}`,
         );
+    },
+}));
+
+vi.mock("../../src/components/ManageFlow.js", () => ({
+    ManageFlow: function MockManageFlow(props: {
+        getAccessToken?: (contentUrl: string) => Promise<string | undefined>;
+    }) {
+        manageFlowState.props = props;
+        return null;
     },
 }));
 
@@ -155,6 +173,29 @@ vi.mock("../../src/lib/startup-update-checks.js", () => ({
     shouldRunStartupUpdateChecks: vi.fn(() => true),
 }));
 
+// Mock flow.js (not the barrel): both App and createDiscoveryAccessTokenProvider
+// import authenticate from it, and the barrel re-exports the mock consistently.
+vi.mock("../../src/auth/flow.js", () => {
+    class AuthFlowError extends Error {}
+    class AuthCancelledError extends AuthFlowError {}
+    return {
+        authenticate: vi.fn(),
+        openInBrowser: vi.fn(),
+        AuthFlowError,
+        AuthCancelledError,
+    };
+});
+
+vi.mock("../../src/discovery/index.js", async () => {
+    const actual = await vi.importActual<typeof import("../../src/discovery/index.js")>(
+        "../../src/discovery/index.js",
+    );
+    return {
+        ...actual,
+        resolveDiscoverySkills: vi.fn(),
+    };
+});
+
 vi.mock("../../src/telemetry.js", () => ({
     getBundleSourceTelemetryProperties: vi.fn(() => ({ source: "url" })),
     setTelemetryDisabledByConfig: vi.fn(),
@@ -168,6 +209,8 @@ import { downloadBundle } from "../../src/bundle/downloader.js";
 import { extractBundle } from "../../src/bundle/extractor.js";
 import { scanBundle } from "../../src/bundle/scanner.js";
 import { checkForStartupUpdates } from "../../src/lib/startup-update-checks.js";
+import { authenticate } from "../../src/auth/index.js";
+import { resolveDiscoverySkills } from "../../src/discovery/index.js";
 
 describe("App", () => {
     beforeEach(() => {
@@ -179,6 +222,7 @@ describe("App", () => {
         toolSelectorState.props = null;
         skillSelectorState.props = null;
         skillSelectorState.mountEvents = [];
+        manageFlowState.props = null;
 
         vi.mocked(readConfig).mockResolvedValue({ installations: {} });
         vi.mocked(writeConfig).mockResolvedValue(undefined);
@@ -214,6 +258,15 @@ describe("App", () => {
                     actionLabel: "Download and switch to the latest bundle",
                 },
             ],
+            errors: [],
+        });
+        vi.mocked(authenticate).mockResolvedValue({
+            bearerToken: "discovery-token",
+            fromCache: true,
+        });
+        vi.mocked(resolveDiscoverySkills).mockResolvedValue({
+            skills: [],
+            rovoAgents: [],
             errors: [],
         });
     });
@@ -287,6 +340,75 @@ describe("App", () => {
         // still read "tool-a" even though the `toolId` prop moved on to "tool-b".
         expect(skillSelectorState.mountEvents).toEqual(["tool-a", "tool-b"]);
         expect(lastFrame()).toContain("active=tool-b mountedFor=tool-b");
+    });
+
+    it("supplies the discovery token to managed updates only for listed content origins", async () => {
+        render(
+            <App
+                source={{
+                    type: "discovery",
+                    baseUrl: "https://discovery.example.com",
+                    discovery: {
+                        version: "1",
+                        auth: {
+                            required: true,
+                            oidcDiscoveryUrl: "https://identity.example.com/.well-known/openid-configuration",
+                            clientId: "agentman",
+                        },
+                        sources: [
+                            {
+                                name: "protected-artefact",
+                                type: "artefact",
+                                url: "https://cdn.example.com/skills/tool.zip",
+                            },
+                        ],
+                    },
+                }}
+                forceUpdate={false}
+            />,
+        );
+
+        await vi.waitFor(() => {
+            expect(mainMenuState.props).not.toBeNull();
+        });
+        mainMenuState.props?.onSelect("maintenance");
+        await vi.waitFor(() => {
+            expect(maintenanceMenuState.props).not.toBeNull();
+        });
+
+        // Startup already authenticated for the auth-required discovery source;
+        // entering Manage Installed must not add to that count (auth is lazy now).
+        const callsAfterStartup = vi.mocked(authenticate).mock.calls.length;
+
+        maintenanceMenuState.props?.onSelect("manage-installed");
+        await vi.waitFor(() => {
+            expect(manageFlowState.props?.getAccessToken).toBeDefined();
+        });
+        expect(vi.mocked(authenticate).mock.calls.length).toBe(callsAfterStartup);
+
+        const interactiveOptions = () => ({
+            onAuthPrompt: () => {},
+            signal: new AbortController().signal,
+        });
+
+        // The token is requested at the operation boundary — authenticate runs
+        // now, freshly validating/refreshing via its own cache logic.
+        await expect(
+            manageFlowState.props?.getAccessToken?.(
+                "https://cdn.example.com/skills/tool.zip",
+                interactiveOptions(),
+            ),
+        ).resolves.toBe("discovery-token");
+        expect(vi.mocked(authenticate).mock.calls.length).toBe(callsAfterStartup + 1);
+
+        // Foreign origins are rejected before authentication — never a prompt.
+        await expect(
+            manageFlowState.props?.getAccessToken?.(
+                "https://unlisted.example.com/tool.zip",
+                interactiveOptions(),
+            ),
+        ).resolves.toBeUndefined();
+        expect(vi.mocked(authenticate).mock.calls.length).toBe(callsAfterStartup + 1);
     });
 
     it("opens Source Management directly when no source is configured", async () => {
