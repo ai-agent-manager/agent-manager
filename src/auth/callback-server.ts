@@ -29,20 +29,61 @@ export class CallbackServerError extends Error {
   }
 }
 
+export interface WaitForCallbackOptions {
+  /** How long to wait before giving up (default 5 minutes). */
+  timeoutMs?: number;
+  /** Cancels the wait: closes the server and rejects with "Authentication cancelled". */
+  signal?: AbortSignal;
+}
+
 /**
  * Start a temporary HTTP server that waits for the OAuth callback,
  * extracts the authorization code, and shuts itself down.
  *
  * @param expectedState  The state value to validate against CSRF.
- * @param timeoutMs      How long to wait before giving up (default 5 minutes).
  * @returns The authorization code from the callback.
  */
 export function waitForCallback(
   expectedState: string,
-  timeoutMs = 5 * 60 * 1000,
+  options: WaitForCallbackOptions = {},
 ): Promise<CallbackResult> {
+  const { timeoutMs = 5 * 60 * 1000, signal } = options;
+
   return new Promise((resolve, reject) => {
+    // A pre-aborted signal must never bind the port at all.
+    if (signal?.aborted) {
+      reject(new CallbackServerError('Authentication cancelled'));
+      return;
+    }
+
     let settled = false;
+
+    // Every settlement path funnels through here so timeout, abort, the
+    // request handler, and listen errors cannot race or double-settle, and
+    // the abort listener never outlives the wait on a long-lived signal.
+    function settle(outcome: () => void, opts: { awaitClose?: boolean } = {}) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+      if (opts.awaitClose) {
+        // Settlement must guarantee the port is rebindable, and close() is
+        // asynchronous — defer the outcome to its completion callback.
+        // Destroy lingering (keep-alive) connections so close() cannot stall.
+        server.close(() => outcome());
+        server.closeAllConnections();
+      } else {
+        server.close();
+        outcome();
+      }
+    }
+
+    // On abort there is no in-flight response worth protecting, so waiting
+    // for the close callback (and severing connections) is always safe.
+    const onAbort = () =>
+      settle(() => reject(new CallbackServerError('Authentication cancelled')), {
+        awaitClose: true,
+      });
 
     const server: Server = createServer((req: IncomingMessage, res: ServerResponse) => {
       if (settled) {
@@ -62,11 +103,9 @@ export function waitForCallback(
       const error = url.searchParams.get('error');
       if (error) {
         const description = url.searchParams.get('error_description') ?? error;
-        settled = true;
         res.writeHead(200, { 'Content-Type': 'text/html' });
         res.end(errorPage(description));
-        shutdown();
-        reject(new CallbackServerError(`Authorization failed: ${description}`));
+        settle(() => reject(new CallbackServerError(`Authorization failed: ${description}`)));
         return;
       }
 
@@ -85,37 +124,26 @@ export function waitForCallback(
         return;
       }
 
-      settled = true;
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(successPage());
-      shutdown();
-      resolve({ code, state });
+      settle(() => resolve({ code, state }));
     });
 
     const timer = setTimeout(() => {
-      if (!settled) {
-        settled = true;
-        shutdown();
-        reject(new CallbackServerError('Timed out waiting for authorization callback'));
-      }
+      settle(() => reject(new CallbackServerError('Timed out waiting for authorization callback')));
     }, timeoutMs);
 
-    function shutdown() {
-      clearTimeout(timer);
-      server.close();
-    }
-
     server.on('error', (err) => {
-      if (!settled) {
-        settled = true;
-        clearTimeout(timer);
+      settle(() =>
         reject(
           new CallbackServerError(
             `Failed to start callback server on port ${OAUTH_CALLBACK_PORT}: ${err.message}`,
           ),
-        );
-      }
+        ),
+      );
     });
+
+    signal?.addEventListener('abort', onAbort, { once: true });
 
     server.listen(OAUTH_CALLBACK_PORT, '127.0.0.1');
   });

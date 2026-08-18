@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { ManageList } from './ManageList.js';
 import { ManageActions } from './ManageActions.js';
-import type { AccessTokenProvider, InstalledSkillRecord } from '../operations/manage.js';
+import type { InstalledSkillRecord } from '../operations/manage.js';
+import type { InteractiveAccessTokenProvider } from '../auth/access-token-provider.js';
 
 interface ManageFlowProps {
   onBack: () => void;
-  getAccessToken?: AccessTokenProvider;
+  getAccessToken?: InteractiveAccessTokenProvider;
 }
 
 type FlowScreen = 'list' | 'actions';

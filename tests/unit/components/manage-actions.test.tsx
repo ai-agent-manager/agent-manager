@@ -49,11 +49,16 @@ async function press(stdin: Stdin, input: string): Promise<void> {
   await flushInkInput();
 }
 
+type InteractiveOptions = { onAuthPrompt: (url: string) => void; signal: AbortSignal };
+
 async function renderReady(
   props: {
     onBack?: () => void;
     onDone?: () => void;
-    getAccessToken?: (contentUrl: string) => Promise<string | undefined>;
+    getAccessToken?: (
+      contentUrl: string,
+      options: InteractiveOptions,
+    ) => Promise<string | undefined>;
   } = {},
 ) {
   const result = render(
@@ -105,19 +110,123 @@ describe('ManageActions', () => {
     });
   });
 
-  it('forwards the access-token provider to update actions', async () => {
+  it('adapts the interactive provider for update actions, supplying prompt and abort signal', async () => {
     const getAccessToken = vi.fn(async () => 'discovery-token');
-    const { stdin } = await renderReady({ getAccessToken });
+    let tokenSeenByUpdate: string | undefined;
+    // The mocked operation invokes its provider argument with a protected
+    // URL — as the real updateInstalled would — so the adapter is exercised.
+    vi.mocked(updateInstalled).mockImplementation(async (_id, _scope, _tool, provider) => {
+      tokenSeenByUpdate = await provider?.('https://cdn.example.com/skills/tool.zip');
+      return { installed: [], errors: [] };
+    });
+    const { lastFrame, stdin } = await renderReady({ getAccessToken });
 
     await press(stdin, ENTER);
     await vi.waitFor(() => {
-      expect(updateInstalled).toHaveBeenCalledWith(
-        record.installKey,
-        'system',
-        record.toolId,
-        getAccessToken,
-      );
+      expect(lastFrame()).toContain('✓ Updated my-skill successfully.');
     });
+
+    expect(tokenSeenByUpdate).toBe('discovery-token');
+    expect(getAccessToken).toHaveBeenCalledWith(
+      'https://cdn.example.com/skills/tool.zip',
+      expect.objectContaining({
+        onAuthPrompt: expect.any(Function),
+        signal: expect.any(AbortSignal),
+      }),
+    );
+  });
+
+  it('shows the inline auth prompt during update and completes after authorisation', async () => {
+    const getAccessToken = vi.fn(
+      async (_url: string, options: InteractiveOptions) => {
+        options.onAuthPrompt('https://identity.example.com/authorize?client_id=agentman');
+        await new Promise((r) => setTimeout(r, 50));
+        return 'discovery-token';
+      },
+    );
+    vi.mocked(updateInstalled).mockImplementation(async (_id, _scope, _tool, provider) => {
+      await provider?.('https://cdn.example.com/skills/tool.zip');
+      return { installed: [], errors: [] };
+    });
+    const { lastFrame, stdin } = await renderReady({ getAccessToken });
+
+    await press(stdin, ENTER);
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain('Authentication required');
+      expect(lastFrame()).toContain('https://identity.example.com/authorize?client_id=agentman');
+    });
+
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain('✓ Updated my-skill successfully.');
+    });
+  });
+
+  it('cancels an in-flight authentication with Escape and lands on a result screen', async () => {
+    const onDone = vi.fn();
+    const getAccessToken = vi.fn(
+      (_url: string, { onAuthPrompt, signal }: InteractiveOptions) =>
+        new Promise<string | undefined>((_resolve, reject) => {
+          onAuthPrompt('https://identity.example.com/authorize');
+          signal.addEventListener(
+            'abort',
+            () => reject(new Error('Authentication cancelled')),
+            { once: true },
+          );
+        }),
+    );
+    vi.mocked(updateInstalled).mockImplementation(async (_id, _scope, _tool, provider) => {
+      await provider?.('https://cdn.example.com/skills/tool.zip');
+      return { installed: [], errors: [] };
+    });
+    const { lastFrame, stdin } = await renderReady({ getAccessToken, onDone });
+
+    await press(stdin, ENTER);
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain('Authentication required');
+    });
+
+    await press(stdin, ESC);
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain('✗ Authentication cancelled');
+    });
+
+    // Not wedged: the result screen still advances.
+    await flushInkInput();
+    await press(stdin, ENTER);
+    await vi.waitFor(() => {
+      expect(onDone).toHaveBeenCalled();
+    });
+  });
+
+  it('never requests a token for remove or info', async () => {
+    const getAccessToken = vi.fn(async () => 'discovery-token');
+    const { lastFrame, stdin } = await renderReady({ getAccessToken });
+
+    // Info…
+    await press(stdin, DOWN);
+    await press(stdin, DOWN);
+    await press(stdin, ENTER);
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain('Skill info');
+    });
+    await press(stdin, ESC);
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain('Update    Re-pull from pinned source');
+    });
+
+    // …and remove, straight through the confirmation.
+    await press(stdin, DOWN);
+    await press(stdin, ENTER);
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain('Yes, remove my-skill');
+    });
+    await flushInkInput();
+    await press(stdin, ENTER);
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain('✓ Removed my-skill.');
+    });
+
+    expect(getAccessToken).not.toHaveBeenCalled();
   });
 
   it('surfaces update errors', async () => {

@@ -50,4 +50,37 @@ describe('isOriginInDiscovery', () => {
     ).toBe(false);
     expect(isOriginInDiscovery(discovery, 'not-a-url')).toBe(false);
   });
+
+  it('never treats non-http(s) target URLs as token-eligible', () => {
+    const discovery: DiscoveryDocument = {
+      version: '1',
+      sources: [
+        { name: 'zip', type: 'artefact', url: 'https://cdn.example.com/skill.zip' },
+      ],
+    };
+
+    // blob: inherits the inner URL's origin (https://cdn.example.com) and
+    // would match a declared source if only the "null" sentinel were rejected.
+    expect(isOriginInDiscovery(discovery, 'blob:https://cdn.example.com/uuid-123')).toBe(false);
+    expect(isOriginInDiscovery(discovery, 'data:application/zip;base64,AAAA')).toBe(false);
+    expect(isOriginInDiscovery(discovery, 'file:///etc/passwd')).toBe(false);
+    // ftp: has a real (non-"null") origin — a protocol allowlist is what rejects it.
+    expect(isOriginInDiscovery(discovery, 'ftp://cdn.example.com/skill.zip')).toBe(false);
+    expect(isOriginInDiscovery(discovery, 'foo:bar')).toBe(false);
+  });
+
+  it('never matches via a non-http(s) source URL, even against a same-scheme target', () => {
+    const discovery: DiscoveryDocument = {
+      version: '1',
+      sources: [
+        // Opaque origins serialize as the string "null"; two of them must
+        // not compare equal and become token-eligible.
+        { name: 'weird', type: 'http', url: 'data:text/plain,index' },
+        { name: 'ftp', type: 'artefact', url: 'ftp://cdn.example.com/skill.zip' },
+      ],
+    };
+
+    expect(isOriginInDiscovery(discovery, 'data:text/plain,payload')).toBe(false);
+    expect(isOriginInDiscovery(discovery, 'ftp://cdn.example.com/other.zip')).toBe(false);
+  });
 });

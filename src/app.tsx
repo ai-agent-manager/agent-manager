@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { Box, Text } from "ink";
 import { APP_VERSION } from "./app-info.js";
 import { AppUpdateManager } from "./components/AppUpdateManager.js";
@@ -35,9 +35,9 @@ import type { StartupUpdateNotice } from "./lib/startup-update-checks.js";
 import { checkForStartupUpdates, shouldRunStartupUpdateChecks } from "./lib/startup-update-checks.js";
 import { getBundleSourceTelemetryProperties, setTelemetryDisabledByConfig, trackTelemetryError, trackTelemetryEvent, type TelemetryValue } from "./telemetry.js";
 import { featureFlags } from "./lib/feature-flags.js";
-import { resolveDiscoverySkills, buildUnifiedCatalogue, isOriginInDiscovery, type ResolvedSkill } from "./discovery/index.js";
+import { resolveDiscoverySkills, buildUnifiedCatalogue, type ResolvedSkill } from "./discovery/index.js";
 import { buildPinForDirectorySource, buildSourcePin, type BundleSkillSource } from "./bundle/skill-source.js";
-import { authenticate, openInBrowser } from "./auth/index.js";
+import { authenticate, openInBrowser, createDiscoveryAccessTokenProvider } from "./auth/index.js";
 
 export type Screen =
     | "loading"
@@ -151,7 +151,6 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
     const [repoBundleContents, setRepoBundleContents] = useState<BundleContents | null>(null);
     const [repoBundleVersion, setRepoBundleVersion] = useState<string | null>(null);
     const [authorizeUrl, setAuthorizeUrl] = useState<string | null>(null);
-    const [manageAccessToken, setManageAccessToken] = useState<string | undefined>(undefined);
     const [discoverySkills, setDiscoverySkills] = useState<ResolvedSkill[] | null>(null);
     const [discoveryBundleVersion, setDiscoveryBundleVersion] = useState<string | null>(null);
     // Set when a Rovo agent is picked from the unified catalogue; scopes the Rovo
@@ -232,38 +231,18 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
         }
     }, [authorizeUrl]);
 
-    const enterManageFlow = useCallback(async () => {
-        if (source?.type === "discovery" && source.discovery.auth?.required) {
-            setLoadingMessage("Authenticating...");
-            setScreen("loading");
-            try {
-                const result = await authenticate(
-                    source.baseUrl,
-                    source.discovery.auth,
-                    handleAuthPrompt,
-                );
-                setManageAccessToken(result.bearerToken);
-            } catch (authError) {
-                setManageAccessToken(undefined);
-                setWarning(
-                    `Could not authenticate for updates: ${authError instanceof Error ? authError.message : String(authError)}`,
-                );
-            }
-            setAuthorizeUrl(null);
-        } else {
-            setManageAccessToken(undefined);
-        }
-        setScreen("manage-installed");
-    }, [source, handleAuthPrompt]);
-
-    const provideAccessToken = useCallback(
-        async (contentUrl: string): Promise<string | undefined> => {
-            if (!manageAccessToken || source?.type !== "discovery") return undefined;
-            return isOriginInDiscovery(source.discovery, contentUrl)
-                ? manageAccessToken
-                : undefined;
-        },
-        [manageAccessToken, source],
+    // Lazy, origin-scoped token provisioning: authentication happens at the
+    // protected operation boundary (an Update requesting a token), never at
+    // screen entry — so list/info/remove are never gated behind a login and
+    // the token is validated or refreshed immediately before the download.
+    const provideAccessToken = useMemo(
+        () =>
+            createDiscoveryAccessTokenProvider(
+                source?.type === "discovery"
+                    ? { baseUrl: source.baseUrl, document: source.discovery }
+                    : null,
+            ),
+        [source],
     );
 
     useEffect(() => {
@@ -575,7 +554,7 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
                                 setScreen("skill-version-manager");
                                 break;
                             case "manage-installed":
-                                void enterManageFlow();
+                                setScreen("manage-installed");
                                 break;
                             case "bundle-versions":
                                 setScreen("version-manager");
