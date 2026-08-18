@@ -19,7 +19,7 @@
 import { createHash } from 'node:crypto';
 import { stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { buildIndexUrl, canonicaliseIndexUrl } from './downloader.js';
+import { canonicaliseContentRoot } from './downloader.js';
 
 // ── Primitive types ───────────────────────────────────────────────────────────
 
@@ -72,17 +72,19 @@ export interface ArtefactSkillSource {
 }
 
 /**
- * Bundle source: legacy compatibility path.
- * Maps to the previous BundleSource (url | directory) model and the preferred
- * exact-index HTTP discovery contract. One of baseUrl, indexUrl, or dirPath is
- * set; discovery pins may retain both a legacy baseUrl and its derived indexUrl.
+ * Bundle source: an HTTP content root, or a local bundle directory.
+ * Exactly one of baseUrl or dirPath is set.
  */
 export interface BundleSkillSource {
   type: 'bundle';
-  /** Base URL of a CDN-hosted bundle (legacy url source). */
+  /** Content root owning this source's index.json and versioned directories. */
   baseUrl?: string;
-  /** Canonical exact URL to index.json for an explicit HTTP discovery source. */
-  indexUrl?: string;
+  /**
+   * Logical source name declared by the discovery document. This — not the
+   * URL — is the source's identity, so a source that moves keeps its install
+   * coordinates. Absent for a bare URL install, which has no declared name.
+   */
+  sourceName?: string;
   /** Absolute path to a local bundle directory (legacy directory source). */
   dirPath?: string;
   installLayout: InstallLayout;
@@ -98,7 +100,7 @@ export type SkillSource = RepoSkillSource | ArtefactSkillSource | BundleSkillSou
  * install records so agentman can reproduce or track the exact install later.
  *
  * Intentional divergences from the canonical manifest SourceCoordinate shape:
- *   - bundleBaseUrl/bundleIndexUrl present here; absent from SourceCoordinate
+ *   - bundleBaseUrl/bundleSourceName present here; absent from SourceCoordinate
  *   - defaultBranch  present in SourceCoordinate; absent here (not needed at pin time)
  *
  * The pin records what was actually installed locally, while SourceCoordinate
@@ -118,11 +120,15 @@ export interface SkillSourcePin {
   sha256?: string;
   /** Resolved artefact version pinned at install time. */
   artefactVersion?: string;
-  // Bundle fields (legacy)
+  // Bundle fields
   bundleVersion?: string;
+  /** Content root this bundle was fetched from. */
   bundleBaseUrl?: string;
-  /** Canonical exact URL used to resolve this HTTP bundle stream. */
-  bundleIndexUrl?: string;
+  /**
+   * Logical source name from the discovery document — the install identity for
+   * a declared source, deliberately independent of where its content is hosted.
+   */
+  bundleSourceName?: string;
 }
 
 // ── Type guards ───────────────────────────────────────────────────────────────
@@ -358,10 +364,8 @@ export function buildSourcePin(
   return {
     ...base,
     bundleVersion,
-    ...(source.baseUrl ? { bundleBaseUrl: source.baseUrl } : {}),
-    ...(source.indexUrl || source.baseUrl
-      ? { bundleIndexUrl: canonicaliseIndexUrl(source.indexUrl ?? buildIndexUrl(source.baseUrl!)) }
-      : {}),
+    ...(source.baseUrl ? { bundleBaseUrl: canonicaliseContentRoot(source.baseUrl) } : {}),
+    ...(source.sourceName ? { bundleSourceName: source.sourceName } : {}),
   };
 }
 
@@ -389,11 +393,12 @@ export function describeSkillSource(source: SkillSource): string {
   if (source.type === 'artefact') {
     return `artefact: ${source.artefactUrl}`;
   }
-  return source.indexUrl
-    ? `bundle index: ${source.indexUrl}`
-    : source.baseUrl
-      ? `bundle: ${source.baseUrl}`
-      : `bundle: ${source.dirPath ?? '(local)'}`;
+  if (source.sourceName) {
+    return `source: ${source.sourceName} (${source.baseUrl})`;
+  }
+  return source.baseUrl
+    ? `bundle: ${source.baseUrl}`
+    : `bundle: ${source.dirPath ?? '(local)'}`;
 }
 
 // ── Namespace derivation ──────────────────────────────────────────────────────
@@ -528,28 +533,30 @@ export function deriveArtefactNamespace(artefactUrl: string): string {
 }
 
 /**
- * Derive a readable, collision-resistant namespace from a complete canonical
- * bundle index URL. The readable portion includes the host and full index path;
- * a digest of the complete URL distinguishes scheme, query, port, encoding, and
- * values that sanitise to the same filesystem-safe text.
+ * Derive the install namespace for a declared discovery source.
+ *
+ * The namespace is the logical source name and nothing else — no host, no path,
+ * no digest. That is the point: republishing a source at a different URL, or
+ * moving the repository behind it, must not change where its skills install or
+ * how existing installs are identified.
  */
-export function deriveBundleIndexNamespace(indexUrl: string): string {
-  const canonical = canonicaliseIndexUrl(indexUrl);
-  const parsed = new URL(canonical);
-  const pathSegments = parsed.pathname
-    .split('/')
-    .filter(Boolean)
-    .map((segment) => {
-      let decoded = segment;
-      try { decoded = decodeURIComponent(segment); } catch { /* keep encoded form */ }
-      return sanitiseNamespaceSegment(decoded.replace(/\.json$/i, ''));
-    });
-  const digest = createHash('sha256').update(canonical).digest('hex').slice(0, 12);
-  return [
-    sanitiseNamespaceSegment(parsed.host),
-    ...(pathSegments.length > 0 ? pathSegments : ['index']),
-    digest,
-  ].join('/');
+export function deriveBundleSourceNamespace(sourceName: string): string {
+  const segment = sanitiseNamespaceSegment(sourceName);
+  // sanitiseNamespaceSegment falls back to 'unknown' for input with nothing
+  // usable in it. Accepting that here would quietly collapse every unusable
+  // name into one shared namespace, so reject it instead.
+  if (segment === 'unknown' && sourceName.trim().toLowerCase() !== 'unknown') {
+    throw new Error(`Source name has no usable characters for a namespace: ${sourceName}`);
+  }
+  return segment;
+}
+
+/**
+ * Stable cache discriminator for a declared source, used to keep two sources
+ * that publish the same version number in separate cache directories.
+ */
+export function bundleSourceKey(sourceName: string): string {
+  return deriveBundleSourceNamespace(sourceName);
 }
 
 /**
@@ -565,8 +572,8 @@ export function deriveInstallNamespace(pin: SkillSourcePin): string | null {
   if (pin.sourceType === 'artefact' && pin.artefactUrl) {
     return deriveArtefactNamespace(pin.artefactUrl);
   }
-  if (pin.sourceType === 'bundle' && pin.bundleIndexUrl) {
-    return deriveBundleIndexNamespace(pin.bundleIndexUrl);
+  if (pin.sourceType === 'bundle' && pin.bundleSourceName) {
+    return deriveBundleSourceNamespace(pin.bundleSourceName);
   }
   return null;
 }

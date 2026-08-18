@@ -33,14 +33,14 @@ describe('isOriginInDiscovery', () => {
     expect(isOriginInDiscovery(discovery, 'https://content.example.com/x.zip')).toBe(false);
   });
 
-  it('matches an http source that declares only an explicit index URL', () => {
+  it('matches a content root at any path on a declared origin', () => {
     const discovery: DiscoveryDocument = {
       version: '1',
       sources: [
         {
           name: 'team-a',
           type: 'http',
-          indexUrl: 'https://content.example.com/catalogues/team-a/index.json',
+          url: 'https://content.example.com/catalogues/team-a',
         },
       ],
     };

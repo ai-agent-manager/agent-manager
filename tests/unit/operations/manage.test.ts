@@ -287,17 +287,18 @@ describe('updateInstalled', () => {
     expect(opts.bundleVersion).toBeUndefined();
   });
 
-  it('retains an explicit bundle index URL when updating', async () => {
+  it('retains the declared source name and content root when updating', async () => {
     vi.mocked(readConfig).mockResolvedValueOnce({
       installations: {
         'claude-code': {
-          'content.example.com/catalogues/team-a/index/abc123/explicit-skill': {
+          'team-a/explicit-skill': {
             installedAt: '2026-01-04T00:00:00.000Z',
             method: 'symlink' as const,
             sourcePin: {
               sourceType: 'bundle' as const,
               installLayout: 'namespaced' as const,
-              bundleIndexUrl: 'https://content.example.com/catalogues/team-a/index.json',
+              bundleBaseUrl: 'https://content.example.com/catalogues/team-a',
+              bundleSourceName: 'team-a',
               bundleVersion: '1.0.0',
             },
           },
@@ -306,13 +307,14 @@ describe('updateInstalled', () => {
     });
 
     await updateInstalled(
-      'content.example.com/catalogues/team-a/index/abc123/explicit-skill',
+      'team-a/explicit-skill',
       'system',
       'claude-code',
     );
 
     expect(installFromBundle).toHaveBeenCalledWith({
-      bundleIndexUrl: 'https://content.example.com/catalogues/team-a/index.json',
+      bundleUrl: 'https://content.example.com/catalogues/team-a',
+      sourceName: 'team-a',
       bearerToken: undefined,
       skillNames: ['explicit-skill'],
       scope: 'system',
@@ -322,17 +324,18 @@ describe('updateInstalled', () => {
     });
   });
 
-  it('asks the token provider for the index URL on explicit-index updates', async () => {
+  it('asks the token provider for the content root of a declared source', async () => {
     vi.mocked(readConfig).mockResolvedValueOnce({
       installations: {
         'claude-code': {
-          'content.example.com/catalogues/team-a/index/abc123/explicit-skill': {
+          'team-a/explicit-skill': {
             installedAt: '2026-01-04T00:00:00.000Z',
             method: 'symlink' as const,
             sourcePin: {
               sourceType: 'bundle' as const,
               installLayout: 'namespaced' as const,
-              bundleIndexUrl: 'https://content.example.com/catalogues/team-a/index.json',
+              bundleBaseUrl: 'https://content.example.com/catalogues/team-a',
+              bundleSourceName: 'team-a',
               bundleVersion: '1.0.0',
             },
           },
@@ -342,15 +345,13 @@ describe('updateInstalled', () => {
     const getAccessToken = vi.fn(async () => 'discovery-token');
 
     await updateInstalled(
-      'content.example.com/catalogues/team-a/index/abc123/explicit-skill',
+      'team-a/explicit-skill',
       'system',
       'claude-code',
       getAccessToken,
     );
 
-    expect(getAccessToken).toHaveBeenCalledWith(
-      'https://content.example.com/catalogues/team-a/index.json',
-    );
+    expect(getAccessToken).toHaveBeenCalledWith('https://content.example.com/catalogues/team-a');
     expect(vi.mocked(installFromBundle).mock.calls[0]![0].bearerToken).toBe('discovery-token');
   });
 

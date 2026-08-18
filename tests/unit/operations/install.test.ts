@@ -74,10 +74,8 @@ vi.mock('../../../src/bundle/artefact-scanner.js', () => ({
 
 vi.mock('../../../src/bundle/downloader.js', () => ({
   downloadBundle: vi.fn(async () => ({ zipPath: '/tmp/bundle.zip', version: '2.0.0' })),
-  downloadBundleFromIndex: vi.fn(async () => ({ zipPath: '/tmp/explicit-bundle.zip', version: '2.0.0' })),
-  canonicaliseIndexUrl: vi.fn((url: string) => new URL(url).toString()),
-  buildIndexUrl: vi.fn((url: string) => `${url.replace(/\/+$/, '')}/agents/index.json`),
-  indexUrlSourceKey: vi.fn(() => 'explicit-source-key'),
+  canonicaliseContentRoot: vi.fn((url: string) => url.replace(/\/+$/, '')),
+  buildIndexUrl: vi.fn((url: string) => `${url.replace(/\/+$/, '')}/index.json`),
 }));
 
 vi.mock('../../../src/bundle/extractor.js', () => ({
@@ -313,30 +311,29 @@ describe('installFromBundle', () => {
     expect(installed.map((s) => s.dirName)).toEqual(['bundle-skill']);
   });
 
-  it('reinstalls from an explicit index URL without converting it to a base URL', async () => {
-    const { downloadBundleFromIndex } = await import('../../../src/bundle/downloader.js');
+  it('namespaces an install from a declared source and scopes its cache', async () => {
     const { extractBundle } = await import('../../../src/bundle/extractor.js');
 
     const result = await installFromBundle({
-      bundleIndexUrl: 'https://bundles.example.com/catalogues/team-a/index.json',
+      bundleUrl: 'https://bundles.example.com/catalogues/team-a',
+      sourceName: 'team-a',
       scope: 'system',
       toolId: 'claude-code',
     });
 
-    expect(downloadBundleFromIndex).toHaveBeenCalledWith(
-      'https://bundles.example.com/catalogues/team-a/index.json',
+    expect(downloadBundle).toHaveBeenCalledWith(
+      'https://bundles.example.com/catalogues/team-a',
       undefined,
       undefined,
+      'team-a',
     );
-    expect(extractBundle).toHaveBeenCalledWith('/tmp/explicit-bundle.zip', {
-      sourceKey: 'explicit-source-key',
-    });
+    expect(extractBundle).toHaveBeenCalledWith('/tmp/bundle.zip', { sourceKey: 'team-a' });
     expect(result.sourcePin).toMatchObject({
       sourceType: 'bundle',
       installLayout: 'namespaced',
-      bundleIndexUrl: 'https://bundles.example.com/catalogues/team-a/index.json',
+      bundleSourceName: 'team-a',
+      bundleBaseUrl: 'https://bundles.example.com/catalogues/team-a',
     });
-    expect(result.sourcePin.bundleBaseUrl).toBeUndefined();
   });
 
   it('forwards the bearer token to the bundle downloader', async () => {
@@ -351,23 +348,24 @@ describe('installFromBundle', () => {
       'https://bundles.example.com',
       undefined,
       'discovery-token',
+      undefined,
     );
   });
 
-  it('forwards the bearer token on the explicit index path', async () => {
-    const { downloadBundleFromIndex } = await import('../../../src/bundle/downloader.js');
-
+  it('forwards the bearer token for a declared source', async () => {
     await installFromBundle({
-      bundleIndexUrl: 'https://bundles.example.com/catalogues/team-a/index.json',
+      bundleUrl: 'https://bundles.example.com/catalogues/team-a',
+      sourceName: 'team-a',
       bearerToken: 'discovery-token',
       scope: 'system',
       toolId: 'claude-code',
     });
 
-    expect(downloadBundleFromIndex).toHaveBeenCalledWith(
-      'https://bundles.example.com/catalogues/team-a/index.json',
+    expect(downloadBundle).toHaveBeenCalledWith(
+      'https://bundles.example.com/catalogues/team-a',
       undefined,
       'discovery-token',
+      'team-a',
     );
   });
 });

@@ -1,15 +1,11 @@
-import {
-  canonicaliseIndexUrl,
-  downloadBundle,
-  downloadBundleFromIndex,
-  indexUrlSourceKey,
-} from '../bundle/downloader.js';
+import { canonicaliseContentRoot, downloadBundle } from '../bundle/downloader.js';
 import { extractBundle } from '../bundle/extractor.js';
 import { importLocalBundle } from '../bundle/importer.js';
 import { scanBundle } from '../bundle/scanner.js';
 import { setCurrentBundle } from '../bundle/cache.js';
 import {
   buildSourcePin,
+  bundleSourceKey,
   isRepoSource,
   resolveSkillSource,
   type SkillSource,
@@ -47,10 +43,13 @@ export interface InstallFromArtefactOpts {
 }
 
 export interface InstallFromBundleOpts {
-  /** Legacy base URL resolved at <bundleUrl>/agents/index.json. */
-  bundleUrl?: string;
-  /** Preferred exact URL to index.json. */
-  bundleIndexUrl?: string;
+  /** Content root, or a local bundle directory path. */
+  bundleUrl: string;
+  /**
+   * Logical name of the declared discovery source, when the install comes from
+   * one. Its presence is what makes the install source-namespaced.
+   */
+  sourceName?: string;
   bundleVersion?: string;
   skillNames?: string[];
   scope: InstallScope;
@@ -128,38 +127,35 @@ export async function installFromArtefact(opts: InstallFromArtefactOpts): Promis
 export async function installFromBundle(opts: InstallFromBundleOpts): Promise<InstallOperationResult> {
   const {
     bundleUrl,
-    bundleIndexUrl,
+    sourceName,
     bundleVersion: requestedVersion,
     skillNames,
     scope,
     toolId,
     bearerToken,
   } = opts;
-  if ((bundleUrl === undefined) === (bundleIndexUrl === undefined)) {
-    throw new Error('Exactly one of bundleUrl or bundleIndexUrl is required');
-  }
 
-  const source: Extract<SkillSource, { type: 'bundle' }> = bundleIndexUrl
+  // A declared discovery source is already known to be an HTTP bundle, so its
+  // URL is used as given. Re-sniffing it would misclassify a content root that
+  // happens to sit on a git host.
+  const source: Extract<SkillSource, { type: 'bundle' }> = sourceName
     ? {
         type: 'bundle',
-        indexUrl: canonicaliseIndexUrl(bundleIndexUrl),
+        baseUrl: canonicaliseContentRoot(bundleUrl),
+        sourceName,
         installLayout: 'namespaced',
       }
-    : await resolveSkillSourceStrict(bundleUrl!, 'bundle');
+    : await resolveSkillSourceStrict(bundleUrl, 'bundle');
 
   let bundleVersion: string;
   let skills: SkillInfo[];
 
-  if (source.indexUrl || source.baseUrl) {
-    const { zipPath } = source.indexUrl
-      ? await downloadBundleFromIndex(source.indexUrl, requestedVersion, bearerToken)
-      : await downloadBundle(source.baseUrl!, requestedVersion, bearerToken);
-    const extracted = await extractBundle(
-      zipPath,
-      source.indexUrl ? { sourceKey: indexUrlSourceKey(source.indexUrl) } : undefined,
-    );
+  if (source.baseUrl) {
+    const sourceKey = sourceName ? bundleSourceKey(sourceName) : undefined;
+    const { zipPath } = await downloadBundle(source.baseUrl, requestedVersion, bearerToken, sourceKey);
+    const extracted = await extractBundle(zipPath, sourceKey ? { sourceKey } : undefined);
     bundleVersion = extracted.manifest.version;
-    if (extracted.isNew && !source.indexUrl) await setCurrentBundle(bundleVersion);
+    if (extracted.isNew) await setCurrentBundle(bundleVersion);
     const contents = await scanBundle(extracted.bundleDir, extracted.manifest.agents);
     skills = contents.skills;
   } else {
@@ -241,16 +237,17 @@ export async function acquireSource(
     };
   }
 
-  if (source.indexUrl || source.baseUrl) {
-    const { zipPath } = source.indexUrl
-      ? await downloadBundleFromIndex(source.indexUrl, opts.bundleVersion, opts.bearerToken)
-      : await downloadBundle(source.baseUrl!, opts.bundleVersion, opts.bearerToken);
-    const extracted = await extractBundle(
-      zipPath,
-      source.indexUrl ? { sourceKey: indexUrlSourceKey(source.indexUrl) } : undefined,
+  if (source.baseUrl) {
+    const sourceKey = source.sourceName ? bundleSourceKey(source.sourceName) : undefined;
+    const { zipPath } = await downloadBundle(
+      source.baseUrl,
+      opts.bundleVersion,
+      opts.bearerToken,
+      sourceKey,
     );
+    const extracted = await extractBundle(zipPath, sourceKey ? { sourceKey } : undefined);
     const bundleVersion = extracted.manifest.version;
-    if (extracted.isNew && !source.indexUrl) await setCurrentBundle(bundleVersion);
+    if (extracted.isNew) await setCurrentBundle(bundleVersion);
     const contents = await scanBundle(extracted.bundleDir, extracted.manifest.agents);
     return {
       skills: contents.skills,

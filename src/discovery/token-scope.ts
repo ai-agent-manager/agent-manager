@@ -33,12 +33,8 @@ export function isOriginInDiscovery(
   const targetOrigin = originOf(targetUrl);
   if (!targetOrigin) return false;
 
-  return discovery.sources.some((source) => {
-    if (!TOKEN_ELIGIBLE_TYPES.has(source.type)) return false;
-    // An http source declares either a legacy base url or an explicit index
-    // url; both name the same origin, and a source that declares only the
-    // latter must still be token-eligible.
-    const declaredUrl = source.type === 'http' ? (source.indexUrl ?? source.url) : source.url;
-    return declaredUrl !== undefined && originOf(declaredUrl) === targetOrigin;
-  });
+  return discovery.sources.some(
+    (source) =>
+      TOKEN_ELIGIBLE_TYPES.has(source.type) && originOf(source.url) === targetOrigin,
+  );
 }

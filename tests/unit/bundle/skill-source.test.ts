@@ -13,7 +13,7 @@ import {
   sanitiseNamespaceSegment,
   deriveRepoNamespace,
   deriveArtefactNamespace,
-  deriveBundleIndexNamespace,
+  deriveBundleSourceNamespace,
   deriveInstallNamespace,
   buildInstallKey,
   flattenNamespace,
@@ -338,18 +338,19 @@ describe('buildSourcePin', () => {
     expect(pin.installLayout).toBe('flat');
     expect(pin.bundleVersion).toBe('2026.05.01');
     expect(pin.bundleBaseUrl).toBe('https://cdn.example.com/agents');
-    expect(pin.bundleIndexUrl).toBe('https://cdn.example.com/agents/agents/index.json');
+    expect(pin.bundleSourceName).toBeUndefined();
   });
 
-  it('preserves a canonical explicit index URL in a namespaced bundle pin', () => {
+  it('records the declared source name and canonical content root in a namespaced bundle pin', () => {
     const source: BundleSkillSource = {
       type: 'bundle',
-      indexUrl: 'HTTPS://EXAMPLE.COM:443/catalogues/team-a/index.json#ignored',
+      baseUrl: 'HTTPS://EXAMPLE.COM:443/catalogues/team-a/#ignored',
+      sourceName: 'team-a',
       installLayout: 'namespaced',
     };
     const pin = buildSourcePin(source, '1.2.3');
-    expect(pin.bundleIndexUrl).toBe('https://example.com/catalogues/team-a/index.json');
-    expect(pin.bundleBaseUrl).toBeUndefined();
+    expect(pin.bundleSourceName).toBe('team-a');
+    expect(pin.bundleBaseUrl).toBe('https://example.com/catalogues/team-a');
     expect(pin.installLayout).toBe('namespaced');
   });
 
@@ -674,36 +675,46 @@ describe('deriveInstallNamespace', () => {
     expect(ns).toBeNull();
   });
 
-  it('uses the complete canonical index URL for namespaced HTTP bundles', () => {
-    const first = deriveBundleIndexNamespace(
-      'https://content.example.com/catalogues/team+a/index.json?channel=stable',
-    );
-    const second = deriveBundleIndexNamespace(
-      'https://content.example.com/catalogues/team=a/index.json?channel=stable',
-    );
-    const differentQuery = deriveBundleIndexNamespace(
-      'https://content.example.com/catalogues/team+a/index.json?channel=next',
-    );
-
-    expect(first).toMatch(/^content\.example\.com\/catalogues\/team-a\/index\/[0-9a-f]{12}$/);
-    expect(new Set([first, second, differentQuery]).size).toBe(3);
+  it('uses the declared source name alone as the namespace for HTTP bundles', () => {
+    expect(deriveBundleSourceNamespace('team-a')).toBe('team-a');
+    expect(deriveBundleSourceNamespace('My Team Skills')).toBe('my-team-skills');
+    expect(() => deriveBundleSourceNamespace('///')).toThrow('no usable characters');
   });
 
-  it('derives distinct install namespaces for two index URLs on one origin', () => {
+  it('keeps the namespace stable when a source moves to a different host', () => {
+    const before = deriveInstallNamespace({
+      sourceType: 'bundle',
+      installLayout: 'namespaced',
+      bundleSourceName: 'team-a',
+      bundleBaseUrl: 'https://content.example.com/catalogues/team-a',
+    });
+    const afterMove = deriveInstallNamespace({
+      sourceType: 'bundle',
+      installLayout: 'namespaced',
+      bundleSourceName: 'team-a',
+      bundleBaseUrl: 'https://cdn.elsewhere.example/renamed-repo',
+    });
+
+    expect(before).toBe('team-a');
+    expect(afterMove).toBe(before);
+  });
+
+  it('derives distinct install namespaces for two sources on one origin', () => {
     const a = deriveInstallNamespace({
       sourceType: 'bundle',
       installLayout: 'namespaced',
-      bundleIndexUrl: 'https://content.example.com/catalogues/team-a/index.json',
+      bundleSourceName: 'team-a',
+      bundleBaseUrl: 'https://content.example.com/catalogues/team-a',
     });
     const b = deriveInstallNamespace({
       sourceType: 'bundle',
       installLayout: 'namespaced',
-      bundleIndexUrl: 'https://content.example.com/catalogues/team-b/index.json',
+      bundleSourceName: 'team-b',
+      bundleBaseUrl: 'https://content.example.com/catalogues/team-b',
     });
 
-    expect(a).toContain('content.example.com/catalogues/team-a/index/');
-    expect(b).toContain('content.example.com/catalogues/team-b/index/');
-    expect(a).not.toBe(b);
+    expect(a).toBe('team-a');
+    expect(b).toBe('team-b');
   });
 
   it('returns null when installLayout is flat regardless of source type', () => {

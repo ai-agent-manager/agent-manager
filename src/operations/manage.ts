@@ -197,20 +197,16 @@ export async function updateInstalled(
   }
 
   if (sourcePin.sourceType === 'bundle') {
-    const bundleIndexUrl =
-      sourcePin.installLayout === 'namespaced' ? sourcePin.bundleIndexUrl : undefined;
     const bundleUrl = sourcePin.bundleBaseUrl;
-    if (!bundleIndexUrl && !bundleUrl) {
+    if (!bundleUrl) {
       throw new Error(
         `Cannot update '${id}': bundle source has no URL (local directory installs cannot be updated).`,
       );
     }
-    // Token eligibility is decided on the URL this update will actually fetch,
-    // which for an explicit-index pin is the index URL, not the legacy base.
-    const contentUrl = bundleIndexUrl ?? bundleUrl!;
     const opResult = await installFromBundle({
-      ...(bundleIndexUrl ? { bundleIndexUrl } : { bundleUrl: bundleUrl! }),
-      bearerToken: await getAccessToken?.(contentUrl),
+      bundleUrl,
+      ...(sourcePin.bundleSourceName ? { sourceName: sourcePin.bundleSourceName } : {}),
+      bearerToken: await getAccessToken?.(bundleUrl),
       skillNames: [record.skillId],
       scope,
       toolId,

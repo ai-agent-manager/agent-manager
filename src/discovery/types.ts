@@ -24,22 +24,26 @@ export type SourceType = 'http' | 'git' | 'artefact';
 export type SourceStatus = 'official' | 'community';
 
 interface DiscoverySourceBase {
-  /** Source identifier. */
+  /**
+   * Stable logical source name. This is the source's identity everywhere it is
+   * referred to — install namespaces, pins, coordinates — and is deliberately
+   * independent of where the content is hosted, so a source can move without
+   * breaking anything already installed. Unique within a discovery document.
+   */
   name: string;
   /** Trust level indicator. */
   status?: SourceStatus;
 }
 
 /**
- * HTTP bundle source. Prefer `indexUrl`, which is the exact URL of index.json.
- * `url` is the legacy base-URL form and resolves to `<url>/agents/index.json`.
+ * HTTP bundle source. `url` is the content root: the directory owning this
+ * source's `index.json` and its versioned subdirectories. The client appends
+ * nothing of its own to it.
  */
-export type HttpDiscoverySource = DiscoverySourceBase & {
+export interface HttpDiscoverySource extends DiscoverySourceBase {
   type: 'http';
-} & (
-  | { indexUrl: string; url?: never }
-  | { url: string; indexUrl?: never }
-);
+  url: string;
+}
 
 export interface GitDiscoverySource extends DiscoverySourceBase {
   type: 'git';

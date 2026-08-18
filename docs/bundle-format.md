@@ -1,14 +1,13 @@
 # Bundle Format
 
-Agent Manager expects an index and version directories relative to that index:
+Agent Manager expects an index and version directories under a source's
+**content root** — the `url` its discovery entry declares:
 
-- `<index-directory>/index.json` — version index listing available bundles
-- `<index-directory>/<version>/bundle.zip` — the versioned bundle zip
-- `<index-directory>/<version>/bundle.zip.sha256` — optional integrity sidecar
+- `<content-root>/index.json` — version index listing available bundles
+- `<content-root>/<version>/bundle.zip` — the versioned bundle zip
+- `<content-root>/<version>/bundle.zip.sha256` — optional integrity sidecar
 
-Discovery documents should provide the exact index URL with `indexUrl`. Legacy
-HTTP sources using `url` remain supported at `<url>/agents/index.json`, with
-their bundle files under `<url>/agents/<version>/`.
+The client appends nothing else, so a source may publish at any path.
 
 ## Zip contents
 

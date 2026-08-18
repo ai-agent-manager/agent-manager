@@ -81,5 +81,22 @@ export async function fetchDiscoveryDocument(
     );
   }
 
+  // Source names are install identities, so duplicates would silently merge two
+  // sources into one namespace. JSON Schema cannot express uniqueness across a
+  // property of array items, so it is checked here.
+  const duplicates = [
+    ...new Set(
+      body.sources
+        .map((source) => source.name)
+        .filter((name, index, names) => names.indexOf(name) !== index),
+    ),
+  ];
+  if (duplicates.length > 0) {
+    throw new DiscoveryError(
+      `Discovery document has duplicate source names: ${duplicates.join(', ')}`,
+      baseUrl,
+    );
+  }
+
   return body;
 }

@@ -27,7 +27,7 @@
     {
       "name": "deployment-tools",
       "type": "http",
-      "indexUrl": "https://skills.example.com/catalogues/deployment-tools/index.json",
+      "url": "https://skills.example.com/catalogues/deployment-tools",
       "status": "community"
     },
     {

@@ -33,7 +33,7 @@ When a user provides a base URL to agent-manager, it fetches the discovery docum
     {
       "name": "deployment-tools",
       "type": "http",
-      "indexUrl": "https://skills.example.com/catalogues/deployment-tools/index.json",
+      "url": "https://skills.example.com/catalogues/deployment-tools",
       "status": "community"
     },
     {
@@ -60,21 +60,20 @@ When a user provides a base URL to agent-manager, it fetches the discovery docum
 | `telemetry.url` | string (URI) | Yes (if telemetry present) | Base URL of the telemetry endpoint |
 | `telemetry.siteId` | string | Yes (if telemetry present) | Site identifier for the telemetry service |
 | `sources` | array | Yes | List of available sources |
-| `sources[].name` | string | Yes | Source identifier |
+| `sources[].name` | string | Yes | Stable logical source name, unique within the document. Identifies the source everywhere — install namespaces and pins — independently of where its content is hosted |
 | `sources[].type` | `"http"` \| `"git"` \| `"artefact"` | Yes | How to fetch the source |
-| `sources[].url` | string (URI) | Git, artefact, or legacy HTTP | Repository/artefact location, or a legacy HTTP base URL |
-| `sources[].indexUrl` | string (HTTP(S) URI ending in `/index.json`) | Preferred for HTTP | Exact URL of the HTTP bundle index |
+| `sources[].url` | string (URI) | Yes | Content root for `http`, repository URL for `git`, direct zip URL for `artefact` |
 | `sources[].status` | `"official"` \| `"community"` | No | Informational label set by the discovery document publisher — agentman does not enforce or act on this value |
 
 ### Source Types
 
-- **`http`** — `indexUrl` points to the exact `index.json` for a versioned bundle stream. For a version `1.2.3`, agent-manager resolves `1.2.3/bundle.zip` and `1.2.3/bundle.zip.sha256` relative to the index URL's directory. It does not search for or insert an `agents` path segment. Legacy HTTP entries with `url` remain supported and resolve their index at `<url>/agents/index.json`. HTTP entries must define exactly one of `indexUrl` or `url`. If auth is required, agent-manager passes the access token as a Bearer header. Supports both skills and rovo agents.
+- **`http`** — `url` is the **content root**: the directory owning that source's `index.json` and its versioned subdirectories. For version `1.2.3`, agent-manager reads `<url>/index.json`, then `<url>/1.2.3/bundle.zip` and `<url>/1.2.3/bundle.zip.sha256`. It appends nothing else — there is no implicit `agents` path segment, so a source may publish at any path. If auth is required, agent-manager passes the access token as a Bearer header. Supports both skills and rovo agents.
 - **`git`** — URL points to a git repository in the [Claude Code plugin marketplace format](https://code.claude.com/docs/en/plugin-marketplaces). Agent-manager clones the repo and scans for skills (`.claude-plugin/` directory, `skills/<name>/SKILL.md` files). Only skills are supported in this model.
 - **`artefact`** — URL points directly to a `.zip` file containing one or more packaged skills. Artefact URLs must use `https://` (plain `http://` is only allowed for `localhost` during development). Agent-manager downloads the zip, checks integrity against a `.sha256` sidecar if one exists (the install proceeds with a warning if no sidecar is found — publish a sidecar or set `artefact-sha256` for stronger guarantees), then extracts and scans for skills. Artefact sources are **untrusted third-party packages** — review the source before adding it to your discovery document. Artefact sources produce skills only (no rovo agents).
 
 ### HTTP bundle layout
 
-For `"indexUrl": "https://skills.example.com/catalogues/team-a/index.json"`:
+For `"url": "https://skills.example.com/catalogues/team-a"`:
 
 ```text
 https://skills.example.com/catalogues/team-a/index.json
@@ -82,9 +81,14 @@ https://skills.example.com/catalogues/team-a/1.2.3/bundle.zip
 https://skills.example.com/catalogues/team-a/1.2.3/bundle.zip.sha256
 ```
 
-The canonical index URL is stored in each installed skill's source pin. Explicit
-HTTP sources use a readable namespace plus a short digest of the complete URL,
-so separate indexes on the same origin remain separate install identities.
+### Source identity
+
+Each installed skill's pin records the source `name`, and skills install under a
+namespace derived from that name alone — not from the URL. Republishing a source
+at a different host or path therefore leaves existing installs, updates and
+coordinates intact. Two sources on one origin stay distinct because their names
+differ, so names must be unique within a document; agentman rejects a document
+with duplicates rather than merging them into one identity.
 
 ---
 

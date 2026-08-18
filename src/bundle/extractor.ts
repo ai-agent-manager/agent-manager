@@ -49,9 +49,7 @@ export async function extractBundle(zipPath: string, options: ExtractBundleOptio
     const manifest = parseManifest(manifestRaw);
     assertSafeCacheSegment(manifest.version, 'Bundle manifest version');
     if (options.sourceKey) {
-      if (!/^http-[0-9a-f]{24}$/.test(options.sourceKey)) {
-        throw new Error(`Invalid HTTP bundle source key: ${options.sourceKey}`);
-      }
+      assertSafeCacheSegment(options.sourceKey, 'Bundle source key');
     }
 
     // Check if this version is already cached

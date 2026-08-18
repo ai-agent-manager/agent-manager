@@ -37,72 +37,55 @@ function stripTrailingSlashes(value: string): string {
 }
 
 /**
- * Validate and canonicalise an explicit bundle index URL.
+ * Validate and canonicalise a source content root.
  *
- * Fragments are removed because they are never sent in an HTTP request and
- * therefore cannot distinguish bundle streams. Query strings are retained.
+ * A content root is the directory that owns a source's `index.json` and its
+ * versioned subdirectories — the exact URL a discovery document declares. The
+ * client appends nothing but the file names below, so a source is free to
+ * publish at any path.
+ *
+ * Query strings and fragments are dropped: a directory is addressed by path,
+ * and keeping them would let two spellings of one root look like two sources.
  */
-export function canonicaliseIndexUrl(indexUrl: string): string {
-    const parsed = new URL(indexUrl);
+export function canonicaliseContentRoot(contentRoot: string): string {
+    const parsed = new URL(contentRoot);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-        throw new Error(`Bundle index URL must use http or https: ${indexUrl}`);
+        throw new Error(`Content root must use http or https: ${contentRoot}`);
     }
     if (parsed.username || parsed.password) {
-        throw new Error(`Bundle index URL must not contain credentials: ${indexUrl}`);
+        throw new Error(`Content root must not contain credentials: ${contentRoot}`);
     }
-    if (!parsed.pathname.endsWith("/index.json")) {
-        throw new Error(`Bundle index URL must point exactly to index.json: ${indexUrl}`);
-    }
+    parsed.search = "";
     parsed.hash = "";
-    return parsed.toString();
-}
-
-/** Stable cache discriminator for a canonical bundle index URL. */
-export function indexUrlSourceKey(indexUrl: string): string {
-    const digest = createHash("sha256").update(canonicaliseIndexUrl(indexUrl)).digest("hex").slice(0, 24);
-    return `http-${digest}`;
+    return stripTrailingSlashes(parsed.toString());
 }
 
 /**
- * Build the URL for the agents index.json.
+ * Build the URL for a source's index.json.
  */
-export function buildIndexUrl(baseUrl: string): string {
-    const parsed = new URL(baseUrl);
-    parsed.pathname = `${stripTrailingSlashes(parsed.pathname)}/agents/index.json`;
-    parsed.search = "";
-    parsed.hash = "";
-    return canonicaliseIndexUrl(parsed.toString());
+export function buildIndexUrl(contentRoot: string): string {
+    return `${canonicaliseContentRoot(contentRoot)}/index.json`;
 }
 
-function buildVersionedUrl(indexUrl: string, version: string, fileName: string): string {
+function buildVersionedUrl(contentRoot: string, version: string, fileName: string): string {
     if (!version) {
         throw new Error("Bundle version must not be empty");
     }
-    return new URL(`${encodeURIComponent(version)}/${fileName}`, canonicaliseIndexUrl(indexUrl)).toString();
-}
-
-/** Build a versioned bundle URL relative to an exact index URL. */
-export function buildBundleUrlFromIndex(indexUrl: string, version: string): string {
-    return buildVersionedUrl(indexUrl, version, "bundle.zip");
-}
-
-/** Build a bundle hash-sidecar URL relative to an exact index URL. */
-export function buildHashUrlFromIndex(indexUrl: string, version: string): string {
-    return buildVersionedUrl(indexUrl, version, "bundle.zip.sha256");
+    return `${canonicaliseContentRoot(contentRoot)}/${encodeURIComponent(version)}/${fileName}`;
 }
 
 /**
  * Build the URL for a versioned bundle zip.
  */
-export function buildBundleUrl(baseUrl: string, version: string): string {
-    return buildBundleUrlFromIndex(buildIndexUrl(baseUrl), version);
+export function buildBundleUrl(contentRoot: string, version: string): string {
+    return buildVersionedUrl(contentRoot, version, "bundle.zip");
 }
 
 /**
  * Build the URL for a bundle's SHA-256 hash sidecar file.
  */
-export function buildHashUrl(baseUrl: string, version: string): string {
-    return buildHashUrlFromIndex(buildIndexUrl(baseUrl), version);
+export function buildHashUrl(contentRoot: string, version: string): string {
+    return buildVersionedUrl(contentRoot, version, "bundle.zip.sha256");
 }
 
 /**
@@ -130,17 +113,12 @@ export class IntegrityError extends Error {
  *
  * Throws on other HTTP errors (500, network failures, etc.).
  */
-export async function fetchBundleHash(baseUrl: string, version: string, bearerToken?: string): Promise<string | null> {
-    return fetchBundleHashFromIndex(buildIndexUrl(baseUrl), version, bearerToken);
-}
-
-/** Fetch a bundle hash sidecar relative to an exact index URL. */
-export async function fetchBundleHashFromIndex(
-    indexUrl: string,
+export async function fetchBundleHash(
+    contentRoot: string,
     version: string,
     bearerToken?: string,
 ): Promise<string | null> {
-    const url = buildHashUrlFromIndex(indexUrl, version);
+    const url = buildHashUrl(contentRoot, version);
 
     const response = await fetch(url, authFetchOpts(bearerToken));
 
@@ -178,15 +156,10 @@ export async function verifyBundleHash(zipPath: string, expectedHash: string): P
 }
 
 /**
- * Fetch the agents index.json to discover available bundle versions.
+ * Fetch a source's index.json to discover available bundle versions.
  */
-export async function fetchIndex(baseUrl: string, bearerToken?: string): Promise<AgentsIndex> {
-    return fetchIndexUrl(buildIndexUrl(baseUrl), bearerToken);
-}
-
-/** Fetch an exact bundle index URL. */
-export async function fetchIndexUrl(indexUrl: string, bearerToken?: string): Promise<AgentsIndex> {
-    const url = canonicaliseIndexUrl(indexUrl);
+export async function fetchIndex(contentRoot: string, bearerToken?: string): Promise<AgentsIndex> {
+    const url = buildIndexUrl(contentRoot);
 
     const response = await fetch(url, authFetchOpts(bearerToken));
     if (!response.ok) {
@@ -214,14 +187,17 @@ export function getLatestVersion(index: AgentsIndex): string {
 }
 
 /**
- * Download a versioned agents bundle from the given base URL.
+ * Download a versioned bundle from a source's content root.
  *
- * 1. Fetches agents/index.json to discover available versions.
- * 2. Downloads agents/<latest-version>/bundle.zip.
- * 3. Fetches agents/<version>/bundle.zip.sha256 and verifies the download.
+ * 1. Fetches <root>/index.json to discover available versions.
+ * 2. Downloads <root>/<latest-version>/bundle.zip.
+ * 3. Fetches <root>/<version>/bundle.zip.sha256 and verifies the download.
  *
  * If `version` is provided, downloads that specific version instead of
  * the latest.
+ *
+ * `sourceKey` distinguishes the temp file, so two sources publishing the same
+ * version number cannot overwrite each other's download in flight.
  *
  * If the hash sidecar is not found (older bundles), a warning is logged
  * and the download proceeds without verification.
@@ -229,34 +205,16 @@ export function getLatestVersion(index: AgentsIndex): string {
  * If the hash doesn't match, the downloaded ZIP is deleted and an
  * `IntegrityError` is thrown.
  */
-export async function downloadBundle(baseUrl: string, version?: string, bearerToken?: string): Promise<DownloadResult> {
-    return downloadBundleAtIndex(buildIndexUrl(baseUrl), version, bearerToken, baseUrl, false);
-}
-
-/**
- * Download a bundle using an explicit exact URL to index.json.
- *
- * Versioned bundle and hash URLs are resolved from the index URL's directory.
- */
-export async function downloadBundleFromIndex(
-    indexUrl: string,
+export async function downloadBundle(
+    contentRoot: string,
     version?: string,
     bearerToken?: string,
+    sourceKey?: string,
 ): Promise<DownloadResult> {
-    const canonicalIndexUrl = canonicaliseIndexUrl(indexUrl);
-    return downloadBundleAtIndex(canonicalIndexUrl, version, bearerToken, canonicalIndexUrl, true);
-}
-
-async function downloadBundleAtIndex(
-    indexUrl: string,
-    version: string | undefined,
-    bearerToken: string | undefined,
-    telemetryEndpoint: string,
-    distinguishTempFile: boolean,
-): Promise<DownloadResult> {
+    const root = canonicaliseContentRoot(contentRoot);
     const requestType = version ? "specific" : "latest";
     let targetVersion = version ?? "latest";
-    const bundleEndpoint = getBundleEndpointTelemetryValue(telemetryEndpoint);
+    const bundleEndpoint = getBundleEndpointTelemetryValue(root);
 
     trackTelemetryEvent({
         action: "bundle_download_started",
@@ -270,18 +228,15 @@ async function downloadBundleAtIndex(
 
     try {
         if (!version) {
-            const index = await fetchIndexUrl(indexUrl, bearerToken);
+            const index = await fetchIndex(root, bearerToken);
             targetVersion = getLatestVersion(index);
         }
 
-        const url = buildBundleUrlFromIndex(indexUrl, targetVersion);
+        const url = buildBundleUrl(root, targetVersion);
         const tempDir = getTempDir();
         await mkdir(tempDir, { recursive: true });
 
-        const sourceSuffix = distinguishTempFile
-            ? `-${indexUrlSourceKey(indexUrl).slice(0, 12)}`
-            : "";
-        const zipPath = path.join(tempDir, `${targetVersion}${sourceSuffix}.zip`);
+        const zipPath = path.join(tempDir, `${targetVersion}${sourceKey ? `-${sourceKey}` : ""}.zip`);
         const response = await fetch(url, authFetchOpts(bearerToken));
         if (!response.ok) {
             throw new Error(`Failed to download bundle: ${response.status} ${response.statusText} from ${url}`);
@@ -292,7 +247,7 @@ async function downloadBundleAtIndex(
         let sha256: string | null = null;
 
         try {
-            const expectedHash = await fetchBundleHashFromIndex(indexUrl, targetVersion, bearerToken);
+            const expectedHash = await fetchBundleHash(root, targetVersion, bearerToken);
 
             if (expectedHash) {
                 await verifyBundleHash(zipPath, expectedHash);

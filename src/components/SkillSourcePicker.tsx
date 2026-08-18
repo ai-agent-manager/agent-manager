@@ -74,10 +74,10 @@ export function candidateCoordinate(candidate: SkillCandidate): string {
     return pin.artefactVersion ? `${pin.artefactUrl} (${pin.artefactVersion})` : pin.artefactUrl;
   }
   if (pin.sourceType === 'bundle') {
-    if (pin.bundleIndexUrl && pin.installLayout === 'namespaced') {
+    if (pin.bundleSourceName) {
       return pin.bundleVersion
-        ? `${pin.bundleIndexUrl} (v${pin.bundleVersion})`
-        : pin.bundleIndexUrl;
+        ? `${pin.bundleSourceName} (v${pin.bundleVersion})`
+        : pin.bundleSourceName;
     }
     return pin.bundleBaseUrl
       ? pin.bundleVersion

@@ -95,13 +95,13 @@ describe('fetchDiscoveryDocument', () => {
     expect(result.telemetry?.siteId).toBe('test-site');
   });
 
-  it('accepts an HTTP source with an explicit exact indexUrl', async () => {
+  it('accepts an HTTP source whose url is a content root at any path', async () => {
     const document: DiscoveryDocument = {
       version: '1',
       sources: [{
         name: 'team-a',
         type: 'http',
-        indexUrl: 'https://skills.example.com/catalogues/team-a/index.json',
+        url: 'https://skills.example.com/catalogues/team-a',
       }],
     };
     mockFetch.mockResolvedValueOnce({ ok: true, json: async () => document });
@@ -111,29 +111,21 @@ describe('fetchDiscoveryDocument', () => {
 
   it.each([
     {
-      name: 'both url and indexUrl',
-      source: {
-        name: 'invalid',
-        type: 'http',
-        url: 'https://skills.example.com',
-        indexUrl: 'https://skills.example.com/catalogues/team-a/index.json',
-      },
-    },
-    {
-      name: 'neither url nor indexUrl',
+      name: 'no url',
       source: { name: 'invalid', type: 'http' },
     },
     {
-      name: 'indexUrl does not point to index.json',
+      name: 'an unknown field',
       source: {
         name: 'invalid',
         type: 'http',
-        indexUrl: 'https://skills.example.com/catalogues/team-a/catalogue.json',
+        url: 'https://skills.example.com/agents',
+        indexUrl: 'https://skills.example.com/agents/index.json',
       },
     },
     {
-      name: 'indexUrl is not HTTP',
-      source: { name: 'invalid', type: 'http', indexUrl: 'file:///tmp/index.json' },
+      name: 'an empty name',
+      source: { name: '', type: 'http', url: 'https://skills.example.com/agents' },
     },
   ])('rejects an HTTP source with $name', async ({ source }) => {
     mockFetch.mockResolvedValueOnce({
@@ -143,6 +135,23 @@ describe('fetchDiscoveryDocument', () => {
 
     await expect(fetchDiscoveryDocument('https://example.com')).rejects.toThrow(
       'Discovery document validation failed',
+    );
+  });
+
+  it('rejects duplicate source names, which would merge two sources into one identity', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        version: '1',
+        sources: [
+          { name: 'team-a', type: 'http', url: 'https://skills.example.com/agents/team-a' },
+          { name: 'team-a', type: 'http', url: 'https://other.example.com/agents/team-a' },
+        ],
+      }),
+    });
+
+    await expect(fetchDiscoveryDocument('https://example.com')).rejects.toThrow(
+      'duplicate source names: team-a',
     );
   });
 

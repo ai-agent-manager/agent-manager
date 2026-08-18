@@ -6,13 +6,7 @@
  * for authenticated endpoints.
  */
 
-import {
-  buildIndexUrl,
-  canonicaliseIndexUrl,
-  downloadBundle,
-  downloadBundleFromIndex,
-  indexUrlSourceKey,
-} from '../bundle/downloader.js';
+import { downloadBundle } from '../bundle/downloader.js';
 import { extractBundle } from '../bundle/extractor.js';
 import { scanBundle, type SkillInfo, type RovoAgentInfo } from '../bundle/scanner.js';
 import { setCurrentBundle } from '../bundle/cache.js';
@@ -20,7 +14,12 @@ import { importGitSkills } from './git-importer.js';
 import { downloadArtefact } from '../bundle/artefact-downloader.js';
 import { IntegrityError } from '../bundle/downloader.js';
 import { scanArtefactForSkills } from '../bundle/artefact-scanner.js';
-import { buildSourcePin, type ArtefactSkillSource, type BundleSkillSource } from '../bundle/skill-source.js';
+import {
+  buildSourcePin,
+  bundleSourceKey,
+  type ArtefactSkillSource,
+  type BundleSkillSource,
+} from '../bundle/skill-source.js';
 import type { DiscoveryDocument, DiscoverySource, SourceType, SourceStatus } from './types.js';
 
 /** A skill resolved from a discovery source, tagged with catalogue metadata. */
@@ -83,36 +82,26 @@ export async function resolveDiscoverySkills(
       switch (source.type) {
         case 'http': {
           onProgress?.(`Downloading source bundle: ${source.name}...`);
-          const hasIndexUrl = typeof source.indexUrl === 'string';
-          const hasLegacyUrl = typeof source.url === 'string';
-          if (hasIndexUrl === hasLegacyUrl) {
-            throw new Error(`HTTP source '${source.name}' must define exactly one of url or indexUrl`);
-          }
-
-          const indexUrl = hasIndexUrl
-            ? canonicaliseIndexUrl(source.indexUrl!)
-            : buildIndexUrl(source.url!);
-          const { zipPath, version } = hasIndexUrl
-            ? await downloadBundleFromIndex(indexUrl, undefined, accessToken)
-            : await downloadBundle(source.url!, undefined, accessToken);
-          const result = await extractBundle(
-            zipPath,
-            hasIndexUrl ? { sourceKey: indexUrlSourceKey(indexUrl) } : undefined,
-          );
-          if (result.isNew && !hasIndexUrl) {
+          // source.url is the content root: the client appends index.json and
+          // <version>/… to it and inserts no path of its own.
+          const sourceKey = bundleSourceKey(source.name);
+          const { zipPath, version } = await downloadBundle(source.url, undefined, accessToken, sourceKey);
+          const result = await extractBundle(zipPath, { sourceKey });
+          if (result.isNew) {
+            // The "current bundle" pointer predates multi-source discovery and
+            // still names a single version globally; with several sources the
+            // last one resolved wins. Tracked in #50 with the cache work.
             await setCurrentBundle(result.manifest.version);
           }
           bundleVersion = version;
 
           const contents = await scanBundle(result.bundleDir, result.manifest.agents);
-          const httpSource: BundleSkillSource = hasIndexUrl
-            ? { type: 'bundle', indexUrl, installLayout: 'namespaced' }
-            : {
-                type: 'bundle',
-                baseUrl: source.url!,
-                indexUrl,
-                installLayout: 'flat',
-              };
+          const httpSource: BundleSkillSource = {
+            type: 'bundle',
+            baseUrl: source.url,
+            sourceName: source.name,
+            installLayout: 'namespaced',
+          };
           const httpPin = buildSourcePin(httpSource, version);
           allSkills.push(...contents.skills.map((skill) => ({ ...skill, sourcePin: httpPin, ...sourceMeta })));
           allRovoAgents.push(...contents.rovoAgents);
