@@ -327,7 +327,10 @@ describe('installFromBundle', () => {
       undefined,
       'team-a',
     );
-    expect(extractBundle).toHaveBeenCalledWith('/tmp/bundle.zip', { sourceKey: 'team-a' });
+    expect(extractBundle).toHaveBeenCalledWith('/tmp/bundle.zip', {
+      sourceKey: 'team-a',
+      contentRoot: 'https://bundles.example.com/catalogues/team-a',
+    });
     expect(result.sourcePin).toMatchObject({
       sourceType: 'bundle',
       installLayout: 'namespaced',

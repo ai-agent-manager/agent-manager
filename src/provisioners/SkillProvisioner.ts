@@ -9,6 +9,7 @@ import { recordInstall, removeInstallRecord, readConfig, getRecordVersion } from
 import { recordRepoInstall, removeRepoInstallRecord, readRepoConfig } from '../bundle/repo-config.js';
 import { deriveInstallNamespace, buildInstallKey, buildLinkName } from '../bundle/skill-source.js';
 import type { SkillSourcePin } from '../bundle/skill-source.js';
+import { canonicaliseContentRoot } from '../bundle/downloader.js';
 
 type InstallRecordMap = Record<
   string,
@@ -39,6 +40,31 @@ function resolveInstallKey(name: string, records: InstallRecordMap): ResolveResu
   if (matches.length === 1) return { type: 'found', key: matches[0] };
   if (matches.length > 1) return { type: 'ambiguous', keys: matches };
   return { type: 'not-found' };
+}
+
+/**
+ * Whether a pre-existing flat record is the same source as an incoming named
+ * bundle install, and may therefore be replaced by it.
+ *
+ * A flat bundle record carries no source name, so identity has to come from the
+ * URL. Two things make that safe rather than a guess: the record must have a URL
+ * at all — local-directory installs have none and can never be reinstalled from
+ * their pin, so they are never touched — and that URL must address the same
+ * content root the new install used, either directly or through the `/agents`
+ * suffix a pre-migration client appended. Anything else, including a flat record
+ * pinned to a different server, is left alone.
+ */
+function isSamePreContentRootBundle(legacy: SkillSourcePin, incoming: SkillSourcePin): boolean {
+  if (legacy.sourceType !== 'bundle' || legacy.bundleSourceName) return false;
+  if (!legacy.bundleBaseUrl || !incoming.bundleBaseUrl) return false;
+
+  try {
+    const legacyRoot = canonicaliseContentRoot(legacy.bundleBaseUrl);
+    const incomingRoot = canonicaliseContentRoot(incoming.bundleBaseUrl);
+    return legacyRoot === incomingRoot || `${legacyRoot}/agents` === incomingRoot;
+  } catch {
+    return false;
+  }
 }
 
 export abstract class SkillProvisioner implements Provisioner {
@@ -264,15 +290,15 @@ export abstract class SkillProvisioner implements Provisioner {
         // guard above on this same run.
         if (namespace) {
           const legacy = toolInstalls[item.dirName];
-          const legacyIsFlatBundleOfThisSkill =
-            legacy?.sourcePin?.sourceType === 'bundle' &&
-            !legacy.sourcePin.bundleSourceName &&
+          const legacyIsSameBundleSource =
+            legacy?.sourcePin !== undefined &&
             effectivePin?.sourceType === 'bundle' &&
             Boolean(effectivePin.bundleSourceName) &&
+            isSamePreContentRootBundle(legacy.sourcePin, effectivePin) &&
             namedBundleClaims.get(item.dirName) === 1;
           if (
             legacy?.sourcePin &&
-            (deriveInstallNamespace(legacy.sourcePin) === namespace || legacyIsFlatBundleOfThisSkill)
+            (deriveInstallNamespace(legacy.sourcePin) === namespace || legacyIsSameBundleSource)
           ) {
             const legacyLinkName = legacy.linkName ?? item.dirName;
             await removeLink(path.join(skillsDir, legacyLinkName));

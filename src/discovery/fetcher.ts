@@ -86,12 +86,24 @@ export async function fetchDiscoveryDocument(
   // sources into one namespace and one cache directory. JSON Schema cannot
   // express uniqueness across a property of array items, so it is checked here.
   //
-  // Compared on the derived namespace rather than the raw name: names differing
+  // http names are compared on their derived namespace, because names differing
   // only in case or punctuation ("Team-Alpha" vs "team alpha") are distinct
-  // strings but collapse to the same identity.
+  // strings that collapse to one identity. git and artefact sources derive
+  // identity from their URLs instead, so their names are compared as written —
+  // deriving a namespace for them would reject a document over a display name
+  // that is never used as an identity.
   const seen = new Map<string, string>();
   for (const source of body.sources) {
-    const key = deriveBundleSourceNamespace(source.name);
+    let key: string;
+    try {
+      key = source.type === 'http' ? deriveBundleSourceNamespace(source.name) : source.name;
+    } catch (err) {
+      throw new DiscoveryError(
+        `Discovery document has an unusable source name: ${err instanceof Error ? err.message : String(err)}`,
+        baseUrl,
+      );
+    }
+
     const previous = seen.get(key);
     if (previous !== undefined) {
       throw new DiscoveryError(

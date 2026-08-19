@@ -6,6 +6,7 @@ import { ClaudeCodeProvisioner } from '../../../src/provisioners/ClaudeCodeProvi
 import type { SkillInfo } from '../../../src/bundle/scanner.js';
 import type { SkillSourcePin } from '../../../src/bundle/skill-source.js';
 import { recordInstall } from '../../../src/bundle/cache.js';
+import { buildPinForDirectorySource } from '../../../src/bundle/skill-source.js';
 import { createLink } from '../../../src/lib/symlink.js';
 import { vi } from 'vitest';
 
@@ -302,6 +303,61 @@ describe('SkillProvisioner — always-namespace flat link layout', () => {
 
     const installed = await prov.getInstalled();
     expect(installed.map((i) => i.name)).toEqual(['team-skills/test-skill']);
+  });
+
+  it('leaves a flat install pinned to a different server alone', async () => {
+    const prov = new ClaudeCodeProvisioner();
+    const skillsDir = path.join(tmpDir, '.claude', 'skills');
+
+    await mkdir(skillsDir, { recursive: true });
+    await createLink(path.join(bundleDir, 'test-skill'), path.join(skillsDir, 'test-skill'));
+    await recordInstall('claude-code', 'test-skill', {
+      installedAt: new Date().toISOString(),
+      method: 'symlink',
+      sourcePin: {
+        sourceType: 'bundle',
+        installLayout: 'flat',
+        bundleBaseUrl: 'https://other-server.example.com',
+        bundleVersion: '1.0.0',
+      },
+    });
+
+    await prov.install([makeSkill('test-skill')], '1.1.0', {
+      sourceType: 'bundle',
+      installLayout: 'namespaced',
+      bundleSourceName: 'team-skills',
+      bundleBaseUrl: 'https://content.example.com/agents',
+      bundleVersion: '1.1.0',
+    });
+
+    // Same skill id, unrelated publisher — the record is not ours to consume.
+    const survivor = await readlink(path.join(skillsDir, 'test-skill'));
+    expect(survivor).toBe(path.join(bundleDir, 'test-skill'));
+  });
+
+  it('leaves a local-directory install alone, which has no URL to reinstall from', async () => {
+    const prov = new ClaudeCodeProvisioner();
+    const skillsDir = path.join(tmpDir, '.claude', 'skills');
+
+    await mkdir(skillsDir, { recursive: true });
+    await createLink(path.join(bundleDir, 'test-skill'), path.join(skillsDir, 'test-skill'));
+    await recordInstall('claude-code', 'test-skill', {
+      installedAt: new Date().toISOString(),
+      method: 'symlink',
+      sourcePin: buildPinForDirectorySource('/tmp/some-local-bundle', 'dev'),
+    });
+
+    await prov.install([makeSkill('test-skill')], '1.1.0', {
+      sourceType: 'bundle',
+      installLayout: 'namespaced',
+      bundleSourceName: 'team-skills',
+      bundleBaseUrl: 'https://content.example.com/agents',
+      bundleVersion: '1.1.0',
+    });
+
+    // Deleting this would be unrecoverable: the pin records no path to reinstall from.
+    const survivor = await readlink(path.join(skillsDir, 'test-skill'));
+    expect(survivor).toBe(path.join(bundleDir, 'test-skill'));
   });
 
   it('leaves a flat bundle install alone when two named sources offer the same skill', async () => {

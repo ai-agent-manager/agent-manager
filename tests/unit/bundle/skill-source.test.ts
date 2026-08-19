@@ -341,6 +341,29 @@ describe('buildSourcePin', () => {
     expect(pin.bundleSourceName).toBeUndefined();
   });
 
+  // Closes the update round trip: manage.ts hands the migrated URL to
+  // installFromBundle, which re-pins through here — so the marker has to be
+  // written, or the next update suffixes the same pin again.
+  it('marks every bundle pin that has a URL as content-root addressed', async () => {
+    const fromUrl = buildSourcePin(
+      { type: 'bundle', baseUrl: 'https://cdn.example.com/agents', installLayout: 'flat' },
+      '1.0.0',
+    );
+    expect(fromUrl.bundleAddressing).toBe('content-root');
+
+    const resolved = await resolveSkillSource('https://cdn.example.com/catalogue');
+    expect(buildSourcePin(resolved, '1.0.0').bundleAddressing).toBe('content-root');
+  });
+
+  it('leaves a directory-sourced pin unmarked, since it addresses no URL', () => {
+    const pin = buildSourcePin(
+      { type: 'bundle', dirPath: '/tmp/my-bundle', installLayout: 'flat' },
+      'dev',
+    );
+    expect(pin.bundleAddressing).toBeUndefined();
+    expect(pin.bundleBaseUrl).toBeUndefined();
+  });
+
   it('records the declared source name and canonical content root in a namespaced bundle pin', () => {
     const source: BundleSkillSource = {
       type: 'bundle',

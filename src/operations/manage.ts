@@ -203,12 +203,17 @@ export async function updateInstalled(
         `Cannot update '${id}': bundle source has no URL (local directory installs cannot be updated).`,
       );
     }
-    // A pin without a source name predates content-root addressing, so its URL
-    // is a base the client used to append `/agents/` to. Appending it here
-    // reproduces exactly the URLs that install fetched — without it the pinned
-    // URL is frozen at a path the publisher never served, and no publisher-side
-    // migration could reach it.
-    const bundleUrl = sourcePin.bundleSourceName ? pinnedUrl : `${pinnedUrl.replace(/\/+$/, '')}/agents`;
+    // Every pin written since content-root addressing carries the marker, so its
+    // absence means the record predates it: the URL is a base the client used to
+    // append `/agents/` to, and reproducing that suffix is what keeps the install
+    // updatable. Deciding this on the marker rather than on the missing source
+    // name matters twice over — a bare-URL install has no source name either but
+    // its URL is already a content root, and the update below re-pins through
+    // buildSourcePin, so the migrated record comes back marked and is never
+    // suffixed a second time.
+    const isPreContentRootPin =
+      !sourcePin.bundleSourceName && sourcePin.bundleAddressing !== 'content-root';
+    const bundleUrl = isPreContentRootPin ? `${pinnedUrl.replace(/\/+$/, '')}/agents` : pinnedUrl;
     const opResult = await installFromBundle({
       bundleUrl,
       ...(sourcePin.bundleSourceName ? { sourceName: sourcePin.bundleSourceName } : {}),

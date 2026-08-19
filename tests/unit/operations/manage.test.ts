@@ -301,6 +301,65 @@ describe('updateInstalled', () => {
     expect(getAccessToken).toHaveBeenCalledWith('https://bundles.example.com/agents');
   });
 
+  // A bare-URL install writes the same record shape as a pre-migration pin — no
+  // source name — but its URL is already a content root. Suffixing it would break
+  // an install the current code just made.
+  it('uses a marked content-root pin verbatim, even without a source name', async () => {
+    vi.mocked(readConfig).mockResolvedValueOnce({
+      installations: {
+        'claude-code': {
+          'bare-url-skill': {
+            installedAt: '2026-08-19T00:00:00.000Z',
+            method: 'symlink' as const,
+            sourcePin: {
+              sourceType: 'bundle' as const,
+              installLayout: 'flat' as const,
+              bundleBaseUrl: 'https://content.example.com/catalogue',
+              bundleAddressing: 'content-root' as const,
+              bundleVersion: '1.0.0',
+            },
+          },
+        },
+      },
+    });
+    const getAccessToken = vi.fn(async () => 'discovery-token');
+
+    await updateInstalled('bare-url-skill', 'system', 'claude-code', getAccessToken);
+
+    const opts = vi.mocked(installFromBundle).mock.calls[0]![0];
+    expect(opts.bundleUrl).toBe('https://content.example.com/catalogue');
+    expect(getAccessToken).toHaveBeenCalledWith('https://content.example.com/catalogue');
+  });
+
+  // The migration must happen once. A pin re-recorded with the suffixed URL comes
+  // back marked, so a second update uses it as-is instead of suffixing again and
+  // bricking the install on <base>/agents/agents.
+  it('does not suffix a pin twice once the migrated record is written back', async () => {
+    const migratedPin = {
+      sourceType: 'bundle' as const,
+      installLayout: 'flat' as const,
+      bundleBaseUrl: 'https://bundles.example.com/agents',
+      bundleAddressing: 'content-root' as const,
+      bundleVersion: '1.0.0',
+    };
+    vi.mocked(readConfig).mockResolvedValueOnce({
+      installations: {
+        'claude-code': {
+          'bundle-skill': {
+            installedAt: '2026-08-19T00:00:00.000Z',
+            method: 'copy' as const,
+            sourcePin: migratedPin,
+          },
+        },
+      },
+    });
+
+    await updateInstalled('bundle-skill', 'system', 'claude-code');
+
+    const opts = vi.mocked(installFromBundle).mock.calls[0]![0];
+    expect(opts.bundleUrl).toBe('https://bundles.example.com/agents');
+  });
+
   it('retains the declared source name and content root when updating', async () => {
     vi.mocked(readConfig).mockResolvedValueOnce({
       installations: {

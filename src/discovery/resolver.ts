@@ -85,7 +85,7 @@ export async function resolveDiscoverySkills(
           // <version>/… to it and inserts no path of its own.
           const sourceKey = bundleSourceKey(source.name);
           const { zipPath, version } = await downloadBundle(source.url, undefined, accessToken, sourceKey);
-          const result = await extractBundle(zipPath, { sourceKey });
+          const result = await extractBundle(zipPath, { sourceKey, contentRoot: source.url });
           // Deliberately no setCurrentBundle here: the `current` symlink points
           // into the version-keyed cache, which a source-scoped extract never
           // populates, so setting it would leave a dangling link and a phantom

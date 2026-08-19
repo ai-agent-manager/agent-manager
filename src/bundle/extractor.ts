@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, rename } from 'node:fs/promises';
+import { mkdir, readFile, rm, rename, writeFile } from 'node:fs/promises';
 import extractZip from 'extract-zip';
 import path from 'node:path';
 import { getBundlesDir, getBundleVersionDir, getTempDir } from '../config/paths.js';
@@ -16,10 +16,19 @@ export interface ExtractBundleOptions {
    * the legacy global cache keyed only by manifest version.
    */
   sourceKey?: string;
+  /**
+   * Content root this bundle came from. Recorded beside the cache entry so a
+   * second publisher using the same source name cannot be served the first
+   * one's bundle — see assertSameContentRoot.
+   */
+  contentRoot?: string;
 }
 
 /** Directory the source-scoped cache tree occupies inside the bundles dir. */
 const SOURCES_SUBTREE = 'sources';
+
+/** Provenance file written beside a source's cached versions. */
+const SOURCE_MARKER = 'source.json';
 
 export function assertSafeCacheSegment(value: string, label: string): void {
   if (
@@ -61,9 +70,17 @@ export async function extractBundle(zipPath: string, options: ExtractBundleOptio
     }
 
     // Check if this version is already cached
-    const targetDir = options.sourceKey
-      ? path.join(getBundlesDir(), SOURCES_SUBTREE, options.sourceKey, manifest.version)
+    const sourceDir = options.sourceKey
+      ? path.join(getBundlesDir(), SOURCES_SUBTREE, options.sourceKey)
+      : undefined;
+    const targetDir = sourceDir
+      ? path.join(sourceDir, manifest.version)
       : getBundleVersionDir(manifest.version);
+
+    if (sourceDir && options.contentRoot) {
+      await assertSameContentRoot(sourceDir, options.sourceKey!, options.contentRoot);
+    }
+
     const alreadyCached = await dirExists(targetDir);
 
     if (alreadyCached) {
@@ -78,11 +95,53 @@ export async function extractBundle(zipPath: string, options: ExtractBundleOptio
     await rm(targetDir, { recursive: true, force: true });
     await rename(tempExtractDir, targetDir);
 
+    if (sourceDir && options.contentRoot) {
+      await writeFile(
+        path.join(sourceDir, SOURCE_MARKER),
+        `${JSON.stringify({ contentRoot: options.contentRoot }, null, 2)}\n`,
+        'utf-8',
+      );
+    }
+
     return { manifest, bundleDir: targetDir, isNew: true };
   } catch (error) {
     // Clean up on failure
     await rm(tempExtractDir, { recursive: true, force: true }).catch(() => {});
     throw error;
+  }
+}
+
+/**
+ * Refuse to reuse a source's cache for a different content root.
+ *
+ * Source names are only required to be unique within one discovery document, so
+ * two documents can each declare a source called e.g. `official`. Both would map
+ * to the same cache directory, and the already-cached short-circuit would serve
+ * the first publisher's bundle under the second's pin. Failing loudly is the
+ * containment measure; making the identity model handle several publishers is
+ * the wider question tracked with the source-scoped cache work.
+ */
+async function assertSameContentRoot(
+  sourceDir: string,
+  sourceKey: string,
+  contentRoot: string,
+): Promise<void> {
+  let recorded: string | undefined;
+  try {
+    const raw = await readFile(path.join(sourceDir, SOURCE_MARKER), 'utf-8');
+    recorded = (JSON.parse(raw) as { contentRoot?: string }).contentRoot;
+  } catch {
+    // No marker yet (or unreadable): nothing to contradict.
+    return;
+  }
+
+  if (recorded && recorded !== contentRoot) {
+    throw new Error(
+      `Source '${sourceKey}' is already cached from a different content root. ` +
+        `Cached: ${recorded}. Requested: ${contentRoot}. ` +
+        `Two discovery documents are using one source name for different publishers; ` +
+        `rename one of them.`,
+    );
   }
 }
 

@@ -129,6 +129,15 @@ export interface SkillSourcePin {
    * a declared source, deliberately independent of where its content is hosted.
    */
   bundleSourceName?: string;
+  /**
+   * How `bundleBaseUrl` is addressed. Written at pin time by every bundle
+   * source that has a URL, so its *absence* is the marker: such a record was
+   * written when the client still appended `/agents` itself, and its URL is a
+   * base rather than a content root. Without this, a pin from a bare-URL
+   * install and a pre-migration pin are indistinguishable — same shape, URLs
+   * meaning different things.
+   */
+  bundleAddressing?: 'content-root';
 }
 
 // ── Type guards ───────────────────────────────────────────────────────────────
@@ -364,7 +373,12 @@ export function buildSourcePin(
   return {
     ...base,
     bundleVersion,
-    ...(source.baseUrl ? { bundleBaseUrl: canonicaliseContentRoot(source.baseUrl) } : {}),
+    ...(source.baseUrl
+      ? {
+          bundleBaseUrl: canonicaliseContentRoot(source.baseUrl),
+          bundleAddressing: 'content-root' as const,
+        }
+      : {}),
     ...(source.sourceName ? { bundleSourceName: source.sourceName } : {}),
   };
 }

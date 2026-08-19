@@ -98,6 +98,34 @@ be unique within a document. agentman rejects a document whose names collide —
 including names that differ only in case or punctuation, since those resolve to
 one identity — rather than merging them.
 
+Source names are only required to be unique *within* a document, so two documents
+may each declare a source with the same name. agentman records the content root a
+source was cached from and refuses to reuse that cache for a different root, so
+one publisher's bundle is never served under another's pin.
+
+### Migrating an existing deployment
+
+Earlier releases treated an `http` source's `url` as a base and appended
+`/agents/` themselves. Moving to a content root is a breaking change for
+documents: append the publication prefix to each entry (`https://host` →
+`https://host/agents`), and serve the content at both paths while clients still
+in the field catch up — an older agentman asks for `<url>/agents/index.json` and
+will 404 against a migrated document.
+
+The schema `version` deliberately stays at `1`. An old-contract and a new-contract
+document are therefore structurally identical — only the meaning of `url` differs —
+and a client cannot tell which it is being served. That is accepted rather than
+overlooked: the canonical content-sources design shows content-root URLs under
+version 1, so versioning the contract here would put this client ahead of the
+design it implements. The break is absorbed by the deployment step above and by
+the pin migration below instead.
+
+Installs already on disk are handled by the client. A pin written before this
+change is recognised by the absence of its addressing marker; its first update
+resolves against `<pinned url>/agents`, reproducing the URLs the original install
+fetched, and the record is rewritten as a content root so later updates use it
+unchanged.
+
 ---
 
 ## Artefact Source — Packaging and Publishing
