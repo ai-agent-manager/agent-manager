@@ -8,6 +8,7 @@
 
 import { downloadBundle } from '../bundle/downloader.js';
 import { extractBundle } from '../bundle/extractor.js';
+import type { BundleManifest } from '../bundle/manifest.js';
 import { scanBundle, type SkillInfo, type RovoAgentInfo } from '../bundle/scanner.js';
 import { setCurrentBundle } from '../bundle/cache.js';
 import { importGitSkills } from './git-importer.js';
@@ -33,6 +34,16 @@ export interface ResolvedSources {
   errors: Array<{ source: DiscoverySource; error: string; isIntegrity: boolean }>;
   /** Bundle version if an HTTP bundle was downloaded (for cache management). */
   bundleVersion?: string;
+  /**
+   * Manifest from an HTTP bundle source, when one was resolved.
+   * Prefer a source that contributed Rovo agents; otherwise the last HTTP source.
+   * Needed by the Chrome Extension bridge (and similar) when using discovery.
+   */
+  manifest?: BundleManifest;
+  /**
+   * Cached bundle directory for {@link manifest}, when an HTTP source was resolved.
+   */
+  bundleDir?: string;
 }
 
 /**
@@ -66,6 +77,10 @@ export async function resolveDiscoverySkills(
   const allRovoAgents: RovoAgentInfo[] = [];
   const errors: Array<{ source: DiscoverySource; error: string; isIntegrity: boolean }> = [];
   let bundleVersion: string | undefined;
+  let manifest: BundleManifest | undefined;
+  let bundleDir: string | undefined;
+  /** True once we've captured a bundle that contributed Rovo agents. */
+  let hasRovoBundle = false;
 
   for (const source of discovery.sources) {
     const sourceMeta = {
@@ -89,6 +104,16 @@ export async function resolveDiscoverySkills(
           const httpPin = buildSourcePin({ type: 'bundle', baseUrl: source.url, installLayout: 'flat' } as BundleSkillSource, version);
           allSkills.push(...contents.skills.map((skill) => ({ ...skill, sourcePin: httpPin, ...sourceMeta })));
           allRovoAgents.push(...contents.rovoAgents);
+
+          // Keep metadata for the Chrome Extension bridge and similar consumers.
+          // Prefer a source that actually contributed Rovo agents.
+          if (!hasRovoBundle) {
+            manifest = result.manifest;
+            bundleDir = result.bundleDir;
+            if (contents.rovoAgents.length > 0) {
+              hasRovoBundle = true;
+            }
+          }
           break;
         }
 
@@ -135,5 +160,12 @@ export async function resolveDiscoverySkills(
     }
   }
 
-  return { skills: allSkills, rovoAgents: allRovoAgents, errors, bundleVersion };
+  return {
+    skills: allSkills,
+    rovoAgents: allRovoAgents,
+    errors,
+    bundleVersion,
+    ...(manifest ? { manifest } : {}),
+    ...(bundleDir ? { bundleDir } : {}),
+  };
 }
