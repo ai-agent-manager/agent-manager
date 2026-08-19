@@ -115,23 +115,20 @@ describe('resolveDiscoverySkills', () => {
     const { extractBundle } = await import('../../../src/bundle/extractor.js');
     const { scanBundle } = await import('../../../src/bundle/scanner.js');
 
+    // Rovo source is listed first so first-Rovo-wins and last-wins disagree.
     vi.mocked(extractBundle)
-      .mockResolvedValueOnce({
-        bundleDir: '/tmp/skills-only',
-        manifest: { version: 'skills-1', published: '2024-01-01T00:00:00Z', agents: [] },
-        isNew: true,
-      })
       .mockResolvedValueOnce({
         bundleDir: '/tmp/with-rovo',
         manifest: { version: 'rovo-1', published: '2024-02-01T00:00:00Z', agents: [] },
         isNew: true,
+      })
+      .mockResolvedValueOnce({
+        bundleDir: '/tmp/skills-only',
+        manifest: { version: 'skills-1', published: '2024-01-01T00:00:00Z', agents: [] },
+        isNew: true,
       });
 
     vi.mocked(scanBundle)
-      .mockResolvedValueOnce({
-        skills: mockBundleSkills,
-        rovoAgents: [],
-      })
       .mockResolvedValueOnce({
         skills: [],
         rovoAgents: [
@@ -144,13 +141,17 @@ describe('resolveDiscoverySkills', () => {
             knowledgeBaseFiles: [],
           },
         ],
+      })
+      .mockResolvedValueOnce({
+        skills: mockBundleSkills,
+        rovoAgents: [],
       });
 
     const doc: DiscoveryDocument = {
       version: '1',
       sources: [
-        { name: 'skills-bundle', type: 'http', url: 'https://cdn.example.com/skills' },
         { name: 'rovo-bundle', type: 'http', url: 'https://cdn.example.com/rovo' },
+        { name: 'skills-bundle', type: 'http', url: 'https://cdn.example.com/skills' },
       ],
     };
 
