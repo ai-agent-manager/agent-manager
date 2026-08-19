@@ -209,8 +209,9 @@ Skills are installed as symlinks into each tool's native skills directory:
 
 The link name depends on the install source:
 
-- **Bundle (`http`) sources** — bare skill id: `my-skill/`
-- **Repo and artefact sources** — namespaced: `<source>~<skill-id>/` (e.g. `github.com~example-org~example-repo~my-skill/` or `cdn.example.com~my-skill~my-skill/`). The prefix is derived from the source URL; every boundary — between namespace segments, and between the namespace and the skill id — is joined with `~`, a character the sanitiser never emits, so each `(source, skill-id)` pair maps to exactly one flat link name. This ensures skills from different repo/artefact sources never overwrite each other even when they share the same id. Bundle and local-directory sources remain flat (bare `<skill-id>/`) by design and are out of scope for this guarantee — same-id skills from those sources can still collide.
+- **HTTP sources declared in a discovery document** — namespaced by the declared source name: `<source-name>~<skill-id>/` (e.g. `team-skills~my-skill/`). The name, not the URL, is the namespace, so a source that moves or is republished elsewhere keeps the same install identity.
+- **Repo and artefact sources** — namespaced: `<source>~<skill-id>/` (e.g. `github.com~example-org~example-repo~my-skill/` or `cdn.example.com~my-skill~my-skill/`). The prefix is derived from the source URL; every boundary — between namespace segments, and between the namespace and the skill id — is joined with `~`, a character the sanitiser never emits, so each `(source, skill-id)` pair maps to exactly one flat link name.
+- **Local directory sources** — flat (bare `<skill-id>/`), and out of scope for the no-collision guarantee: same-id skills from two local bundles can still overwrite each other.
 
 > **Windows note:** If symlink creation fails (requires admin rights or Developer Mode), the tool falls back to copying the skill directory instead.
 
@@ -226,9 +227,9 @@ A `.agentman.json` file is written at the repo root tracking the pinned bundle v
 
 1. Agent Manager fetches a **discovery document** from `<base-url>/.well-known/agents/discovery.json` to learn about available skills and auth requirements.
 2. If the server requires authentication, an OAuth2/OIDC flow runs interactively (PKCE, browser-based login).
-3. The bundle is downloaded and extracted to `~/.agentman/bundles/<version>/`.
-4. `~/.agentman/current` symlinks to the active version.
-5. Multiple bundle versions coexist on disk. Switch between them from **Maintenance & Updates → Manage Bundle Versions**.
+3. Each source's bundle is downloaded and extracted under `~/.agentman/bundles/sources/<source-name>/<version>/`, so two sources publishing the same version number stay separate. A bundle fetched from a bare URL rather than a declared source still lands in the older `~/.agentman/bundles/<version>/` layout.
+4. `~/.agentman/current` symlinks to the active version of that older layout, and **Maintenance & Updates → Manage Bundle Versions** operates on it. Source-scoped bundles are not yet covered by either.
+5. Multiple bundle versions coexist on disk.
 6. Installing a skill symlinks the entire skill directory from the cache into the target tool's skills path.
 7. Installation state is tracked in `~/.agentman/config.json` (system-wide) or `.agentman.json` (repo-scoped).
 
@@ -236,7 +237,7 @@ A `.agentman.json` file is written at the repo root tracking the pinned bundle v
 
 ## Bundle Format
 
-The discovery document at `<base-url>/.well-known/agents/discovery.json` declares skill sources (git repos, HTTP bundles, or artefact zips). Versioned bundles are stored at `<base-url>/agents/<version>/bundle.zip`. See [docs/discovery.md](docs/discovery.md) for the discovery document spec and [docs/bundle-format.md](docs/bundle-format.md) for the zip contents.
+The discovery document at `<base-url>/.well-known/agents/discovery.json` declares skill sources (git repos, HTTP bundles, or artefact zips). Each HTTP source declares a **content root**, and its bundles live at `<content-root>/<version>/bundle.zip`. See [docs/discovery.md](docs/discovery.md) for the discovery document spec and [docs/bundle-format.md](docs/bundle-format.md) for the zip contents.
 
 ---
 
@@ -251,7 +252,7 @@ The [examples/](examples/) directory contains sample assets used for reference, 
 Important behavior:
 
 - These examples are repository-local fixtures. They are not automatically used when you run Agent Manager against a remote bundle URL.
-- In normal production usage, Agent Manager pulls agents from your configured bundle source (`<base-url>/agents/...`).
+- In normal production usage, Agent Manager pulls agents from the content root each source declares in the discovery document.
 - To use local examples directly, run Agent Manager with a local directory source instead of a remote URL.
 
 ---

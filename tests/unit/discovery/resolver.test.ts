@@ -106,6 +106,20 @@ describe('resolveDiscoverySkills', () => {
     expect(result.errors).toHaveLength(0);
   });
 
+  it('does not point the current-bundle symlink at a source-scoped extract', async () => {
+    const { setCurrentBundle } = await import('../../../src/bundle/cache.js');
+    const doc: DiscoveryDocument = {
+      version: '1',
+      sources: [{ name: 'bundle', type: 'http', url: 'https://cdn.example.com/agents' }],
+    };
+
+    await resolveDiscoverySkills(doc);
+
+    // `current` links into the version-keyed cache, which a source-scoped
+    // extract never populates — setting it would leave a dangling link.
+    expect(setCurrentBundle).not.toHaveBeenCalled();
+  });
+
   it('reads a content root as declared and pins the source name, not the URL', async () => {
     const { downloadBundle } = await import('../../../src/bundle/downloader.js');
     const doc: DiscoveryDocument = {

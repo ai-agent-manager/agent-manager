@@ -1,4 +1,5 @@
 import { Ajv2020 } from 'ajv/dist/2020.js';
+import { deriveBundleSourceNamespace } from '../bundle/skill-source.js';
 import _addFormats from 'ajv-formats';
 
 // ajv-formats CJS interop: the default export is the function itself
@@ -82,20 +83,25 @@ export async function fetchDiscoveryDocument(
   }
 
   // Source names are install identities, so duplicates would silently merge two
-  // sources into one namespace. JSON Schema cannot express uniqueness across a
-  // property of array items, so it is checked here.
-  const duplicates = [
-    ...new Set(
-      body.sources
-        .map((source) => source.name)
-        .filter((name, index, names) => names.indexOf(name) !== index),
-    ),
-  ];
-  if (duplicates.length > 0) {
-    throw new DiscoveryError(
-      `Discovery document has duplicate source names: ${duplicates.join(', ')}`,
-      baseUrl,
-    );
+  // sources into one namespace and one cache directory. JSON Schema cannot
+  // express uniqueness across a property of array items, so it is checked here.
+  //
+  // Compared on the derived namespace rather than the raw name: names differing
+  // only in case or punctuation ("Team-Alpha" vs "team alpha") are distinct
+  // strings but collapse to the same identity.
+  const seen = new Map<string, string>();
+  for (const source of body.sources) {
+    const key = deriveBundleSourceNamespace(source.name);
+    const previous = seen.get(key);
+    if (previous !== undefined) {
+      throw new DiscoveryError(
+        previous === source.name
+          ? `Discovery document has duplicate source names: ${source.name}`
+          : `Discovery document has source names that resolve to one identity: '${previous}' and '${source.name}' both become '${key}'`,
+        baseUrl,
+      );
+    }
+    seen.set(key, source.name);
   }
 
   return body;

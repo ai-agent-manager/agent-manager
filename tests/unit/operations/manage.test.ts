@@ -281,10 +281,24 @@ describe('updateInstalled', () => {
 
     expect(installFromBundle).toHaveBeenCalledTimes(1);
     const opts = vi.mocked(installFromBundle).mock.calls[0]![0];
-    expect(opts.bundleUrl).toBe('https://bundles.example.com');
     expect(opts.skillNames).toEqual(['bundle-skill']);
     expect(opts.repoRoot).toBe('/tmp/my-repo');
     expect(opts.bundleVersion).toBeUndefined();
+  });
+
+  // A pin with no source name was written before content-root addressing, when
+  // the client appended /agents/ itself. Updating it must reproduce the URLs the
+  // original install fetched, or the pin is frozen on a path that was never
+  // served and no publisher-side migration can reach it.
+  it('resolves a pre-content-root pin against its legacy /agents path', async () => {
+    const getAccessToken = vi.fn(async () => 'discovery-token');
+
+    await updateInstalled('bundle-skill', undefined, undefined, getAccessToken);
+
+    const opts = vi.mocked(installFromBundle).mock.calls[0]![0];
+    expect(opts.bundleUrl).toBe('https://bundles.example.com/agents');
+    expect(opts.sourceName).toBeUndefined();
+    expect(getAccessToken).toHaveBeenCalledWith('https://bundles.example.com/agents');
   });
 
   it('retains the declared source name and content root when updating', async () => {
@@ -360,7 +374,7 @@ describe('updateInstalled', () => {
 
     await updateInstalled('bundle-skill', undefined, undefined, getAccessToken);
 
-    expect(getAccessToken).toHaveBeenCalledWith('https://bundles.example.com');
+    expect(getAccessToken).toHaveBeenCalledWith('https://bundles.example.com/agents');
     expect(vi.mocked(installFromBundle).mock.calls[0]![0].bearerToken).toBe(
       'discovery-token',
     );

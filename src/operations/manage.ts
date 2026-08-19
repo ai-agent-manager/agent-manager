@@ -197,12 +197,18 @@ export async function updateInstalled(
   }
 
   if (sourcePin.sourceType === 'bundle') {
-    const bundleUrl = sourcePin.bundleBaseUrl;
-    if (!bundleUrl) {
+    const pinnedUrl = sourcePin.bundleBaseUrl;
+    if (!pinnedUrl) {
       throw new Error(
         `Cannot update '${id}': bundle source has no URL (local directory installs cannot be updated).`,
       );
     }
+    // A pin without a source name predates content-root addressing, so its URL
+    // is a base the client used to append `/agents/` to. Appending it here
+    // reproduces exactly the URLs that install fetched — without it the pinned
+    // URL is frozen at a path the publisher never served, and no publisher-side
+    // migration could reach it.
+    const bundleUrl = sourcePin.bundleSourceName ? pinnedUrl : `${pinnedUrl.replace(/\/+$/, '')}/agents`;
     const opResult = await installFromBundle({
       bundleUrl,
       ...(sourcePin.bundleSourceName ? { sourceName: sourcePin.bundleSourceName } : {}),

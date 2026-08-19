@@ -2,6 +2,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { getTempDir } from "../config/paths.js";
+import { assertSafeCacheSegment } from "./extractor.js";
 import { getBundleEndpointTelemetryValue, trackTelemetryError, trackTelemetryEvent } from "../telemetry.js";
 
 export interface IndexEntry {
@@ -236,6 +237,9 @@ export async function downloadBundle(
         const tempDir = getTempDir();
         await mkdir(tempDir, { recursive: true });
 
+        // targetVersion comes from a remote index.json, so it reaches this
+        // path.join before anything has verified the download.
+        assertSafeCacheSegment(targetVersion, "Bundle version");
         const zipPath = path.join(tempDir, `${targetVersion}${sourceKey ? `-${sourceKey}` : ""}.zip`);
         const response = await fetch(url, authFetchOpts(bearerToken));
         if (!response.ok) {

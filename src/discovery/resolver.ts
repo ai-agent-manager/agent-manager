@@ -9,7 +9,6 @@
 import { downloadBundle } from '../bundle/downloader.js';
 import { extractBundle } from '../bundle/extractor.js';
 import { scanBundle, type SkillInfo, type RovoAgentInfo } from '../bundle/scanner.js';
-import { setCurrentBundle } from '../bundle/cache.js';
 import { importGitSkills } from './git-importer.js';
 import { downloadArtefact } from '../bundle/artefact-downloader.js';
 import { IntegrityError } from '../bundle/downloader.js';
@@ -87,12 +86,11 @@ export async function resolveDiscoverySkills(
           const sourceKey = bundleSourceKey(source.name);
           const { zipPath, version } = await downloadBundle(source.url, undefined, accessToken, sourceKey);
           const result = await extractBundle(zipPath, { sourceKey });
-          if (result.isNew) {
-            // The "current bundle" pointer predates multi-source discovery and
-            // still names a single version globally; with several sources the
-            // last one resolved wins. Tracked in #50 with the cache work.
-            await setCurrentBundle(result.manifest.version);
-          }
+          // Deliberately no setCurrentBundle here: the `current` symlink points
+          // into the version-keyed cache, which a source-scoped extract never
+          // populates, so setting it would leave a dangling link and a phantom
+          // "current" version. Teaching the current-bundle machinery about
+          // source-scoped paths belongs with the cache work in #50.
           bundleVersion = version;
 
           const contents = await scanBundle(result.bundleDir, result.manifest.agents);

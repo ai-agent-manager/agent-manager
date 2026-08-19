@@ -266,6 +266,81 @@ describe('SkillProvisioner — always-namespace flat link layout', () => {
     expect(namespacedTarget).toBe(path.join(bundleDir, 'test-skill'));
   });
 
+  // ── Pre-content-root bundle installs ─────────────────────────────────────────
+
+  it('replaces a pre-content-root flat bundle install with the named-source install', async () => {
+    const prov = new ClaudeCodeProvisioner();
+    const skillsDir = path.join(tmpDir, '.claude', 'skills');
+
+    // Flat bundle record from before HTTP sources were namespaced: no source
+    // name, so its pin yields no namespace to match the new install against.
+    await mkdir(skillsDir, { recursive: true });
+    await createLink(path.join(bundleDir, 'test-skill'), path.join(skillsDir, 'test-skill'));
+    await recordInstall('claude-code', 'test-skill', {
+      installedAt: new Date().toISOString(),
+      method: 'symlink',
+      sourcePin: {
+        sourceType: 'bundle',
+        installLayout: 'flat',
+        bundleBaseUrl: 'https://content.example.com',
+        bundleVersion: '1.0.0',
+      },
+    });
+
+    await prov.install([makeSkill('test-skill')], '1.1.0', {
+      sourceType: 'bundle',
+      installLayout: 'namespaced',
+      bundleSourceName: 'team-skills',
+      bundleBaseUrl: 'https://content.example.com/agents',
+      bundleVersion: '1.1.0',
+    });
+
+    // Without this the skill exists twice: the flat link and the namespaced one.
+    await expect(stat(path.join(skillsDir, 'test-skill'))).rejects.toThrow();
+    const migrated = await readlink(path.join(skillsDir, 'team-skills~test-skill'));
+    expect(migrated).toBe(path.join(bundleDir, 'test-skill'));
+
+    const installed = await prov.getInstalled();
+    expect(installed.map((i) => i.name)).toEqual(['team-skills/test-skill']);
+  });
+
+  it('leaves a flat bundle install alone when two named sources offer the same skill', async () => {
+    const prov = new ClaudeCodeProvisioner();
+    const skillsDir = path.join(tmpDir, '.claude', 'skills');
+
+    await mkdir(skillsDir, { recursive: true });
+    await createLink(path.join(bundleDir, 'test-skill'), path.join(skillsDir, 'test-skill'));
+    await recordInstall('claude-code', 'test-skill', {
+      installedAt: new Date().toISOString(),
+      method: 'symlink',
+      sourcePin: {
+        sourceType: 'bundle',
+        installLayout: 'flat',
+        bundleBaseUrl: 'https://content.example.com',
+        bundleVersion: '1.0.0',
+      },
+    });
+
+    // Two sources claim the same skill id in one run, so the legacy record
+    // cannot be attributed to either without guessing.
+    await prov.install(
+      [
+        { ...makeSkill('test-skill'), sourcePin: {
+          sourceType: 'bundle', installLayout: 'namespaced',
+          bundleSourceName: 'team-a', bundleBaseUrl: 'https://a.example.com/agents',
+        } },
+        { ...makeSkill('test-skill'), sourcePin: {
+          sourceType: 'bundle', installLayout: 'namespaced',
+          bundleSourceName: 'team-b', bundleBaseUrl: 'https://b.example.com/agents',
+        } },
+      ],
+      '1.1.0',
+    );
+
+    const legacyTarget = await readlink(path.join(skillsDir, 'test-skill'));
+    expect(legacyTarget).toBe(path.join(bundleDir, 'test-skill'));
+  });
+
   // ── Flat (legacy) installs — no sourcePin ────────────────────────────────────
 
   it('legacy flat install (no sourcePin) lands at ~/.claude/skills/<skillId>/', async () => {

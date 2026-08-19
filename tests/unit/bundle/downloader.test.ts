@@ -650,6 +650,27 @@ describe("downloadBundle", () => {
         await expect(downloadBundle("https://example.com/agents")).rejects.toThrow("Failed to download bundle: 403 Forbidden");
     });
 
+    it("rejects a traversing version from a hostile index before writing anything", async () => {
+        globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+            if (url.endsWith("/index.json")) {
+                return Promise.resolve({
+                    ok: true,
+                    json: async () => ({
+                        lastUpdated: "2026-01-01",
+                        agents: [{ version: "../../evil", published: "2026-01-01" }],
+                    }),
+                });
+            }
+            return Promise.reject(new Error(`Unexpected fetch URL: ${url}`));
+        });
+
+        // The version reaches path.join before the download is verified, so it
+        // has to be rejected up front rather than checked at extract time.
+        await expect(downloadBundle("https://example.com/agents")).rejects.toThrow(
+            "Bundle version must be a safe single path segment",
+        );
+    });
+
     it("keeps two sources on one origin distinct", async () => {
         const streams = [
             {

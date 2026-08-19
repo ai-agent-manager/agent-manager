@@ -155,6 +155,23 @@ describe('fetchDiscoveryDocument', () => {
     );
   });
 
+  it('rejects source names that differ only in case or punctuation', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        version: '1',
+        sources: [
+          { name: 'Team-Alpha', type: 'http', url: 'https://a.example.com/agents' },
+          { name: 'team alpha', type: 'http', url: 'https://b.example.com/agents' },
+        ],
+      }),
+    });
+
+    await expect(fetchDiscoveryDocument('https://example.com')).rejects.toThrow(
+      /both become 'team-alpha'/,
+    );
+  });
+
   it('throws DiscoveryError on network failure', async () => {
     mockFetch.mockRejectedValueOnce(new Error('Network error'));
 

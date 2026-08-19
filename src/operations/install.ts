@@ -155,7 +155,9 @@ export async function installFromBundle(opts: InstallFromBundleOpts): Promise<In
     const { zipPath } = await downloadBundle(source.baseUrl, requestedVersion, bearerToken, sourceKey);
     const extracted = await extractBundle(zipPath, sourceKey ? { sourceKey } : undefined);
     bundleVersion = extracted.manifest.version;
-    if (extracted.isNew) await setCurrentBundle(bundleVersion);
+    // Only the version-keyed cache backs the `current` symlink; pointing it at a
+    // source-scoped extract would dangle. See resolver.ts and #50.
+    if (extracted.isNew && !sourceKey) await setCurrentBundle(bundleVersion);
     const contents = await scanBundle(extracted.bundleDir, extracted.manifest.agents);
     skills = contents.skills;
   } else {
@@ -247,7 +249,7 @@ export async function acquireSource(
     );
     const extracted = await extractBundle(zipPath, sourceKey ? { sourceKey } : undefined);
     const bundleVersion = extracted.manifest.version;
-    if (extracted.isNew) await setCurrentBundle(bundleVersion);
+    if (extracted.isNew && !sourceKey) await setCurrentBundle(bundleVersion);
     const contents = await scanBundle(extracted.bundleDir, extracted.manifest.agents);
     return {
       skills: contents.skills,

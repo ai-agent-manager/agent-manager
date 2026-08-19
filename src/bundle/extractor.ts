@@ -18,7 +18,10 @@ export interface ExtractBundleOptions {
   sourceKey?: string;
 }
 
-function assertSafeCacheSegment(value: string, label: string): void {
+/** Directory the source-scoped cache tree occupies inside the bundles dir. */
+const SOURCES_SUBTREE = 'sources';
+
+export function assertSafeCacheSegment(value: string, label: string): void {
   if (
     !value ||
     value === '.' ||
@@ -50,11 +53,16 @@ export async function extractBundle(zipPath: string, options: ExtractBundleOptio
     assertSafeCacheSegment(manifest.version, 'Bundle manifest version');
     if (options.sourceKey) {
       assertSafeCacheSegment(options.sourceKey, 'Bundle source key');
+    } else if (manifest.version === SOURCES_SUBTREE) {
+      // The legacy cache is keyed by version directly under the bundles dir, so
+      // a version literally named after the source-scoped subtree would resolve
+      // to its root and plant a bundle over it.
+      throw new Error(`Bundle manifest version must not be '${SOURCES_SUBTREE}'`);
     }
 
     // Check if this version is already cached
     const targetDir = options.sourceKey
-      ? path.join(getBundlesDir(), 'sources', options.sourceKey, manifest.version)
+      ? path.join(getBundlesDir(), SOURCES_SUBTREE, options.sourceKey, manifest.version)
       : getBundleVersionDir(manifest.version);
     const alreadyCached = await dirExists(targetDir);
 

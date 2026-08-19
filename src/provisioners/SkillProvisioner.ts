@@ -165,6 +165,19 @@ export abstract class SkillProvisioner implements Provisioner {
       linkNameToKey.set(record.linkName ?? bareId, key);
     }
 
+    // A pre-content-root bundle install is flat, so its pin yields no namespace
+    // and cannot be matched to the new one by identity. It is only safe to treat
+    // such a record as the predecessor of a named-source install when exactly one
+    // source in this run offers that skill id — otherwise the first source to
+    // install would consume a record that may belong to another.
+    const namedBundleClaims = new Map<string, number>();
+    for (const item of items) {
+      const pin = item.sourcePin ?? sourcePin;
+      if (pin?.sourceType === 'bundle' && pin.bundleSourceName) {
+        namedBundleClaims.set(item.dirName, (namedBundleClaims.get(item.dirName) ?? 0) + 1);
+      }
+    }
+
     for (const item of items) {
       const effectivePin = item.sourcePin ?? sourcePin;
       let installKey = item.dirName;
@@ -251,7 +264,16 @@ export abstract class SkillProvisioner implements Provisioner {
         // guard above on this same run.
         if (namespace) {
           const legacy = toolInstalls[item.dirName];
-          if (legacy?.sourcePin && deriveInstallNamespace(legacy.sourcePin) === namespace) {
+          const legacyIsFlatBundleOfThisSkill =
+            legacy?.sourcePin?.sourceType === 'bundle' &&
+            !legacy.sourcePin.bundleSourceName &&
+            effectivePin?.sourceType === 'bundle' &&
+            Boolean(effectivePin.bundleSourceName) &&
+            namedBundleClaims.get(item.dirName) === 1;
+          if (
+            legacy?.sourcePin &&
+            (deriveInstallNamespace(legacy.sourcePin) === namespace || legacyIsFlatBundleOfThisSkill)
+          ) {
             const legacyLinkName = legacy.linkName ?? item.dirName;
             await removeLink(path.join(skillsDir, legacyLinkName));
 

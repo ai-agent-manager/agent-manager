@@ -85,10 +85,18 @@ https://skills.example.com/catalogues/team-a/1.2.3/bundle.zip.sha256
 
 Each installed skill's pin records the source `name`, and skills install under a
 namespace derived from that name alone — not from the URL. Republishing a source
-at a different host or path therefore leaves existing installs, updates and
-coordinates intact. Two sources on one origin stay distinct because their names
-differ, so names must be unique within a document; agentman rejects a document
-with duplicates rather than merging them into one identity.
+at a different host or path therefore leaves existing install paths and
+coordinates intact.
+
+Updates are a separate matter: the pin also records the content root the skill
+was fetched from, and Update re-fetches that URL. So a source that moves needs
+its installed skills re-resolved through the discovery document — name-based
+re-resolution on update is not implemented yet.
+
+Two sources on one origin stay distinct because their names differ, so names must
+be unique within a document. agentman rejects a document whose names collide —
+including names that differ only in case or punctuation, since those resolve to
+one identity — rather than merging them.
 
 ---
 
