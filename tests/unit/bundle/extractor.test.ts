@@ -17,7 +17,9 @@ vi.mock('extract-zip', () => ({
   default: async (_zipPath: string, opts: { dir: string }) => {
     await mkdir(opts.dir, { recursive: true });
     for (const [name, body] of Object.entries(zipContents)) {
-      await writeFile(path.join(opts.dir, name), body, 'utf-8');
+      const target = path.join(opts.dir, name);
+      await mkdir(path.dirname(target), { recursive: true });
+      await writeFile(target, body, 'utf-8');
     }
   },
 }));
@@ -236,6 +238,23 @@ describe('extractBundle — source-scoped cache', () => {
       contentRoot: 'https://a.example.com/agents',
     });
     expect(guarded.isNew).toBe(true);
+  });
+
+  // The archive's own file by this name is publisher content, never provenance.
+  // Publishing it verbatim would let a hostile bundle attest itself.
+  it.each([
+    ['a file', () => ({ '.source.json': JSON.stringify({ contentRoot: 'https://evil.example.com' }) })],
+    ['a directory', () => ({ '.source.json/decoy': 'x' })],
+  ])('overwrites %s shipped as the provenance marker', async (_label, extra) => {
+    zipContents = { ...manifest('1.0.0'), ...extra() };
+
+    const result = await extractBundle('/tmp/ignored.zip', {
+      sourceKey: 'official',
+      contentRoot: 'https://a.example.com/agents',
+    });
+
+    const marker = await readFile(path.join(result.bundleDir, '.source.json'), 'utf-8');
+    expect(JSON.parse(marker).contentRoot).toBe('https://a.example.com/agents');
   });
 
   it('rejects a manifest version that would collide with the source-scoped subtree', async () => {

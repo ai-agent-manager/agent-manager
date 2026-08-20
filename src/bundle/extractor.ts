@@ -12,19 +12,28 @@ export interface ExtractResult {
   isNew: boolean;
 }
 
-export interface ExtractBundleOptions {
-  /**
-   * Stable HTTP source key for source-scoped caches. Omit to preserve
-   * the legacy global cache keyed only by manifest version.
-   */
-  sourceKey?: string;
-  /**
-   * Content root this bundle came from. Recorded beside the cache entry so a
-   * second publisher using the same source name cannot be served the first
-   * one's bundle — see readSourceMarker.
-   */
-  contentRoot?: string;
-}
+/**
+ * Either both source-scoping fields or neither.
+ *
+ * A key without a content root would place the bundle in the source-scoped
+ * cache while skipping every provenance step — including the staged-marker
+ * overwrite, so a hostile zip's own marker would be published verbatim and read
+ * as attestation later. Making the pair inseparable in the type removes that
+ * state rather than guarding against it: it cannot be written, so it cannot rot
+ * back in behind a future caller.
+ */
+export type ExtractBundleOptions =
+  | {
+      /** Legacy global cache, keyed by manifest version alone. */
+      sourceKey?: never;
+      contentRoot?: never;
+    }
+  | {
+      /** Stable HTTP source key for the source-scoped cache. */
+      sourceKey: string;
+      /** Content root this bundle came from, recorded as its provenance. */
+      contentRoot: string;
+    };
 
 /** Directory the source-scoped cache tree occupies inside the bundles dir. */
 const SOURCES_SUBTREE = 'sources';
@@ -130,11 +139,12 @@ export async function extractBundle(zipPath: string, options: ExtractBundleOptio
     // own file by this name would have it replaced in the cache; the leading dot
     // keeps it out of the scanner's way, which skips dotfiles and non-directories.
     if (sourceDir && contentRoot) {
-      await writeFile(
-        path.join(tempExtractDir, VERSION_MARKER),
-        `${JSON.stringify({ contentRoot }, null, 2)}\n`,
-        'utf-8',
-      );
+      const stagedMarker = path.join(tempExtractDir, VERSION_MARKER);
+      // Cleared first: whatever the archive shipped under this name is the
+      // publisher's own file, never provenance, and a directory there would
+      // otherwise fail the write with a bare EISDIR.
+      await rm(stagedMarker, { recursive: true, force: true });
+      await writeFile(stagedMarker, `${JSON.stringify({ contentRoot }, null, 2)}\n`, 'utf-8');
     }
 
     // Move to the permanent cache location
