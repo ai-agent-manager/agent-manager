@@ -36,7 +36,7 @@ vi.mock('../../../src/bundle/downloader.js', async () => {
 vi.mock('../../../src/bundle/extractor.js', () => ({
   extractBundle: vi.fn(async () => ({
     bundleDir: '/tmp/bundles',
-    manifest: { version: '1.0.0', agents: [] },
+    manifest: { version: '1.0.0', published: '2024-01-01T00:00:00Z', agents: [] },
     isNew: true,
   })),
 }));
@@ -103,6 +103,12 @@ describe('resolveDiscoverySkills', () => {
     expect(result.skills[0]!.sourcePin?.sourceType).toBe('bundle');
     expect(result.skills[0]!.sourcePin?.bundleSourceName).toBe('bundle');
     expect(result.bundleVersion).toBe('1.0.0');
+    expect(result.manifest).toEqual({
+      version: '1.0.0',
+      published: '2024-01-01T00:00:00Z',
+      agents: [],
+    });
+    expect(result.bundleDir).toBe('/tmp/bundles');
     expect(result.errors).toHaveLength(0);
   });
 
@@ -148,6 +154,69 @@ describe('resolveDiscoverySkills', () => {
       bundleBaseUrl: 'https://cdn.example.com/catalogues/team-a',
       bundleVersion: '1.0.0',
     });
+  });
+
+  it('prefers the HTTP source that contributed Rovo agents for manifest/bundleDir', async () => {
+    const { extractBundle } = await import('../../../src/bundle/extractor.js');
+    const { scanBundle } = await import('../../../src/bundle/scanner.js');
+
+    // Rovo source is listed first so first-Rovo-wins and last-wins disagree.
+    vi.mocked(extractBundle)
+      .mockResolvedValueOnce({
+        bundleDir: '/tmp/with-rovo',
+        manifest: { version: 'rovo-1', published: '2024-02-01T00:00:00Z', agents: [] },
+        isNew: true,
+      })
+      .mockResolvedValueOnce({
+        bundleDir: '/tmp/skills-only',
+        manifest: { version: 'skills-1', published: '2024-01-01T00:00:00Z', agents: [] },
+        isNew: true,
+      });
+
+    vi.mocked(scanBundle)
+      .mockResolvedValueOnce({
+        skills: [],
+        rovoAgents: [
+          {
+            dirName: 'agent-a',
+            dirPath: '/tmp/with-rovo/agent-a',
+            configPath: '/tmp/with-rovo/agent-a/rovo-agent.yaml',
+            config: {} as never,
+            meta: null,
+            knowledgeBaseFiles: [],
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        skills: mockBundleSkills,
+        rovoAgents: [],
+      });
+
+    const doc: DiscoveryDocument = {
+      version: '1',
+      sources: [
+        { name: 'rovo-bundle', type: 'http', url: 'https://cdn.example.com/rovo' },
+        { name: 'skills-bundle', type: 'http', url: 'https://cdn.example.com/skills' },
+      ],
+    };
+
+    const result = await resolveDiscoverySkills(doc);
+    expect(result.rovoAgents).toHaveLength(1);
+    expect(result.manifest?.version).toBe('rovo-1');
+    expect(result.bundleDir).toBe('/tmp/with-rovo');
+  });
+
+  it('omits manifest and bundleDir when no HTTP sources resolve', async () => {
+    const doc: DiscoveryDocument = {
+      version: '1',
+      sources: [
+        { name: 'my-repo', type: 'git', url: 'https://github.com/example/repo.git' },
+      ],
+    };
+
+    const result = await resolveDiscoverySkills(doc);
+    expect(result.manifest).toBeUndefined();
+    expect(result.bundleDir).toBeUndefined();
   });
 
   it('resolves mixed http and git skills', async () => {
