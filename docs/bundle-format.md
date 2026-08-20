@@ -1,9 +1,13 @@
 # Bundle Format
 
-Agent Manager expects your bundle server to expose two endpoints:
+Agent Manager expects an index and version directories under a source's
+**content root** — the `url` its discovery entry declares:
 
-- `<base-url>/agents/index.json` — version index listing available bundles
-- `<base-url>/agents/<version>/bundle.zip` — the versioned bundle zip
+- `<content-root>/index.json` — version index listing available bundles
+- `<content-root>/<version>/bundle.zip` — the versioned bundle zip
+- `<content-root>/<version>/bundle.zip.sha256` — optional integrity sidecar
+
+The client appends nothing else, so a source may publish at any path.
 
 ## Zip contents
 

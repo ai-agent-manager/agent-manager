@@ -10,12 +10,16 @@ import { downloadBundle } from '../bundle/downloader.js';
 import { extractBundle } from '../bundle/extractor.js';
 import type { BundleManifest } from '../bundle/manifest.js';
 import { scanBundle, type SkillInfo, type RovoAgentInfo } from '../bundle/scanner.js';
-import { setCurrentBundle } from '../bundle/cache.js';
 import { importGitSkills } from './git-importer.js';
 import { downloadArtefact } from '../bundle/artefact-downloader.js';
 import { IntegrityError } from '../bundle/downloader.js';
 import { scanArtefactForSkills } from '../bundle/artefact-scanner.js';
-import { buildSourcePin, type ArtefactSkillSource, type BundleSkillSource } from '../bundle/skill-source.js';
+import {
+  buildSourcePin,
+  bundleSourceKey,
+  type ArtefactSkillSource,
+  type BundleSkillSource,
+} from '../bundle/skill-source.js';
 import type { DiscoveryDocument, DiscoverySource, SourceType, SourceStatus } from './types.js';
 
 /** A skill resolved from a discovery source, tagged with catalogue metadata. */
@@ -92,16 +96,26 @@ export async function resolveDiscoverySkills(
       switch (source.type) {
         case 'http': {
           onProgress?.(`Downloading source bundle: ${source.name}...`);
-          // For HTTP sources, the URL is the base URL for the bundle index
-          const { zipPath, version } = await downloadBundle(source.url, undefined, accessToken);
-          const result = await extractBundle(zipPath);
-          if (result.isNew) {
-            await setCurrentBundle(result.manifest.version);
-          }
+          // source.url is the content root: the client appends index.json and
+          // <version>/… to it and inserts no path of its own.
+          const sourceKey = bundleSourceKey(source.name);
+          const { zipPath, version } = await downloadBundle(source.url, undefined, accessToken, sourceKey);
+          const result = await extractBundle(zipPath, { sourceKey, contentRoot: source.url });
+          // Deliberately no setCurrentBundle here: the `current` symlink points
+          // into the version-keyed cache, which a source-scoped extract never
+          // populates, so setting it would leave a dangling link and a phantom
+          // "current" version. Teaching the current-bundle machinery about
+          // source-scoped paths belongs with the cache work in #50.
           bundleVersion = version;
 
           const contents = await scanBundle(result.bundleDir, result.manifest.agents);
-          const httpPin = buildSourcePin({ type: 'bundle', baseUrl: source.url, installLayout: 'flat' } as BundleSkillSource, version);
+          const httpSource: BundleSkillSource = {
+            type: 'bundle',
+            baseUrl: source.url,
+            sourceName: source.name,
+            installLayout: 'namespaced',
+          };
+          const httpPin = buildSourcePin(httpSource, version);
           allSkills.push(...contents.skills.map((skill) => ({ ...skill, sourcePin: httpPin, ...sourceMeta })));
           allRovoAgents.push(...contents.rovoAgents);
 

@@ -27,7 +27,7 @@
     {
       "name": "deployment-tools",
       "type": "http",
-      "url": "https://skills.example.com/bundles/deployment-tools",
+      "url": "https://skills.example.com/catalogues/deployment-tools",
       "status": "community"
     },
     {

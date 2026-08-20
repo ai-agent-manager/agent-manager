@@ -99,8 +99,9 @@ describe('resolveDiscoverySkills', () => {
     const result = await resolveDiscoverySkills(doc);
     expect(result.skills).toHaveLength(1);
     expect(result.skills[0]!.dirName).toBe('http-skill-a');
-    expect(result.skills[0]!.sourcePin?.installLayout).toBe('flat');
+    expect(result.skills[0]!.sourcePin?.installLayout).toBe('namespaced');
     expect(result.skills[0]!.sourcePin?.sourceType).toBe('bundle');
+    expect(result.skills[0]!.sourcePin?.bundleSourceName).toBe('bundle');
     expect(result.bundleVersion).toBe('1.0.0');
     expect(result.manifest).toEqual({
       version: '1.0.0',
@@ -109,6 +110,50 @@ describe('resolveDiscoverySkills', () => {
     });
     expect(result.bundleDir).toBe('/tmp/bundles');
     expect(result.errors).toHaveLength(0);
+  });
+
+  it('does not point the current-bundle symlink at a source-scoped extract', async () => {
+    const { setCurrentBundle } = await import('../../../src/bundle/cache.js');
+    const doc: DiscoveryDocument = {
+      version: '1',
+      sources: [{ name: 'bundle', type: 'http', url: 'https://cdn.example.com/agents' }],
+    };
+
+    await resolveDiscoverySkills(doc);
+
+    // `current` links into the version-keyed cache, which a source-scoped
+    // extract never populates — setting it would leave a dangling link.
+    expect(setCurrentBundle).not.toHaveBeenCalled();
+  });
+
+  it('reads a content root as declared and pins the source name, not the URL', async () => {
+    const { downloadBundle } = await import('../../../src/bundle/downloader.js');
+    const doc: DiscoveryDocument = {
+      version: '1',
+      sources: [
+        {
+          name: 'team-a',
+          type: 'http',
+          url: 'https://cdn.example.com/catalogues/team-a',
+        },
+      ],
+    };
+
+    const result = await resolveDiscoverySkills(doc, 'token');
+
+    expect(downloadBundle).toHaveBeenCalledWith(
+      'https://cdn.example.com/catalogues/team-a',
+      undefined,
+      'token',
+      'team-a',
+    );
+    expect(result.skills[0]!.sourcePin).toMatchObject({
+      sourceType: 'bundle',
+      installLayout: 'namespaced',
+      bundleSourceName: 'team-a',
+      bundleBaseUrl: 'https://cdn.example.com/catalogues/team-a',
+      bundleVersion: '1.0.0',
+    });
   });
 
   it('prefers the HTTP source that contributed Rovo agents for manifest/bundleDir', async () => {
@@ -336,5 +381,61 @@ describe('resolveDiscoverySkills', () => {
 
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]!.isIntegrity).toBe(false);
+  });
+
+  it('keeps two sources on one origin as distinct streams and install identities', async () => {
+    const { downloadBundle } = await import('../../../src/bundle/downloader.js');
+    const { extractBundle } = await import('../../../src/bundle/extractor.js');
+    const { scanBundle } = await import('../../../src/bundle/scanner.js');
+    const { deriveSkillInstallKey } = await import('../../../src/bundle/skill-source.js');
+
+    vi.mocked(downloadBundle)
+      .mockResolvedValueOnce({ zipPath: '/tmp/team-a.zip', version: '1.0.0', sha256: null })
+      .mockResolvedValueOnce({ zipPath: '/tmp/team-b.zip', version: '1.0.0', sha256: null });
+    vi.mocked(extractBundle)
+      .mockResolvedValueOnce({
+        bundleDir: '/tmp/bundles/team-a',
+        manifest: { version: '1.0.0', agents: [] },
+        isNew: true,
+      })
+      .mockResolvedValueOnce({
+        bundleDir: '/tmp/bundles/team-b',
+        manifest: { version: '1.0.0', agents: [] },
+        isNew: true,
+      });
+    vi.mocked(scanBundle)
+      .mockResolvedValueOnce({
+        skills: [{ ...mockBundleSkills[0]!, dirPath: '/tmp/bundles/team-a/http-skill-a' }],
+        rovoAgents: [],
+      })
+      .mockResolvedValueOnce({
+        skills: [{ ...mockBundleSkills[0]!, dirPath: '/tmp/bundles/team-b/http-skill-a' }],
+        rovoAgents: [],
+      });
+
+    const result = await resolveDiscoverySkills({
+      version: '1',
+      sources: [
+        {
+          name: 'team-a',
+          type: 'http',
+          url: 'https://content.example.com/catalogues/team-a',
+        },
+        {
+          name: 'team-b',
+          type: 'http',
+          url: 'https://content.example.com/catalogues/team-b',
+        },
+      ],
+    });
+
+    expect(result.errors).toEqual([]);
+    expect(result.skills.map((skill) => skill.dirPath)).toEqual([
+      '/tmp/bundles/team-a/http-skill-a',
+      '/tmp/bundles/team-b/http-skill-a',
+    ]);
+    const identities = result.skills.map(deriveSkillInstallKey);
+    expect(identities[0]).not.toBe(identities[1]);
+    expect(identities.every((identity) => identity.endsWith('/http-skill-a'))).toBe(true);
   });
 });

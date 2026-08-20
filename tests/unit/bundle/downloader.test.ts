@@ -7,6 +7,7 @@ import {
     buildIndexUrl,
     buildBundleUrl,
     buildHashUrl,
+    canonicaliseContentRoot,
     getLatestVersion,
     fetchIndex,
     fetchBundleHash,
@@ -37,65 +38,77 @@ vi.mock("../../../src/telemetry.js", async () => {
     };
 });
 
-describe("buildIndexUrl", () => {
-    it("appends /agents/index.json to a clean base URL", () => {
-        expect(buildIndexUrl("https://example.com")).toBe("https://example.com/agents/index.json");
-    });
-
-    it("strips a single trailing slash", () => {
-        expect(buildIndexUrl("https://example.com/")).toBe("https://example.com/agents/index.json");
-    });
-
-    it("strips multiple trailing slashes", () => {
-        expect(buildIndexUrl("https://example.com///")).toBe("https://example.com/agents/index.json");
-    });
-
-    it("handles a base URL with a path", () => {
-        expect(buildIndexUrl("https://cdn.example.com/my-org")).toBe(
-            "https://cdn.example.com/my-org/agents/index.json",
+describe("canonicaliseContentRoot", () => {
+    it("lowercases the host, drops a default port, and removes query and fragment", () => {
+        expect(canonicaliseContentRoot("HTTPS://EXAMPLE.COM:443/agents?stream=a#section")).toBe(
+            "https://example.com/agents",
         );
     });
 
-    it("handles a base URL with a path and trailing slash", () => {
-        expect(buildIndexUrl("https://cdn.example.com/my-org/")).toBe(
-            "https://cdn.example.com/my-org/agents/index.json",
+    it("rejects non-HTTP schemes and embedded credentials", () => {
+        expect(() => canonicaliseContentRoot("file:///tmp/agents")).toThrow("must use http or https");
+        expect(() => canonicaliseContentRoot("https://user:secret@example.com/agents")).toThrow(
+            "must not contain credentials",
+        );
+    });
+});
+
+describe("buildIndexUrl", () => {
+    it("appends index.json to the content root, inserting no path of its own", () => {
+        expect(buildIndexUrl("https://example.com/agents")).toBe("https://example.com/agents/index.json");
+    });
+
+    it("reads the index at the root itself when the root has no path", () => {
+        expect(buildIndexUrl("https://example.com")).toBe("https://example.com/index.json");
+    });
+
+    it("strips trailing slashes", () => {
+        expect(buildIndexUrl("https://example.com/agents///")).toBe("https://example.com/agents/index.json");
+    });
+
+    it("handles a content root nested under a path", () => {
+        expect(buildIndexUrl("https://cdn.example.com/agents/my-org/team-skills")).toBe(
+            "https://cdn.example.com/agents/my-org/team-skills/index.json",
         );
     });
 
     it("handles localhost URLs", () => {
-        expect(buildIndexUrl("http://localhost:3000")).toBe("http://localhost:3000/agents/index.json");
+        expect(buildIndexUrl("http://localhost:3000/agents")).toBe("http://localhost:3000/agents/index.json");
     });
 });
 
 describe("buildBundleUrl", () => {
-    it("appends /agents/<version>/bundle.zip to a clean base URL", () => {
-        expect(buildBundleUrl("https://example.com", "1.0.0")).toBe("https://example.com/agents/1.0.0/bundle.zip");
+    it("resolves the versioned bundle under the content root", () => {
+        expect(buildBundleUrl("https://example.com/agents", "1.0.0")).toBe(
+            "https://example.com/agents/1.0.0/bundle.zip",
+        );
     });
 
-    it("strips a single trailing slash", () => {
-        expect(buildBundleUrl("https://example.com/", "2.1.0")).toBe("https://example.com/agents/2.1.0/bundle.zip");
-    });
-
-    it("strips multiple trailing slashes", () => {
-        expect(buildBundleUrl("https://example.com///", "1.0.0-beta.1")).toBe(
+    it("strips trailing slashes", () => {
+        expect(buildBundleUrl("https://example.com/agents///", "1.0.0-beta.1")).toBe(
             "https://example.com/agents/1.0.0-beta.1/bundle.zip",
         );
     });
 
-    it("handles a base URL with a path", () => {
-        expect(buildBundleUrl("https://cdn.example.com/my-org", "3.0.0")).toBe(
-            "https://cdn.example.com/my-org/agents/3.0.0/bundle.zip",
+    it("keeps two sources on one origin distinct by their roots", () => {
+        expect(buildBundleUrl("https://cdn.example.com/agents/team-a", "3.0.0")).toBe(
+            "https://cdn.example.com/agents/team-a/3.0.0/bundle.zip",
+        );
+        expect(buildBundleUrl("https://cdn.example.com/agents/team-b", "3.0.0")).toBe(
+            "https://cdn.example.com/agents/team-b/3.0.0/bundle.zip",
         );
     });
 
-    it("handles a base URL with a path and trailing slash", () => {
-        expect(buildBundleUrl("https://cdn.example.com/my-org/", "1.2.3")).toBe(
-            "https://cdn.example.com/my-org/agents/1.2.3/bundle.zip",
+    it("encodes a version as one path segment", () => {
+        expect(buildBundleUrl("https://example.com/agents", "../other")).toBe(
+            "https://example.com/agents/..%2Fother/bundle.zip",
         );
     });
 
     it("handles localhost URLs", () => {
-        expect(buildBundleUrl("http://localhost:3000", "0.1.0")).toBe("http://localhost:3000/agents/0.1.0/bundle.zip");
+        expect(buildBundleUrl("http://localhost:3000/agents", "0.1.0")).toBe(
+            "http://localhost:3000/agents/0.1.0/bundle.zip",
+        );
     });
 });
 
@@ -151,7 +164,7 @@ describe("fetchIndex", () => {
             json: async () => mockIndex,
         });
 
-        const result = await fetchIndex("https://example.com");
+        const result = await fetchIndex("https://example.com/agents");
         expect(result.agents).toHaveLength(2);
         expect(result.agents[0].version).toBe("1.0.0");
         expect(result.agents[1].version).toBe("1.1.0");
@@ -165,7 +178,7 @@ describe("fetchIndex", () => {
             statusText: "Not Found",
         });
 
-        await expect(fetchIndex("https://example.com")).rejects.toThrow("Failed to fetch index: 404 Not Found");
+        await expect(fetchIndex("https://example.com/agents")).rejects.toThrow("Failed to fetch index: 404 Not Found");
     });
 
     it("throws when response has no agents array", async () => {
@@ -174,7 +187,7 @@ describe("fetchIndex", () => {
             json: async () => ({ lastUpdated: "2025-01-01T00:00:00" }),
         });
 
-        await expect(fetchIndex("https://example.com")).rejects.toThrow(
+        await expect(fetchIndex("https://example.com/agents")).rejects.toThrow(
             'Invalid index.json: missing or invalid "agents" array',
         );
     });
@@ -185,8 +198,22 @@ describe("fetchIndex", () => {
             json: async () => ({ lastUpdated: "2025-01-01T00:00:00", agents: "not-an-array" }),
         });
 
-        await expect(fetchIndex("https://example.com")).rejects.toThrow(
+        await expect(fetchIndex("https://example.com/agents")).rejects.toThrow(
             'Invalid index.json: missing or invalid "agents" array',
+        );
+    });
+
+    it("reads the index directly under a content root at any path", async () => {
+        globalThis.fetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: async () => ({ lastUpdated: "2026-01-01", agents: [] }),
+        });
+
+        await fetchIndex("https://example.com/custom/team");
+
+        expect(globalThis.fetch).toHaveBeenCalledWith(
+            "https://example.com/custom/team/index.json",
+            undefined,
         );
     });
 });
@@ -228,13 +255,13 @@ describe("downloadBundle telemetry", () => {
                 status: 200,
                 text: async () => `${hash}  1.1.0.zip\n`,
             });
-        await downloadBundle("https://example.com");
+        await downloadBundle("https://example.com/agents");
 
         expect(trackTelemetryEvent).toHaveBeenNthCalledWith(1, {
             action: "bundle_download_started",
             properties: {
                 source: "url",
-                bundleEndpoint: "https://example.com",
+                bundleEndpoint: "https://example.com/agents",
                 request: "latest",
                 version: undefined,
             },
@@ -243,7 +270,7 @@ describe("downloadBundle telemetry", () => {
             action: "bundle_download_succeeded",
             properties: {
                 source: "url",
-                bundleEndpoint: "https://example.com",
+                bundleEndpoint: "https://example.com/agents",
                 request: "latest",
                 version: "1.1.0",
             },
@@ -258,7 +285,7 @@ describe("downloadBundle telemetry", () => {
             statusText: "Server Error",
         });
 
-        await expect(downloadBundle("https://example.com", "1.2.0")).rejects.toThrow(
+        await expect(downloadBundle("https://example.com/agents", "1.2.0")).rejects.toThrow(
             "Failed to download bundle: 500 Server Error from https://example.com/agents/1.2.0/bundle.zip",
         );
 
@@ -266,14 +293,14 @@ describe("downloadBundle telemetry", () => {
             action: "bundle_download_started",
             properties: {
                 source: "url",
-                bundleEndpoint: "https://example.com",
+                bundleEndpoint: "https://example.com/agents",
                 request: "specific",
                 version: "1.2.0",
             },
         });
         expect(trackTelemetryError).toHaveBeenCalledWith("bundle_download_failed", expect.any(Error), {
             source: "url",
-            bundleEndpoint: "https://example.com",
+            bundleEndpoint: "https://example.com/agents",
             request: "specific",
             version: "1.2.0",
         });
@@ -283,19 +310,21 @@ describe("downloadBundle telemetry", () => {
 // ── buildHashUrl ─────────────────────────────────────────────────────────────
 
 describe("buildHashUrl", () => {
-    it("appends /agents/<version>/bundle.zip.sha256 to a clean base URL", () => {
-        expect(buildHashUrl("https://example.com", "1.0.0")).toBe("https://example.com/agents/1.0.0/bundle.zip.sha256");
+    it("resolves the sidecar under the content root", () => {
+        expect(buildHashUrl("https://example.com/agents", "1.0.0")).toBe(
+            "https://example.com/agents/1.0.0/bundle.zip.sha256",
+        );
     });
 
     it("strips trailing slashes", () => {
-        expect(buildHashUrl("https://example.com/", "2.1.0")).toBe(
+        expect(buildHashUrl("https://example.com/agents/", "2.1.0")).toBe(
             "https://example.com/agents/2.1.0/bundle.zip.sha256",
         );
     });
 
-    it("handles a base URL with a path", () => {
-        expect(buildHashUrl("https://cdn.example.com/my-org", "3.0.0")).toBe(
-            "https://cdn.example.com/my-org/agents/3.0.0/bundle.zip.sha256",
+    it("handles a content root nested under a path", () => {
+        expect(buildHashUrl("https://cdn.example.com/agents/my-org", "3.0.0")).toBe(
+            "https://cdn.example.com/agents/my-org/3.0.0/bundle.zip.sha256",
         );
     });
 });
@@ -317,7 +346,7 @@ describe("fetchBundleHash", () => {
             text: async () => `${expectedHash}  1.0.0.zip\n`,
         });
 
-        const result = await fetchBundleHash("https://example.com", "1.0.0");
+        const result = await fetchBundleHash("https://example.com/agents", "1.0.0");
         expect(result).toBe(expectedHash);
         expect(globalThis.fetch).toHaveBeenCalledWith("https://example.com/agents/1.0.0/bundle.zip.sha256", undefined);
     });
@@ -328,7 +357,7 @@ describe("fetchBundleHash", () => {
             status: 404,
             statusText: "Not Found",
         });
-        const result = await fetchBundleHash("https://example.com", "1.0.0");
+        const result = await fetchBundleHash("https://example.com/agents", "1.0.0");
         expect(result).toBeNull();
     });
 
@@ -339,7 +368,7 @@ describe("fetchBundleHash", () => {
             statusText: "Forbidden",
         });
 
-        const result = await fetchBundleHash("https://example.com", "1.0.0");
+        const result = await fetchBundleHash("https://example.com/agents", "1.0.0");
         expect(result).toBeNull();
     });
 
@@ -350,7 +379,7 @@ describe("fetchBundleHash", () => {
             statusText: "Internal Server Error",
         });
 
-        await expect(fetchBundleHash("https://example.com", "1.0.0")).rejects.toThrow(
+        await expect(fetchBundleHash("https://example.com/agents", "1.0.0")).rejects.toThrow(
             "Failed to fetch hash sidecar: 500 Internal Server Error",
         );
     });
@@ -362,7 +391,7 @@ describe("fetchBundleHash", () => {
             text: async () => "not-a-valid-hash",
         });
 
-        await expect(fetchBundleHash("https://example.com", "1.0.0")).rejects.toThrow("Invalid hash sidecar content");
+        await expect(fetchBundleHash("https://example.com/agents", "1.0.0")).rejects.toThrow("Invalid hash sidecar content");
     });
 
     it("normalises hash to lowercase", async () => {
@@ -373,7 +402,7 @@ describe("fetchBundleHash", () => {
             text: async () => `${upperHash}  1.0.0.zip\n`,
         });
 
-        const result = await fetchBundleHash("https://example.com", "1.0.0");
+        const result = await fetchBundleHash("https://example.com/agents", "1.0.0");
         expect(result).toBe("a".repeat(64));
     });
 });
@@ -510,7 +539,7 @@ describe("downloadBundle", () => {
     it("returns zipPath, version and sha256 when hash sidecar matches", async () => {
         globalThis.fetch = makeFetchMock("2.0.0", { status: 200 });
 
-        const result = await downloadBundle("https://example.com");
+        const result = await downloadBundle("https://example.com/agents");
 
         expect(result.version).toBe("2.0.0");
         expect(result.sha256).toBe(fakeZipHash);
@@ -520,7 +549,7 @@ describe("downloadBundle", () => {
     it("resolves the latest version from index when no version is specified", async () => {
         globalThis.fetch = makeFetchMock("2.0.0", { status: 200 });
 
-        const result = await downloadBundle("https://example.com");
+        const result = await downloadBundle("https://example.com/agents");
 
         // latest entry in mockIndex is 2.0.0
         expect(result.version).toBe("2.0.0");
@@ -530,7 +559,7 @@ describe("downloadBundle", () => {
     it("uses the specified version and skips the index fetch", async () => {
         globalThis.fetch = makeFetchMock("1.0.0", { status: 200 });
 
-        const result = await downloadBundle("https://example.com", "1.0.0");
+        const result = await downloadBundle("https://example.com/agents", "1.0.0");
 
         expect(result.version).toBe("1.0.0");
         // index.json must NOT have been fetched
@@ -541,7 +570,7 @@ describe("downloadBundle", () => {
     it("writes the zip to disk and it is readable", async () => {
         globalThis.fetch = makeFetchMock("2.0.0", { status: 200 });
 
-        const result = await downloadBundle("https://example.com");
+        const result = await downloadBundle("https://example.com/agents");
 
         const written = await readFile(result.zipPath);
         expect(written).toEqual(fakeZipContent);
@@ -551,7 +580,7 @@ describe("downloadBundle", () => {
         const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
         globalThis.fetch = makeFetchMock("2.0.0", { status: 404 });
 
-        const result = await downloadBundle("https://example.com");
+        const result = await downloadBundle("https://example.com/agents");
 
         expect(result.sha256).toBeNull();
         // zip must still exist on disk
@@ -564,7 +593,7 @@ describe("downloadBundle", () => {
         const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
         globalThis.fetch = makeFetchMock("2.0.0", { status: 403 });
 
-        const result = await downloadBundle("https://example.com");
+        const result = await downloadBundle("https://example.com/agents");
 
         expect(result.sha256).toBeNull();
         // zip must still exist on disk
@@ -582,7 +611,7 @@ describe("downloadBundle", () => {
 
         let caughtZipPath: string | undefined;
         try {
-            await downloadBundle("https://example.com");
+            await downloadBundle("https://example.com/agents");
             expect.unreachable("should have thrown");
         } catch (error) {
             expect(error).toBeInstanceOf(IntegrityError);
@@ -601,7 +630,7 @@ describe("downloadBundle", () => {
     it("rethrows non-integrity errors from fetchBundleHash and keeps the zip", async () => {
         globalThis.fetch = makeFetchMock("2.0.0", { status: 500 });
 
-        await expect(downloadBundle("https://example.com")).rejects.toThrow(
+        await expect(downloadBundle("https://example.com/agents")).rejects.toThrow(
             "Failed to fetch hash sidecar: 500 Internal Server Error",
         );
 
@@ -618,6 +647,87 @@ describe("downloadBundle", () => {
             return Promise.resolve({ ok: false, status: 403, statusText: "Forbidden" });
         });
 
-        await expect(downloadBundle("https://example.com")).rejects.toThrow("Failed to download bundle: 403 Forbidden");
+        await expect(downloadBundle("https://example.com/agents")).rejects.toThrow("Failed to download bundle: 403 Forbidden");
+    });
+
+    it("rejects a traversing version from a hostile index before writing anything", async () => {
+        globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+            if (url.endsWith("/index.json")) {
+                return Promise.resolve({
+                    ok: true,
+                    json: async () => ({
+                        lastUpdated: "2026-01-01",
+                        agents: [{ version: "../../evil", published: "2026-01-01" }],
+                    }),
+                });
+            }
+            return Promise.reject(new Error(`Unexpected fetch URL: ${url}`));
+        });
+
+        // The version reaches path.join before the download is verified, so it
+        // has to be rejected up front rather than checked at extract time.
+        await expect(downloadBundle("https://example.com/agents")).rejects.toThrow(
+            "Bundle version must be a safe single path segment",
+        );
+    });
+
+    it("keeps two sources on one origin distinct", async () => {
+        const streams = [
+            {
+                contentRoot: "https://example.com/catalogues/team-a",
+                sourceKey: "team-a",
+                version: "1.0.0",
+                content: Buffer.from("team-a bundle"),
+            },
+            {
+                contentRoot: "https://example.com/catalogues/team-b",
+                sourceKey: "team-b",
+                version: "1.0.0",
+                content: Buffer.from("team-b bundle"),
+            },
+        ];
+
+        globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+            const stream = streams.find(({ contentRoot }) => url.startsWith(`${contentRoot}/`));
+            if (!stream) return Promise.reject(new Error(`Unexpected fetch URL: ${url}`));
+            if (url === `${stream.contentRoot}/index.json`) {
+                return Promise.resolve({
+                    ok: true,
+                    json: async () => ({
+                        lastUpdated: "2026-01-01",
+                        agents: [{ version: stream.version, published: "2026-01-01" }],
+                    }),
+                });
+            }
+            if (url.endsWith("/bundle.zip.sha256")) {
+                const hash = createHash("sha256").update(stream.content).digest("hex");
+                return Promise.resolve({ ok: true, status: 200, text: async () => hash });
+            }
+            if (url.endsWith("/bundle.zip")) {
+                return Promise.resolve({
+                    ok: true,
+                    arrayBuffer: async () =>
+                        stream.content.buffer.slice(
+                            stream.content.byteOffset,
+                            stream.content.byteOffset + stream.content.byteLength,
+                        ),
+                });
+            }
+            return Promise.reject(new Error(`Unexpected fetch URL: ${url}`));
+        });
+
+        const [a, b] = await Promise.all(
+            streams.map(({ contentRoot, sourceKey }) =>
+                downloadBundle(contentRoot, undefined, undefined, sourceKey),
+            ),
+        );
+
+        expect(a.zipPath).not.toBe(b.zipPath);
+        expect(await readFile(a.zipPath, "utf8")).toBe("team-a bundle");
+        expect(await readFile(b.zipPath, "utf8")).toBe("team-b bundle");
+        const calls = vi.mocked(globalThis.fetch).mock.calls.map(([url]) => String(url));
+        expect(calls).toContain("https://example.com/catalogues/team-a/1.0.0/bundle.zip");
+        expect(calls).toContain("https://example.com/catalogues/team-b/1.0.0/bundle.zip");
+        expect(calls.some((url) => url.includes("/agents/"))).toBe(false);
     });
 });

@@ -35,7 +35,6 @@ export function isOriginInDiscovery(
 
   return discovery.sources.some(
     (source) =>
-      TOKEN_ELIGIBLE_TYPES.has(source.type) &&
-      originOf(source.url) === targetOrigin,
+      TOKEN_ELIGIBLE_TYPES.has(source.type) && originOf(source.url) === targetOrigin,
   );
 }

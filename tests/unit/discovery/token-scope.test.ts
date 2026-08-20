@@ -33,6 +33,24 @@ describe('isOriginInDiscovery', () => {
     expect(isOriginInDiscovery(discovery, 'https://content.example.com/x.zip')).toBe(false);
   });
 
+  it('matches a content root at any path on a declared origin', () => {
+    const discovery: DiscoveryDocument = {
+      version: '1',
+      sources: [
+        {
+          name: 'team-a',
+          type: 'http',
+          url: 'https://content.example.com/catalogues/team-a',
+        },
+      ],
+    };
+
+    expect(
+      isOriginInDiscovery(discovery, 'https://content.example.com/catalogues/team-a/1.0.0/bundle.zip'),
+    ).toBe(true);
+    expect(isOriginInDiscovery(discovery, 'https://other.example.com/1.0.0/bundle.zip')).toBe(false);
+  });
+
   it('ignores git sources and malformed URLs', () => {
     const discovery: DiscoveryDocument = {
       version: '1',

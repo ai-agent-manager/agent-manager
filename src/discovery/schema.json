@@ -69,17 +69,18 @@
         "properties": {
           "name": {
             "type": "string",
-            "description": "Source identifier (kebab-case recommended)"
+            "minLength": 1,
+            "description": "Stable logical source name, unique within this document (kebab-case recommended). Identifies the source everywhere, independently of where its content is hosted."
           },
           "type": {
             "type": "string",
             "enum": ["http", "git", "artefact"],
-            "description": "How to fetch the source. 'http' downloads a bundle directly. 'git' clones a repository in Claude Code plugin marketplace format. 'artefact' downloads a packaged skill zip."
+            "description": "How to fetch the source. 'http' reads a versioned bundle stream from a content root. 'git' clones a repository in Claude Code plugin marketplace format. 'artefact' downloads a packaged skill zip."
           },
           "url": {
             "type": "string",
             "format": "uri",
-            "description": "Location of the source (bundle URL for http, repository URL for git)"
+            "description": "Content root for http (the directory owning index.json), repository URL for git, or direct zip URL for artefact"
           },
           "status": {
             "type": "string",

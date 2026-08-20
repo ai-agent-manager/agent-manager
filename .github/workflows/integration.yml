@@ -48,8 +48,8 @@ jobs:
 
       - name: Verify installed skills
         run: |
-          test -d "$HOME/.claude/skills/react-component-generator"
-          test -d "$HOME/.claude/skills/api-endpoint-generator"
+          test -d "$HOME/.claude/skills/mock-bundle~react-component-generator"
+          test -d "$HOME/.claude/skills/mock-bundle~api-endpoint-generator"
           echo "All expected skills installed successfully"
 
       - name: Stop mock server

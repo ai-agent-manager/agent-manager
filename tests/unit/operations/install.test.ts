@@ -74,6 +74,8 @@ vi.mock('../../../src/bundle/artefact-scanner.js', () => ({
 
 vi.mock('../../../src/bundle/downloader.js', () => ({
   downloadBundle: vi.fn(async () => ({ zipPath: '/tmp/bundle.zip', version: '2.0.0' })),
+  canonicaliseContentRoot: vi.fn((url: string) => url.replace(/\/+$/, '')),
+  buildIndexUrl: vi.fn((url: string) => `${url.replace(/\/+$/, '')}/index.json`),
 }));
 
 vi.mock('../../../src/bundle/extractor.js', () => ({
@@ -309,6 +311,34 @@ describe('installFromBundle', () => {
     expect(installed.map((s) => s.dirName)).toEqual(['bundle-skill']);
   });
 
+  it('namespaces an install from a declared source and scopes its cache', async () => {
+    const { extractBundle } = await import('../../../src/bundle/extractor.js');
+
+    const result = await installFromBundle({
+      bundleUrl: 'https://bundles.example.com/catalogues/team-a',
+      sourceName: 'team-a',
+      scope: 'system',
+      toolId: 'claude-code',
+    });
+
+    expect(downloadBundle).toHaveBeenCalledWith(
+      'https://bundles.example.com/catalogues/team-a',
+      undefined,
+      undefined,
+      'team-a',
+    );
+    expect(extractBundle).toHaveBeenCalledWith('/tmp/bundle.zip', {
+      sourceKey: 'team-a',
+      contentRoot: 'https://bundles.example.com/catalogues/team-a',
+    });
+    expect(result.sourcePin).toMatchObject({
+      sourceType: 'bundle',
+      installLayout: 'namespaced',
+      bundleSourceName: 'team-a',
+      bundleBaseUrl: 'https://bundles.example.com/catalogues/team-a',
+    });
+  });
+
   it('forwards the bearer token to the bundle downloader', async () => {
     await installFromBundle({
       bundleUrl: 'https://bundles.example.com',
@@ -321,6 +351,24 @@ describe('installFromBundle', () => {
       'https://bundles.example.com',
       undefined,
       'discovery-token',
+      undefined,
+    );
+  });
+
+  it('forwards the bearer token for a declared source', async () => {
+    await installFromBundle({
+      bundleUrl: 'https://bundles.example.com/catalogues/team-a',
+      sourceName: 'team-a',
+      bearerToken: 'discovery-token',
+      scope: 'system',
+      toolId: 'claude-code',
+    });
+
+    expect(downloadBundle).toHaveBeenCalledWith(
+      'https://bundles.example.com/catalogues/team-a',
+      undefined,
+      'discovery-token',
+      'team-a',
     );
   });
 });

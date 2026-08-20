@@ -1,10 +1,11 @@
-import { downloadBundle } from '../bundle/downloader.js';
+import { canonicaliseContentRoot, downloadBundle } from '../bundle/downloader.js';
 import { extractBundle } from '../bundle/extractor.js';
 import { importLocalBundle } from '../bundle/importer.js';
 import { scanBundle } from '../bundle/scanner.js';
 import { setCurrentBundle } from '../bundle/cache.js';
 import {
   buildSourcePin,
+  bundleSourceKey,
   isRepoSource,
   resolveSkillSource,
   type SkillSource,
@@ -42,7 +43,13 @@ export interface InstallFromArtefactOpts {
 }
 
 export interface InstallFromBundleOpts {
+  /** Content root, or a local bundle directory path. */
   bundleUrl: string;
+  /**
+   * Logical name of the declared discovery source, when the install comes from
+   * one. Its presence is what makes the install source-namespaced.
+   */
+  sourceName?: string;
   bundleVersion?: string;
   skillNames?: string[];
   scope: InstallScope;
@@ -120,6 +127,7 @@ export async function installFromArtefact(opts: InstallFromArtefactOpts): Promis
 export async function installFromBundle(opts: InstallFromBundleOpts): Promise<InstallOperationResult> {
   const {
     bundleUrl,
+    sourceName,
     bundleVersion: requestedVersion,
     skillNames,
     scope,
@@ -127,16 +135,32 @@ export async function installFromBundle(opts: InstallFromBundleOpts): Promise<In
     bearerToken,
   } = opts;
 
-  const source = await resolveSkillSourceStrict(bundleUrl, 'bundle');
+  // A declared discovery source is already known to be an HTTP bundle, so its
+  // URL is used as given. Re-sniffing it would misclassify a content root that
+  // happens to sit on a git host.
+  const source: Extract<SkillSource, { type: 'bundle' }> = sourceName
+    ? {
+        type: 'bundle',
+        baseUrl: canonicaliseContentRoot(bundleUrl),
+        sourceName,
+        installLayout: 'namespaced',
+      }
+    : await resolveSkillSourceStrict(bundleUrl, 'bundle');
 
   let bundleVersion: string;
   let skills: SkillInfo[];
 
   if (source.baseUrl) {
-    const { zipPath } = await downloadBundle(source.baseUrl, requestedVersion, bearerToken);
-    const extracted = await extractBundle(zipPath);
+    const sourceKey = sourceName ? bundleSourceKey(sourceName) : undefined;
+    const { zipPath } = await downloadBundle(source.baseUrl, requestedVersion, bearerToken, sourceKey);
+    const extracted = await extractBundle(
+      zipPath,
+      sourceKey ? { sourceKey, contentRoot: source.baseUrl } : undefined,
+    );
     bundleVersion = extracted.manifest.version;
-    if (extracted.isNew) await setCurrentBundle(bundleVersion);
+    // Only the version-keyed cache backs the `current` symlink; pointing it at a
+    // source-scoped extract would dangle. See resolver.ts and #50.
+    if (extracted.isNew && !sourceKey) await setCurrentBundle(bundleVersion);
     const contents = await scanBundle(extracted.bundleDir, extracted.manifest.agents);
     skills = contents.skills;
   } else {
@@ -219,14 +243,19 @@ export async function acquireSource(
   }
 
   if (source.baseUrl) {
+    const sourceKey = source.sourceName ? bundleSourceKey(source.sourceName) : undefined;
     const { zipPath } = await downloadBundle(
       source.baseUrl,
       opts.bundleVersion,
       opts.bearerToken,
+      sourceKey,
     );
-    const extracted = await extractBundle(zipPath);
+    const extracted = await extractBundle(
+      zipPath,
+      sourceKey ? { sourceKey, contentRoot: source.baseUrl } : undefined,
+    );
     const bundleVersion = extracted.manifest.version;
-    if (extracted.isNew) await setCurrentBundle(bundleVersion);
+    if (extracted.isNew && !sourceKey) await setCurrentBundle(bundleVersion);
     const contents = await scanBundle(extracted.bundleDir, extracted.manifest.agents);
     return {
       skills: contents.skills,

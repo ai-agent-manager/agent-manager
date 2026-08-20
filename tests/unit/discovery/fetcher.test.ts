@@ -95,6 +95,83 @@ describe('fetchDiscoveryDocument', () => {
     expect(result.telemetry?.siteId).toBe('test-site');
   });
 
+  it('accepts an HTTP source whose url is a content root at any path', async () => {
+    const document: DiscoveryDocument = {
+      version: '1',
+      sources: [{
+        name: 'team-a',
+        type: 'http',
+        url: 'https://skills.example.com/catalogues/team-a',
+      }],
+    };
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => document });
+
+    await expect(fetchDiscoveryDocument('https://example.com')).resolves.toEqual(document);
+  });
+
+  it.each([
+    {
+      name: 'no url',
+      source: { name: 'invalid', type: 'http' },
+    },
+    {
+      name: 'an unknown field',
+      source: {
+        name: 'invalid',
+        type: 'http',
+        url: 'https://skills.example.com/agents',
+        indexUrl: 'https://skills.example.com/agents/index.json',
+      },
+    },
+    {
+      name: 'an empty name',
+      source: { name: '', type: 'http', url: 'https://skills.example.com/agents' },
+    },
+  ])('rejects an HTTP source with $name', async ({ source }) => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ version: '1', sources: [source] }),
+    });
+
+    await expect(fetchDiscoveryDocument('https://example.com')).rejects.toThrow(
+      'Discovery document validation failed',
+    );
+  });
+
+  it('rejects duplicate source names, which would merge two sources into one identity', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        version: '1',
+        sources: [
+          { name: 'team-a', type: 'http', url: 'https://skills.example.com/agents/team-a' },
+          { name: 'team-a', type: 'http', url: 'https://other.example.com/agents/team-a' },
+        ],
+      }),
+    });
+
+    await expect(fetchDiscoveryDocument('https://example.com')).rejects.toThrow(
+      'duplicate source names: team-a',
+    );
+  });
+
+  it('rejects source names that differ only in case or punctuation', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        version: '1',
+        sources: [
+          { name: 'Team-Alpha', type: 'http', url: 'https://a.example.com/agents' },
+          { name: 'team alpha', type: 'http', url: 'https://b.example.com/agents' },
+        ],
+      }),
+    });
+
+    await expect(fetchDiscoveryDocument('https://example.com')).rejects.toThrow(
+      /both become 'team-alpha'/,
+    );
+  });
+
   it('throws DiscoveryError on network failure', async () => {
     mockFetch.mockRejectedValueOnce(new Error('Network error'));
 
