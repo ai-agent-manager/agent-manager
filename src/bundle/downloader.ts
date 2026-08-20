@@ -2,7 +2,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { getTempDir } from "../config/paths.js";
-import { assertSafeCacheSegment } from "./extractor.js";
+import { assertSafeCacheSegment } from "../lib/path-segment.js";
 import { getBundleEndpointTelemetryValue, trackTelemetryError, trackTelemetryEvent } from "../telemetry.js";
 
 export interface IndexEntry {

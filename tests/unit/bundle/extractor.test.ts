@@ -85,6 +85,85 @@ describe('extractBundle — source-scoped cache', () => {
     ).rejects.toThrow(/already cached from a different content root/);
   });
 
+  // The resolver records a URL straight from a discovery document while the
+  // update path records one that has been through a pin, so the two forms reach
+  // the marker unequal as written. Comparing them literally makes a single
+  // publisher accuse itself of colliding with another.
+  it.each([
+    ['trailing slash', 'https://a.example.com/agents/', 'https://a.example.com/agents'],
+    ['host casing', 'https://A.EXAMPLE.com/agents', 'https://a.example.com/agents'],
+    ['default port', 'https://a.example.com:443/agents', 'https://a.example.com/agents'],
+    ['query string', 'https://a.example.com/agents?channel=stable', 'https://a.example.com/agents'],
+    ['fragment', 'https://a.example.com/agents#section', 'https://a.example.com/agents'],
+  ])('treats %s as the same content root, recorded first', async (_label, recorded, compared) => {
+    await extractBundle('/tmp/ignored.zip', { sourceKey: 'official', contentRoot: recorded });
+    const second = await extractBundle('/tmp/ignored.zip', { sourceKey: 'official', contentRoot: compared });
+
+    expect(second.isNew).toBe(false);
+  });
+
+  it('treats an equivalent content root as the same when the canonical form is recorded first', async () => {
+    await extractBundle('/tmp/ignored.zip', {
+      sourceKey: 'official',
+      contentRoot: 'https://a.example.com/agents',
+    });
+    const second = await extractBundle('/tmp/ignored.zip', {
+      sourceKey: 'official',
+      contentRoot: 'https://A.EXAMPLE.com:443/agents/?channel=stable',
+    });
+
+    expect(second.isNew).toBe(false);
+  });
+
+  // Versions sit directly under the source directory, so one named after the
+  // marker would be extracted over it. The marker write then fails, and every
+  // later provenance read hits a directory — silencing the guard for that
+  // source, which is exactly what it exists to prevent.
+  it('rejects a manifest version that would clobber the provenance marker', async () => {
+    zipContents = manifest('source.json');
+
+    await expect(
+      extractBundle('/tmp/ignored.zip', {
+        sourceKey: 'official',
+        contentRoot: 'https://a.example.com/agents',
+      }),
+    ).rejects.toThrow(/must not be 'source\.json'/);
+  });
+
+  it('does not reuse a cache whose provenance cannot be read', async () => {
+    const first = await extractBundle('/tmp/ignored.zip', {
+      sourceKey: 'official',
+      contentRoot: 'https://a.example.com/agents',
+    });
+    expect(first.isNew).toBe(true);
+
+    // Corrupt the marker: absent or unreadable provenance must not be treated
+    // as "no collision recorded", or an unattributed cache is served as trusted.
+    await writeFile(
+      path.join(tmpDir, '.agentman', 'bundles', 'sources', 'official', 'source.json'),
+      'not json',
+      'utf-8',
+    );
+
+    const second = await extractBundle('/tmp/ignored.zip', {
+      sourceKey: 'official',
+      contentRoot: 'https://a.example.com/agents',
+    });
+    expect(second.isNew).toBe(true);
+  });
+
+  it('does not reuse a cache that carries no provenance at all', async () => {
+    // Caches written by earlier heads of this change have no marker; they are
+    // re-extracted so fresh provenance is recorded, never backfilled.
+    await extractBundle('/tmp/ignored.zip', { sourceKey: 'official' });
+
+    const guarded = await extractBundle('/tmp/ignored.zip', {
+      sourceKey: 'official',
+      contentRoot: 'https://a.example.com/agents',
+    });
+    expect(guarded.isNew).toBe(true);
+  });
+
   it('rejects a manifest version that would collide with the source-scoped subtree', async () => {
     zipContents = manifest('sources');
 

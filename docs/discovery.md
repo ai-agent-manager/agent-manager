@@ -120,8 +120,9 @@ version 1, so versioning the contract here would put this client ahead of the
 design it implements. The break is absorbed by the deployment step above and by
 the pin migration below instead.
 
-Installs already on disk are handled by the client. A pin written before this
-change is recognised by the absence of its addressing marker; its first update
+Installs already on disk are handled by the client. Every bundle pin that has a
+URL records an addressing marker, so a pin written before this change is
+recognised by that marker's absence; its first update
 resolves against `<pinned url>/agents`, reproducing the URLs the original install
 fetched, and the record is rewritten as a content root so later updates use it
 unchanged.
