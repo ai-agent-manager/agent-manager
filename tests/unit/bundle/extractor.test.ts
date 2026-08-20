@@ -24,6 +24,10 @@ vi.mock('extract-zip', () => ({
 
 const { extractBundle } = await import('../../../src/bundle/extractor.js');
 
+function versionDir(sourceKey: string, version: string): string {
+  return path.join(tmpDir, '.agentman', 'bundles', 'sources', sourceKey, version);
+}
+
 function manifest(version: string): Record<string, string> {
   return {
     'manifest.json': JSON.stringify({ version, published: '2026-01-01T00:00:00Z', agents: [] }),
@@ -40,16 +44,13 @@ describe('extractBundle — source-scoped cache', () => {
     await rm(tmpDir, { recursive: true, force: true });
   });
 
-  it('records the content root a source was cached from', async () => {
+  it('records the content root inside the version it attests', async () => {
     await extractBundle('/tmp/ignored.zip', {
       sourceKey: 'official',
       contentRoot: 'https://a.example.com/agents',
     });
 
-    const marker = await readFile(
-      path.join(tmpDir, '.agentman', 'bundles', 'sources', 'official', 'source.json'),
-      'utf-8',
-    );
+    const marker = await readFile(path.join(versionDir('official', '1.0.0'), '.source.json'), 'utf-8');
     expect(JSON.parse(marker).contentRoot).toBe('https://a.example.com/agents');
   });
 
@@ -130,26 +131,99 @@ describe('extractBundle — source-scoped cache', () => {
     ).rejects.toThrow(/must not be 'source\.json'/);
   });
 
-  it('does not reuse a cache whose provenance cannot be read', async () => {
+  it('does not reuse a version whose provenance cannot be read', async () => {
     const first = await extractBundle('/tmp/ignored.zip', {
       sourceKey: 'official',
       contentRoot: 'https://a.example.com/agents',
     });
     expect(first.isNew).toBe(true);
 
-    // Corrupt the marker: absent or unreadable provenance must not be treated
-    // as "no collision recorded", or an unattributed cache is served as trusted.
-    await writeFile(
-      path.join(tmpDir, '.agentman', 'bundles', 'sources', 'official', 'source.json'),
-      'not json',
-      'utf-8',
-    );
+    // Absent or unreadable provenance must not be read as "nothing to check",
+    // or contents of unknown origin are served as attested.
+    await writeFile(path.join(versionDir('official', '1.0.0'), '.source.json'), 'not json', 'utf-8');
 
     const second = await extractBundle('/tmp/ignored.zip', {
       sourceKey: 'official',
       contentRoot: 'https://a.example.com/agents',
     });
     expect(second.isNew).toBe(true);
+  });
+
+  // Provenance is per version because reuse is per version. A source-level
+  // record would let repairing one version vouch for every sibling beside it.
+  it('does not vouch for sibling versions when repairing one', async () => {
+    zipContents = manifest('1.0.0');
+    await extractBundle('/tmp/ignored.zip', { sourceKey: 'official' });
+    zipContents = manifest('2.0.0');
+    await extractBundle('/tmp/ignored.zip', { sourceKey: 'official' });
+
+    // Both versions are cached with no provenance at all.
+    zipContents = manifest('1.0.0');
+    const repaired = await extractBundle('/tmp/ignored.zip', {
+      sourceKey: 'official',
+      contentRoot: 'https://a.example.com/agents',
+    });
+    expect(repaired.isNew).toBe(true);
+
+    zipContents = manifest('2.0.0');
+    const sibling = await extractBundle('/tmp/ignored.zip', {
+      sourceKey: 'official',
+      contentRoot: 'https://a.example.com/agents',
+    });
+    expect(sibling.isNew).toBe(true);
+  });
+
+  it("does not serve one publisher's unattributed version under another's attestation", async () => {
+    // Publisher A caches two versions, then its provenance becomes unreadable.
+    zipContents = { ...manifest('1.0.0'), 'who.txt': 'publisher-a' };
+    await extractBundle('/tmp/ignored.zip', {
+      sourceKey: 'official',
+      contentRoot: 'https://a.example.com/agents',
+    });
+    zipContents = { ...manifest('2.0.0'), 'who.txt': 'publisher-a' };
+    await extractBundle('/tmp/ignored.zip', {
+      sourceKey: 'official',
+      contentRoot: 'https://a.example.com/agents',
+    });
+    for (const version of ['1.0.0', '2.0.0']) {
+      await writeFile(path.join(versionDir('official', version), '.source.json'), 'not json', 'utf-8');
+    }
+    await rm(path.join(tmpDir, '.agentman', 'bundles', 'sources', 'official', 'source.json'), { force: true });
+
+    // Publisher B, same source name, extracts its own 1.0.0…
+    zipContents = { ...manifest('1.0.0'), 'who.txt': 'publisher-b' };
+    await extractBundle('/tmp/ignored.zip', {
+      sourceKey: 'official',
+      contentRoot: 'https://b.example.com/agents',
+    });
+
+    // …which must not make A's 2.0.0 reusable under B's name.
+    zipContents = { ...manifest('2.0.0'), 'who.txt': 'publisher-b' };
+    const v2 = await extractBundle('/tmp/ignored.zip', {
+      sourceKey: 'official',
+      contentRoot: 'https://b.example.com/agents',
+    });
+    expect(v2.isNew).toBe(true);
+    expect(await readFile(path.join(v2.bundleDir, 'who.txt'), 'utf-8')).toBe('publisher-b');
+  });
+
+  it('still compares equal to a marker written before URLs were canonicalised on read', async () => {
+    await extractBundle('/tmp/ignored.zip', {
+      sourceKey: 'official',
+      contentRoot: 'https://a.example.com/agents',
+    });
+    // The shape an earlier build stored: the URL exactly as the document wrote it.
+    await writeFile(
+      path.join(versionDir('official', '1.0.0'), '.source.json'),
+      JSON.stringify({ contentRoot: 'https://a.example.com/agents/' }),
+      'utf-8',
+    );
+
+    const again = await extractBundle('/tmp/ignored.zip', {
+      sourceKey: 'official',
+      contentRoot: 'https://a.example.com/agents',
+    });
+    expect(again.isNew).toBe(false);
   });
 
   it('does not reuse a cache that carries no provenance at all', async () => {

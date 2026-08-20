@@ -29,7 +29,20 @@ export interface ExtractBundleOptions {
 /** Directory the source-scoped cache tree occupies inside the bundles dir. */
 const SOURCES_SUBTREE = 'sources';
 
-/** Provenance file written beside a source's cached versions. */
+/**
+ * Provenance recorded inside each cached version, published by the same rename
+ * that publishes the content. Being per-version is what matters: a source-level
+ * file gates reuse for versions it never attested, so writing one while
+ * repairing a single version silently vouches for its siblings.
+ */
+const VERSION_MARKER = '.source.json';
+
+/**
+ * Source-level record of the content root, kept for collision *detection* only
+ * — two documents declaring one source name are worth reporting even when they
+ * ask for different versions. It never authorises reuse; only the per-version
+ * marker does.
+ */
 const SOURCE_MARKER = 'source.json';
 
 export { assertSafeCacheSegment };
@@ -84,42 +97,57 @@ export async function extractBundle(zipPath: string, options: ExtractBundleOptio
 
     // Provenance is only meaningful for source-scoped caches; the legacy cache
     // is keyed by version alone and has no source to attribute.
-    let provenanceMatches = true;
+    let reusable = true;
     if (sourceDir && contentRoot) {
-      const marker = await readSourceMarker(sourceDir);
-
-      if (marker.kind === 'present' && marker.contentRoot !== contentRoot) {
-        throw new Error(
-          `Source '${options.sourceKey}' is already cached from a different content root. ` +
-            `Cached: ${marker.contentRoot}. Requested: ${contentRoot}. ` +
-            `Two discovery documents are using one source name for different publishers; ` +
-            `rename one of them, or remove ${sourceDir} to start over.`,
-        );
+      // Reported even when the requested version differs, so two documents
+      // sharing a source name surface as an error rather than quietly
+      // accumulating side by side in one cache.
+      const declared = await readProvenance(path.join(sourceDir, SOURCE_MARKER));
+      if (declared.kind === 'present' && declared.contentRoot !== contentRoot) {
+        throw collisionError(options.sourceKey!, declared.contentRoot, contentRoot, sourceDir);
       }
 
-      // Absent or unreadable means the cache carries no provenance we can
-      // attest, so it is not reused: re-extracting records fresh provenance,
-      // where backfilling a marker would vouch for contents of unknown origin.
-      provenanceMatches = marker.kind === 'present';
+      const attested = await readProvenance(path.join(targetDir, VERSION_MARKER));
+      if (attested.kind === 'present' && attested.contentRoot !== contentRoot) {
+        throw collisionError(options.sourceKey!, attested.contentRoot, contentRoot, sourceDir);
+      }
+
+      // Only this version's own provenance may authorise reuse. Absent or
+      // unreadable means these contents cannot be attributed, so they are
+      // replaced rather than vouched for.
+      reusable = attested.kind === 'present';
     }
 
-    if (provenanceMatches && (await dirExists(targetDir))) {
+    if (reusable && (await dirExists(targetDir))) {
       // Clean up temp extraction
       await rm(tempExtractDir, { recursive: true, force: true });
       return { manifest, bundleDir: targetDir, isNew: false };
     }
 
-    // Record provenance before the version directory is visible, so a crash
-    // between the two can never leave an unattributed cache behind.
+    // Written into the staging directory so the rename below publishes content
+    // and provenance together — there is no window in which the version is
+    // visible without the record of where it came from. A bundle shipping its
+    // own file by this name would have it replaced in the cache; the leading dot
+    // keeps it out of the scanner's way, which skips dotfiles and non-directories.
     if (sourceDir && contentRoot) {
-      await writeSourceMarker(sourceDir, contentRoot);
+      await writeFile(
+        path.join(tempExtractDir, VERSION_MARKER),
+        `${JSON.stringify({ contentRoot }, null, 2)}\n`,
+        'utf-8',
+      );
     }
 
     // Move to the permanent cache location
-    await mkdir(targetDir, { recursive: true });
+    await mkdir(path.dirname(targetDir), { recursive: true });
     // Use rename-like approach: extract directly to target
     await rm(targetDir, { recursive: true, force: true });
     await rename(tempExtractDir, targetDir);
+
+    // Detection only, and deliberately after the version is published: losing
+    // this file costs an error message, never the reuse guarantee above.
+    if (sourceDir && contentRoot) {
+      await writeSourceMarker(sourceDir, contentRoot);
+    }
 
     return { manifest, bundleDir: targetDir, isNew: true };
   } catch (error) {
@@ -129,47 +157,65 @@ export async function extractBundle(zipPath: string, options: ExtractBundleOptio
   }
 }
 
-type SourceMarker = { kind: 'present'; contentRoot: string } | { kind: 'absent' } | { kind: 'unreadable' };
+type Provenance = { kind: 'present'; contentRoot: string } | { kind: 'absent' } | { kind: 'unreadable' };
+
+function collisionError(
+  sourceKey: string,
+  cached: string,
+  requested: string,
+  sourceDir: string,
+): Error {
+  return new Error(
+    `Source '${sourceKey}' is already cached from a different content root. ` +
+      `Cached: ${cached}. Requested: ${requested}. ` +
+      `Two discovery documents are using one source name for different publishers; ` +
+      `rename one of them, or remove ${sourceDir} to start over.`,
+  );
+}
 
 /**
- * Read a source's provenance marker.
+ * Read a provenance record.
  *
- * Only a missing file counts as "no marker". Every other failure — a directory
- * in its place, malformed JSON, a permissions error — is reported as unreadable
- * so the caller can refuse to trust the cache beside it, rather than silently
- * behaving as though provenance had never been recorded.
+ * Only a missing file counts as "absent". Every other failure — a directory in
+ * its place, malformed JSON, a permissions error, a URL that no longer
+ * canonicalises — is reported as unreadable, so the caller refuses to trust the
+ * cache beside it rather than behaving as though provenance had never been
+ * recorded. The stored value is canonicalised on read as well as on write, so a
+ * record written by an earlier build still compares equal to the same URL.
  */
-async function readSourceMarker(sourceDir: string): Promise<SourceMarker> {
+async function readProvenance(markerPath: string): Promise<Provenance> {
   let raw: string;
   try {
-    raw = await readFile(path.join(sourceDir, SOURCE_MARKER), 'utf-8');
+    raw = await readFile(markerPath, 'utf-8');
   } catch (err) {
     return (err as NodeJS.ErrnoException).code === 'ENOENT' ? { kind: 'absent' } : { kind: 'unreadable' };
   }
 
   try {
     const parsed = JSON.parse(raw) as { contentRoot?: unknown };
-    return typeof parsed.contentRoot === 'string'
-      ? { kind: 'present', contentRoot: parsed.contentRoot }
-      : { kind: 'unreadable' };
+    if (typeof parsed.contentRoot !== 'string') return { kind: 'unreadable' };
+    return { kind: 'present', contentRoot: canonicaliseContentRoot(parsed.contentRoot) };
   } catch {
     return { kind: 'unreadable' };
   }
 }
 
-/** Write the provenance marker atomically, so a reader never sees a partial file. */
+/**
+ * Write the source-level detection record atomically, so a reader never sees a
+ * partial file. Best effort: this file only sharpens an error message, so a
+ * failure to write it must not fail an otherwise complete extraction. Anything
+ * squatting on the path is cleared first, since it can only be leftover state.
+ */
 async function writeSourceMarker(sourceDir: string, contentRoot: string): Promise<void> {
-  await mkdir(sourceDir, { recursive: true });
   const target = path.join(sourceDir, SOURCE_MARKER);
   const temp = `${target}.${process.pid}.tmp`;
   try {
+    await mkdir(sourceDir, { recursive: true });
     await writeFile(temp, `${JSON.stringify({ contentRoot }, null, 2)}\n`, 'utf-8');
+    await rm(target, { recursive: true, force: true });
     await rename(temp, target);
-  } catch (err) {
-    await rm(temp, { force: true }).catch(() => {});
-    throw new Error(
-      `Could not record the cache provenance for ${sourceDir}: ${err instanceof Error ? err.message : String(err)}`,
-    );
+  } catch {
+    await rm(temp, { recursive: true, force: true }).catch(() => {});
   }
 }
 
