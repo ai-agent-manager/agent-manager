@@ -301,6 +301,31 @@ describe('fetchDiscoveryDocument', () => {
     ).rejects.toThrow('not valid JSON');
   });
 
+  it('accepts auth.required without OIDC fields (AGENTMAN_ACCESS_TOKEN clients)', async () => {
+    const envTokenOnlyAuth = {
+      version: '1',
+      auth: { required: true },
+      sources: [
+        {
+          name: 'protected-skill',
+          type: 'http',
+          url: 'https://skills.example.com/bundle',
+        },
+      ],
+    };
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => envTokenOnlyAuth,
+    });
+
+    const result = await fetchDiscoveryDocument('https://example.com');
+
+    expect(result.auth?.required).toBe(true);
+    expect(result.auth?.oidcDiscoveryUrl).toBeUndefined();
+    expect(result.auth?.clientId).toBeUndefined();
+  });
+
   it('throws DiscoveryError on schema validation failure', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,

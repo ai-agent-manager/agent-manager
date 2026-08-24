@@ -148,6 +148,9 @@ async function acquireDiscoverySkills(
         if (!authResult.fromCache && authResult.backend === 'filesystem') {
             warnings.push("Tokens stored at ~/.agentman/auth/ (OS keychain unavailable, using filesystem with restricted permissions)");
         }
+        if (authResult.fromEnv) {
+            warnings.push("Using access token from AGENTMAN_ACCESS_TOKEN");
+        }
     }
 
     setLoadingMessage("Resolving skills from discovery document...");
