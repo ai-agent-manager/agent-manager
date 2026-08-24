@@ -1,6 +1,6 @@
 {
   "name": "@ai-agent-manager/cli",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "description": "Agent Manager - install and manage AI agent skills and Rovo agents",
   "type": "module",
   "bin": {
