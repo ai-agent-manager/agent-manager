@@ -148,9 +148,17 @@ If your bundle server requires authentication, Agent Manager runs an interactive
 
 1. A browser window opens to your provider's login page.
 2. After login, a local callback server receives the authorization code.
-3. Tokens are stored securely in `~/.agentman/auth/` and refreshed automatically when expired.
+3. Tokens are stored in the OS keychain when available, otherwise in `~/.agentman/auth/` (`0600`).
+4. Before each authenticated API or content download, Agent Manager reloads the store and refreshes the token if it is near expiry (or retries once after an HTTP 401).
 
-Tokens are stored on the filesystem with restrictive permissions (`0600`). See [docs/discovery.md](docs/discovery.md) for the full auth flow.
+For headless/CI installs against an auth-protected discovery source, set a bearer directly and skip the browser flow:
+
+```bash
+AGENTMAN_ACCESS_TOKEN=... npx -y @ai-agent-manager/cli@latest https://your-bundle-server.com \
+  --config .github/ai-skills.yml
+```
+
+`AGENTMAN_ACCESS_TOKEN` is used as-is (no store lookup or refresh). See [docs/discovery.md](docs/discovery.md) for the full auth flow.
 
 ### Force re-download
 
@@ -172,6 +180,7 @@ npx -y @ai-agent-manager/cli@latest --help
 
 The TUI's top-level menu has these options:
 
+- **My Projects** -- Shown when you are logged in, `projects.enabled` is `true`, and an API base URL is set (`api.baseUrl` in the discovery document, or `API_BASE_URL`). Lists the projects you can access; from a project you can Search & Install skills or provision Rovo agents, filtered by that project's catalogue allowlists. When `projects.exclusiveSource` is `true`, Search & Install and Bulk Sync are limited to skills/agents permitted by your project memberships (with project names shown on the Search & Install detail row).
 - **Search & Install** -- Search a single catalogue of skills and Rovo agents, then act on your choice. Selecting a skill installs it (choose a source, scope, and coding tool); selecting a Rovo agent provisions it in Atlassian Studio. Rovo provisioning runs Playwright-driven browser automation from the command line by default; set `AGENTMAN_CHROME_EXTENSION=1` to also offer the Chrome Extension options, including direct extension installation (see [Feature Flags](#feature-flags)).
 - **Maintenance & Updates** -- Bulk-sync a tool's skills (select the complete set for a tool; deselecting uninstalls), manage individual skill versions, manage installed skills (update/remove/inspect), manage cached bundle versions, and update the Agent Manager CLI itself.
 - **Source Management** -- Install from a source URL: a GitHub repo, an artefact zip, or a bundle URL.
@@ -290,11 +299,11 @@ npm run typecheck    # type check without emitting
 
 ### Mock HTTP skills server
 
-Integration tests and local dev can run against a local mock of the agent CDN using [Imposter](https://docs.imposter.sh):
+Integration tests and local dev can run against a local mock of the agent CDN, backend projects API, and OIDC login using [Imposter](https://docs.imposter.sh):
 
 ```bash
 cd mocks
-imposter up             # starts on http://localhost:8080
+imposter up             # starts on http://localhost:8080 (installs oidc-server from .imposter.yaml)
 imposter down -a        # stop when done
 ```
 
@@ -303,6 +312,8 @@ Then run against the mock for a local integration test:
 ```bash
 npm run dev -- http://localhost:8080
 ```
+
+Log in as `alice` / `password123` (or `bob` / `password456`) when the browser opens. See [mocks/README.md](mocks/README.md) for details.
 
 ---
 

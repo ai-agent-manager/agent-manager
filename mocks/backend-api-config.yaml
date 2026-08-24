@@ -1,0 +1,99 @@
+# Imposter mock for the backend REST API subset used by Agent Manager.
+#
+# Only GET /projects and GET /projects/{projectId} — matching
+# src/api/projects.ts. Sample payloads live in response.content below.
+#
+# Start:  imposter up             (from mocks/)
+# Spec UI: http://localhost:8080/_spec
+# Stop:   imposter down -a
+
+plugin: openapi
+specFile: backend-api.yaml
+
+cors:
+  allowOrigins: all
+
+resources:
+  - path: /projects
+    method: GET
+    response:
+      content: |
+        [
+          {
+            "id": "proj-alpha",
+            "teamId": "team-personal-1",
+            "name": "Alpha",
+            "description": "Personal project with restricted skills",
+            "toolIds": ["claude-code", "cursor"],
+            "adminEmails": ["developer@example.com"],
+            "restrictAgents": false,
+            "restrictSkills": true,
+            "allowedAgentIds": [],
+            "allowedSkillIds": ["react-component-generator"],
+            "createdAt": "2026-01-01T00:00:00.000Z",
+            "updatedAt": "2026-07-01T00:00:00.000Z"
+          },
+          {
+            "id": "proj-beta",
+            "teamId": "team-platform",
+            "name": "Beta",
+            "description": "Platform project with restricted agents",
+            "toolIds": ["claude-code", "atlassian-rovo"],
+            "adminEmails": ["owner@example.com"],
+            "restrictAgents": true,
+            "restrictSkills": false,
+            "allowedAgentIds": ["agent-sprint-planner"],
+            "allowedSkillIds": [],
+            "createdAt": "2026-02-01T00:00:00.000Z",
+            "updatedAt": "2026-07-01T00:00:00.000Z"
+          }
+        ]
+
+  - path: /projects/{projectId}
+    method: GET
+    pathParams:
+      projectId: proj-alpha
+    response:
+      content: |
+        {
+          "id": "proj-alpha",
+          "teamId": "team-personal-1",
+          "name": "Alpha",
+          "description": "Personal project with restricted skills",
+          "toolIds": ["claude-code", "cursor"],
+          "adminEmails": ["developer@example.com"],
+          "restrictAgents": false,
+          "restrictSkills": true,
+          "allowedAgentIds": [],
+          "allowedSkillIds": ["react-component-generator"],
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z"
+        }
+
+  - path: /projects/{projectId}
+    method: GET
+    pathParams:
+      projectId: proj-beta
+    response:
+      content: |
+        {
+          "id": "proj-beta",
+          "teamId": "team-platform",
+          "name": "Beta",
+          "description": "Platform project with restricted agents",
+          "toolIds": ["claude-code", "atlassian-rovo"],
+          "adminEmails": ["owner@example.com"],
+          "restrictAgents": true,
+          "restrictSkills": false,
+          "allowedAgentIds": ["agent-sprint-planner"],
+          "allowedSkillIds": [],
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z"
+        }
+
+  - path: /projects/{projectId}
+    method: GET
+    response:
+      statusCode: 404
+      content: |
+        {"message": "Not found"}

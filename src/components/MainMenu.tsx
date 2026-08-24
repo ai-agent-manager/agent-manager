@@ -3,6 +3,7 @@ import { Box, Text } from "ink";
 import SelectInput from "ink-select-input";
 
 export type MainMenuAction =
+    | "my-projects"
     | "search-install"
     | "maintenance"
     | "source-management"
@@ -11,11 +12,21 @@ export type MainMenuAction =
 
 interface MainMenuProps {
     hasBundleContents: boolean;
+    /** Show My Projects when authenticated, projects.enabled is true, and an API base URL is available. */
+    hasProjectsAccess?: boolean;
     onSelect: (action: MainMenuAction) => void;
 }
 
-export function MainMenu({ hasBundleContents, onSelect }: MainMenuProps) {
+export function MainMenu({ hasBundleContents, hasProjectsAccess = false, onSelect }: MainMenuProps) {
     const items = [
+        ...(hasProjectsAccess
+            ? [
+                  {
+                      label: "My Projects                 View projects you have access to",
+                      value: "my-projects" as MainMenuAction,
+                  },
+              ]
+            : []),
         ...(hasBundleContents
             ? [
                   {

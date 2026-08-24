@@ -81,7 +81,7 @@ The Chrome Extension works with the Agent Manager CLI (Command Line Interface). 
 npx -y @ai-agent-manager/cli@latest https://your-bundle-server-url
 ```
 
-> **Note:** Replace `https://your-bundle-server-url` with the URL provided by your team or organization. For example: `https://bootstrap.example.com`
+> **Note:** Replace `https://your-bundle-server-url` with the URL provided by your team or organization. For example: `https://skills.example.com`
 
 > **Important:** Chrome Extension menu options are hidden unless the feature flag is enabled.
 >

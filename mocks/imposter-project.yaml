@@ -1,5 +1,8 @@
 engine: native
 version: 5.21.2
 
+plugins:
+  - oidc-server
+
 cli:
   version: 1.11.1

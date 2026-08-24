@@ -11,7 +11,17 @@ import { buildPinForDirectorySource, deriveSkillInstallKey, type SkillSourcePin 
 // Re-exported for backward compatibility with existing importers/tests.
 export { buildPinForDirectorySource } from './bundle/skill-source.js';
 import { resolveDiscoverySkills } from './discovery/index.js';
-import { authenticate } from './auth/index.js';
+import { authenticate, type AuthSession } from './auth/index.js';
+import {
+  isProjectsExclusiveSource,
+  listProjects,
+  resolveApiBaseUrl,
+  type ApiAuth,
+} from './api/index.js';
+import {
+  partitionSkillsByScope,
+  resolveCatalogueScope,
+} from './catalogue-scope/index.js';
 import { createSkillProvisioner, formatSupportedSkillToolIds } from './provisioners/registry.js';
 import type { InstallScope } from './config/scopes.js';
 
@@ -95,15 +105,17 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
     // sourcePin stays undefined for discovery installs — added in the namespaced-layout follow-up.
     console.log("[agentman] Discovery document found");
 
-    let bearerToken: string | undefined;
+    let accessToken: string | undefined;
+    let authSession: AuthSession | undefined;
+
     if (source.discovery.auth?.required) {
       const envToken = process.env['AGENTMAN_ACCESS_TOKEN'];
       if (envToken) {
-        bearerToken = envToken;
+        accessToken = envToken;
         console.log('[agentman] Using access token from AGENTMAN_ACCESS_TOKEN');
       } else {
         console.log('[agentman] Attempting cached token authentication...');
-        const authResult = await authenticate(
+        await authenticate(
           source.baseUrl,
           source.discovery.auth,
           (url) => {
@@ -113,16 +125,22 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
             process.exit(1);
           },
         );
-        bearerToken = authResult.bearerToken;
+        authSession = {
+          discoveryBaseUrl: source.baseUrl,
+          auth: source.discovery.auth,
+        };
       }
     }
 
     console.log(`[agentman] Resolving ${source.discovery.sources.length} source(s) from discovery document...`);
     const result = await resolveDiscoverySkills(
       source.discovery,
-      bearerToken,
+      accessToken,
       (msg) => console.log(`[agentman] ${msg}`),
-      { artefactSha256: config.artefactSha256 },
+      {
+        artefactSha256: config.artefactSha256,
+        ...(authSession ? { authSession } : {}),
+      },
     );
 
     for (const { source: failedSource, error, isIntegrity } of result.errors) {
@@ -140,6 +158,45 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
 
     allSkills = result.skills;
     bundleVersion = result.bundleVersion ?? "discovery";
+
+    if (isProjectsExclusiveSource(source.discovery.projects)) {
+      const apiBaseUrl = resolveApiBaseUrl(source.discovery.api?.baseUrl);
+      if (!apiBaseUrl) {
+        console.error(
+          '\n[agentman] ERROR: projects.exclusiveSource is enabled but no API base URL is configured.\n' +
+            '  Set api.baseUrl in the discovery document or API_BASE_URL.\n',
+        );
+        process.exit(1);
+      }
+
+      let apiAuth: ApiAuth | undefined;
+      if (accessToken) {
+        apiAuth = { bearerToken: accessToken };
+      } else if (authSession) {
+        apiAuth = authSession;
+      } else {
+        console.error(
+          '\n[agentman] ERROR: projects.exclusiveSource requires authentication to resolve project memberships.\n' +
+            '  Set AGENTMAN_ACCESS_TOKEN or complete interactive login first.\n',
+        );
+        process.exit(1);
+      }
+
+      console.log('[agentman] Loading project memberships (exclusiveSource)...');
+      const membershipProjects = await listProjects(apiBaseUrl, apiAuth);
+      const scope = resolveCatalogueScope({
+        exclusiveSource: true,
+        membershipProjects,
+      });
+      const { permitted, excluded } = partitionSkillsByScope(allSkills, scope);
+      allSkills = permitted;
+      if (excluded.length > 0) {
+        console.log(
+          `[agentman] Exclusive catalogue: ${permitted.length} skill(s) permitted by project membership ` +
+            `(${excluded.length} excluded)`,
+        );
+      }
+    }
   } else {
     let bundleDir: string;
 
@@ -217,6 +274,19 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
       console.warn(`  - ${name}`);
     }
     console.warn(`\n  Available skills: ${[...availableSkills.keys()].join(", ")}`);
+  }
+
+  if (
+    source.type === 'discovery' &&
+    isProjectsExclusiveSource(source.discovery.projects) &&
+    notFound.length > 0
+  ) {
+    console.error(
+      `\n[agentman] ERROR: projects.exclusiveSource is enabled — refusing to install skills that are ` +
+        `not permitted by your project memberships (or were not found in the exclusive catalogue):\n` +
+        notFound.map((name) => `  - ${name}`).join('\n'),
+    );
+    process.exit(1);
   }
 
   if (toInstall.length === 0) {

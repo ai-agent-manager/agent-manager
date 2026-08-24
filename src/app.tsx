@@ -8,6 +8,7 @@ import { ChromeExtensionInstall } from "./components/ChromeExtensionInstall.js";
 import { ChromeExtensionServer } from "./components/ChromeExtensionServer.js";
 import { MainMenu } from "./components/MainMenu.js";
 import { MaintenanceMenu } from "./components/MaintenanceMenu.js";
+import { ProjectsMenu } from "./components/ProjectsMenu.js";
 import { SettingsScreen } from "./components/SettingsScreen.js";
 import { ManageFlow } from "./components/ManageFlow.js";
 import { SkillInstallFlow } from "./components/SkillInstallFlow.js";
@@ -36,14 +37,30 @@ import type { StartupUpdateNotice } from "./lib/startup-update-checks.js";
 import { checkForStartupUpdates, shouldRunStartupUpdateChecks } from "./lib/startup-update-checks.js";
 import { getBundleSourceTelemetryProperties, setTelemetryDisabledByConfig, trackTelemetryError, trackTelemetryEvent, type TelemetryValue } from "./telemetry.js";
 import { featureFlags } from "./lib/feature-flags.js";
-import { resolveDiscoverySkills, buildUnifiedCatalogue, type ResolvedSkill } from "./discovery/index.js";
+import { resolveDiscoverySkills, type ResolvedSkill } from "./discovery/index.js";
 import { buildPinForDirectorySource, buildSourcePin, type BundleSkillSource } from "./bundle/skill-source.js";
-import { authenticate, openInBrowser, createDiscoveryAccessTokenProvider } from "./auth/index.js";
+import {
+    canAccessMyProjects,
+    isApiAuthFailure,
+    isApiTransientFailure,
+    isProjectsExclusiveSource,
+    listProjects,
+    resolveApiBaseUrl,
+    type Project,
+} from "./api/index.js";
+import {
+    buildScopedCatalogue,
+    resolveCatalogueScope,
+    scopeCatalogueAssets,
+    scopeSkills,
+} from "./catalogue-scope/index.js";
+import { authenticate, openInBrowser, createDiscoveryAccessTokenProvider, type AuthSession } from "./auth/index.js";
 
 export type Screen =
     | "loading"
     | "auth"
     | "main-menu"
+    | "my-projects"
     | "maintenance-menu"
     | "settings"
     | "skill-install"
@@ -111,9 +128,10 @@ async function acquireDiscoverySkills(
     bundleVersion?: string;
     manifest?: BundleManifest;
     bundleDir?: string;
+    authSession?: AuthSession;
 }> {
-    let bearerToken: string | undefined;
     const warnings: string[] = [];
+    let authSession: AuthSession | undefined;
 
     // Handle authentication if required
     if (source.discovery.auth?.required) {
@@ -123,7 +141,10 @@ async function acquireDiscoverySkills(
             source.discovery.auth,
             onAuthPrompt,
         );
-        bearerToken = authResult.bearerToken;
+        authSession = {
+            discoveryBaseUrl: source.baseUrl,
+            auth: source.discovery.auth,
+        };
         if (!authResult.fromCache && authResult.backend === 'filesystem') {
             warnings.push("Tokens stored at ~/.agentman/auth/ (OS keychain unavailable, using filesystem with restricted permissions)");
         }
@@ -132,8 +153,9 @@ async function acquireDiscoverySkills(
     setLoadingMessage("Resolving skills from discovery document...");
     const result = await resolveDiscoverySkills(
         source.discovery,
-        bearerToken,
+        undefined,
         setLoadingMessage,
+        authSession ? { authSession } : undefined,
     );
 
     for (const { source, error } of result.errors) {
@@ -147,6 +169,7 @@ async function acquireDiscoverySkills(
         bundleVersion: result.bundleVersion,
         manifest: result.manifest,
         bundleDir: result.bundleDir,
+        authSession,
     };
 }
 
@@ -171,8 +194,87 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
     // Set when a Rovo agent is picked from the unified catalogue; scopes the Rovo
     // flow to that one agent. Null when Rovo is entered via the standalone menu.
     const [selectedRovoAgent, setSelectedRovoAgent] = useState<RovoAgentInfo | null>(null);
+    const [authSession, setAuthSession] = useState<AuthSession | null>(null);
+    /** When set, skill/agent install flows are filtered by the project's allowlists. */
+    const [projectContext, setProjectContext] = useState<Project | null>(null);
+    /** Re-open this project detail after returning from a project-scoped install. */
+    const [resumeProjectId, setResumeProjectId] = useState<string | null>(null);
+    /**
+     * Membership projects for `projects.exclusiveSource` filtering of global
+     * Search & Install. Null until loaded (or when exclusiveSource is off).
+     */
+    const [membershipProjects, setMembershipProjects] = useState<Project[] | null>(null);
 
     const bundleTelemetryProps: Record<string, TelemetryValue> = source ? getBundleSourceTelemetryProperties(source) : {};
+
+    const returnToProjects = useCallback(() => {
+        setResumeProjectId(projectContext?.id ?? null);
+        setProjectContext(null);
+        setSelectedRovoAgent(null);
+        setScreen("my-projects");
+    }, [projectContext]);
+
+    const returnToMainMenu = useCallback(() => {
+        setResumeProjectId(null);
+        setProjectContext(null);
+        setSelectedRovoAgent(null);
+        setScreen("main-menu");
+    }, []);
+
+    const discoveryProjectsConfig =
+        source?.type === "discovery" ? source.discovery.projects : undefined;
+    const exclusiveSource = isProjectsExclusiveSource(discoveryProjectsConfig);
+    const apiBaseUrl =
+        source?.type === "discovery"
+            ? resolveApiBaseUrl(source.discovery.api?.baseUrl)
+            : undefined;
+
+    useEffect(() => {
+        if (!exclusiveSource || !apiBaseUrl || !authSession) {
+            setMembershipProjects(null);
+            return;
+        }
+
+        let cancelled = false;
+        (async () => {
+            try {
+                const projects = await listProjects(apiBaseUrl, authSession);
+                if (!cancelled) {
+                    setMembershipProjects(projects);
+                }
+            } catch (error) {
+                if (!cancelled) {
+                    setMembershipProjects([]);
+                    const detail =
+                        error instanceof Error ? error.message : String(error);
+                    let warning: string;
+                    if (isApiAuthFailure(error)) {
+                        warning =
+                            `Authentication failed while loading project memberships. Sign in again and retry.\n${detail}`;
+                    } else if (isApiTransientFailure(error)) {
+                        warning =
+                            `Temporarily unable to load project memberships for exclusive catalogue filtering. The catalogue is empty until this succeeds.\n${detail}`;
+                    } else {
+                        warning =
+                            `Could not load project memberships for exclusive catalogue filtering:\n${detail}`;
+                    }
+                    setWarning(warning);
+                }
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [exclusiveSource, apiBaseUrl, authSession]);
+
+    const leaveInstallFlow = useCallback(() => {
+        if (projectContext) {
+            returnToProjects();
+            return;
+        }
+        returnToMainMenu();
+    }, [projectContext, returnToProjects, returnToMainMenu]);
 
     const startBundleUpdateCheck = () => {
         // Startup notices (which trigger this) are only ever populated once a
@@ -296,6 +398,7 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
                         bundleVersion: discoveredVersion,
                         manifest: discoveredManifest,
                         bundleDir: discoveredBundleDir,
+                        authSession: session,
                     } = await acquireDiscoverySkills(
                         source,
                         setLoadingMessage,
@@ -311,6 +414,7 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
                     if (discoveredManifest) setManifest(discoveredManifest);
                     if (discoveredBundleDir) setBundleDir(discoveredBundleDir);
                     setBundleContents({ skills, rovoAgents });
+                    setAuthSession(session ?? null);
                     setScreen("main-menu");
                     return;
                 }
@@ -496,7 +600,29 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
             sourceName: "bundle",
             sourceType: "http" as const,
         }));
-    const catalogueEntries = buildUnifiedCatalogue(catalogueSkills, bundleContents?.rovoAgents ?? []);
+    const allRovoAgents = bundleContents?.rovoAgents ?? [];
+
+    const catalogueScope = resolveCatalogueScope({
+        projectContext,
+        exclusiveSource,
+        membershipProjects,
+    });
+    const { skills: scopedSkills, agents: scopedAgents } = scopeCatalogueAssets(
+        catalogueSkills,
+        allRovoAgents,
+        catalogueScope,
+    );
+    const catalogueEntries = buildScopedCatalogue(catalogueSkills, allRovoAgents, catalogueScope);
+    const bulkSyncSkills = scopeSkills(effectiveContents?.skills ?? [], catalogueScope);
+
+    const hasProjectsAccess =
+        source?.type === "discovery" &&
+        canAccessMyProjects({
+            authRequired: source.discovery.auth?.required,
+            projects: source.discovery.projects,
+            apiBaseUrl,
+            authSession,
+        });
 
     if (screen === "loading") {
         return (
@@ -544,8 +670,15 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
             {screen === "main-menu" && (
                 <MainMenu
                     hasBundleContents={!!bundleContents}
+                    hasProjectsAccess={!!hasProjectsAccess}
                     onSelect={(action) => {
+                        setProjectContext(null);
+                        setResumeProjectId(null);
+                        setSelectedRovoAgent(null);
                         switch (action) {
+                            case "my-projects":
+                                setScreen("my-projects");
+                                break;
                             case "search-install":
                                 setScreen("skill-install");
                                 break;
@@ -561,6 +694,29 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
                             case "exit":
                                 process.exit(0);
                         }
+                    }}
+                />
+            )}
+
+            {screen === "my-projects" && apiBaseUrl && authSession && (
+                <ProjectsMenu
+                    apiBaseUrl={apiBaseUrl}
+                    authSession={authSession}
+                    hasSkills={catalogueSkills.length > 0}
+                    hasRovoAgents={(bundleContents?.rovoAgents.length ?? 0) > 0}
+                    initialProjectId={resumeProjectId}
+                    onBack={returnToMainMenu}
+                    onInstallSkills={(project) => {
+                        setResumeProjectId(null);
+                        setSelectedRovoAgent(null);
+                        setProjectContext(project);
+                        setScreen("skill-install");
+                    }}
+                    onProvisionAgents={(project) => {
+                        setResumeProjectId(null);
+                        setSelectedRovoAgent(null);
+                        setProjectContext(project);
+                        setScreen(featureFlags.chromeExtension ? "rovo-method" : "rovo-menu");
                     }}
                 />
             )}
@@ -602,7 +758,7 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
                         setSelectedRovoAgent(agent);
                         setScreen(featureFlags.chromeExtension ? "rovo-method" : "rovo-menu");
                     }}
-                    onBack={() => setScreen("main-menu")}
+                    onBack={leaveInstallFlow}
                 />
             )}
 
@@ -651,7 +807,7 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
                             ? { index: toolsQueueTotal - toolsQueue.length + 1, total: toolsQueueTotal }
                             : undefined
                     }
-                    skills={effectiveContents.skills}
+                    skills={bulkSyncSkills}
                     bundleVersion={effectiveVersion}
                     scope={installScope}
                     repoRoot={repoRoot}
@@ -673,6 +829,7 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
                 <VersionManager
                     currentVersion={manifest?.version ?? null}
                     source={source}
+                    authSession={authSession}
                     onBack={() => setScreen("maintenance-menu")}
                     onVersionChanged={handleVersionChanged}
                 />
@@ -701,21 +858,44 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
                             setScreen("rovo-menu");
                         }
                     }}
-                    onBack={() => setScreen("skill-install")}
+                    onBack={() => {
+                        if (projectContext && !selectedRovoAgent) {
+                            leaveInstallFlow();
+                            return;
+                        }
+                        setScreen("skill-install");
+                    }}
                 />
             )}
 
             {screen === "rovo-menu" && bundleContents && (
                 <RovoMenu
-                    rovoAgents={selectedRovoAgent ? [selectedRovoAgent] : bundleContents.rovoAgents}
+                    rovoAgents={
+                        selectedRovoAgent
+                            ? [selectedRovoAgent]
+                            : scopedAgents
+                    }
                     bundleTelemetryProps={bundleTelemetryProps}
-                    onBack={() => setScreen(featureFlags.chromeExtension ? "rovo-method" : "skill-install")}
+                    onBack={() => {
+                        if (featureFlags.chromeExtension) {
+                            setScreen("rovo-method");
+                            return;
+                        }
+                        if (projectContext && !selectedRovoAgent) {
+                            leaveInstallFlow();
+                            return;
+                        }
+                        setScreen("skill-install");
+                    }}
                 />
             )}
 
             {screen === "chrome-extension" && bundleContents && manifest && (
                 <ChromeExtensionServer
-                    bundleContents={bundleContents}
+                    bundleContents={{
+                        skills: scopedSkills,
+                        rovoAgents: scopedAgents,
+                    }}
                     manifest={manifest}
                     bundleDir={bundleDir}
                     onBack={() => setScreen("rovo-method")}
@@ -743,7 +923,11 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
             )}
 
             {screen === "chrome-extension-install" && (
-                <ChromeExtensionInstall onBack={() => setScreen(featureFlags.chromeExtension ? "rovo-method" : "skill-install")} />
+                <ChromeExtensionInstall
+                    onBack={() =>
+                        setScreen(featureFlags.chromeExtension ? "rovo-method" : "skill-install")
+                    }
+                />
             )}
         </Box>
     );

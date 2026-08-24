@@ -15,7 +15,9 @@ c7c0f332679cbf178fc86d48e79f22cce430a4fa:chrome-extension/USER-GUIDE.md:generic-
 
 # Mock OIDC server user passwords in a local end-to-end auth fixture, flagged
 # once the default ruleset gained `generic-password`. Test-only credentials for
-# a mock identity provider, and the file no longer exists in the tree — history
-# entries only.
-4083fd0caebe0f3ddfdf8c5f8211a6d5491a83ff:mocks/oidc-server-config.yaml:generic-password:18
-4083fd0caebe0f3ddfdf8c5f8211a6d5491a83ff:mocks/oidc-server-config.yaml:generic-password:27
+# a mock identity provider — unpinned for the working tree, commit-pinned for
+# history scans (SHA changes when the introducing commit is rewritten).
+mocks/oidc-server-config.yaml:generic-password:18
+mocks/oidc-server-config.yaml:generic-password:27
+015c182dcce3010c701dc9e3d88e6e5b4e2dbab7:mocks/oidc-server-config.yaml:generic-password:18
+015c182dcce3010c701dc9e3d88e6e5b4e2dbab7:mocks/oidc-server-config.yaml:generic-password:27

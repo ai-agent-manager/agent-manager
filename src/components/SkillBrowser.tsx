@@ -104,9 +104,16 @@ export function SkillBrowser({ entries, onSelect, onBack }: SkillBrowserProps) {
                 <Text color="magenta">rovo agent</Text>
               )}
             </Text>
-            {isSelected && row.entry.description !== '' && (
-              <Box marginLeft={6}>
-                <Text dimColor>{row.entry.description}</Text>
+            {isSelected && (row.entry.description !== '' || (row.entry.projectNames?.length ?? 0) > 0) && (
+              <Box marginLeft={6} flexDirection="column">
+                {row.entry.description !== '' && (
+                  <Text dimColor>{row.entry.description}</Text>
+                )}
+                {(row.entry.projectNames?.length ?? 0) > 0 && (
+                  <Text dimColor>
+                    Projects: {row.entry.projectNames!.join(', ')}
+                  </Text>
+                )}
               </Box>
             )}
           </Box>

@@ -20,6 +20,7 @@ import {
   type ArtefactSkillSource,
   type BundleSkillSource,
 } from '../bundle/skill-source.js';
+import { getValidBearerToken, type AuthSession } from '../auth/index.js';
 import type { DiscoveryDocument, DiscoverySource, SourceType, SourceStatus } from './types.js';
 
 /** A skill resolved from a discovery source, tagged with catalogue metadata. */
@@ -60,15 +61,30 @@ export interface ResolvedSources {
 export interface ResolveDiscoveryOptions {
   /** SHA-256 pin for artefact sources — overrides sidecar lookup when set. */
   artefactSha256?: string;
+  /**
+   * When set, a fresh bearer is loaded/refreshed from the token store before
+   * each authenticated HTTP download (preferred over a static accessToken).
+   */
+  authSession?: AuthSession;
+}
+
+async function resolveDownloadBearer(
+  accessToken: string | undefined,
+  authSession: AuthSession | undefined,
+): Promise<string | undefined> {
+  if (authSession) {
+    return getValidBearerToken(authSession.discoveryBaseUrl, authSession.auth);
+  }
+  return accessToken;
 }
 
 /**
  * Resolve all skills from a discovery document.
  *
  * @param discovery    The parsed discovery document.
- * @param accessToken  Optional token for authenticated HTTP requests.
+ * @param accessToken  Optional static bearer (e.g. AGENTMAN_ACCESS_TOKEN). Ignored when `options.authSession` is set.
  * @param onProgress   Optional callback for progress updates.
- * @param options      Optional configuration (artefact integrity pin, etc.).
+ * @param options      Optional configuration (artefact integrity pin, auth session, etc.).
  */
 export async function resolveDiscoverySkills(
   discovery: DiscoveryDocument,
@@ -77,6 +93,7 @@ export async function resolveDiscoverySkills(
   options?: ResolveDiscoveryOptions,
 ): Promise<ResolvedSources> {
   const artefactSha256 = options?.artefactSha256;
+  const authSession = options?.authSession;
   const allSkills: ResolvedSkill[] = [];
   const allRovoAgents: RovoAgentInfo[] = [];
   const errors: Array<{ source: DiscoverySource; error: string; isIntegrity: boolean }> = [];
@@ -99,7 +116,8 @@ export async function resolveDiscoverySkills(
           // source.url is the content root: the client appends index.json and
           // <version>/… to it and inserts no path of its own.
           const sourceKey = bundleSourceKey(source.name);
-          const { zipPath, version } = await downloadBundle(source.url, undefined, accessToken, sourceKey);
+          const bearer = await resolveDownloadBearer(accessToken, authSession);
+          const { zipPath, version } = await downloadBundle(source.url, undefined, bearer, sourceKey);
           const result = await extractBundle(zipPath, { sourceKey, contentRoot: source.url });
           // Deliberately no setCurrentBundle here: the `current` symlink points
           // into the version-keyed cache, which a source-scoped extract never
@@ -153,8 +171,9 @@ export async function resolveDiscoverySkills(
             installLayout: 'namespaced',
             sha256: artefactSha256,
           };
+          const bearer = await resolveDownloadBearer(accessToken, authSession);
           const download = await downloadArtefact(artefactSource, {
-            bearerToken: accessToken,
+            bearerToken: bearer,
           });
           const resolvedSource: ArtefactSkillSource = {
             ...artefactSource,

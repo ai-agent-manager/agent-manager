@@ -13,6 +13,13 @@ When a user provides a base URL to agent-manager, it fetches the discovery docum
 ```json
 {
   "version": "1",
+  "api": {
+    "baseUrl": "https://api.example.com"
+  },
+  "projects": {
+    "enabled": true,
+    "exclusiveSource": false
+  },
   "auth": {
     "required": true,
     "oidcDiscoveryUrl": "https://auth.example.com/.well-known/openid-configuration",
@@ -51,6 +58,11 @@ When a user provides a base URL to agent-manager, it fetches the discovery docum
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `version` | `"1"` | Yes | Schema version |
+| `api` | object | No | Authenticated backend API configuration (omit if no API is available) |
+| `api.baseUrl` | string (URI) | Yes (if `api` present) | Base URL of the authenticated REST API (e.g. `https://api.example.com`). Never hardcoded — always taken from the discovery document (or `API_BASE_URL`). |
+| `projects` | object | No | Projects feature configuration (omit or set `enabled: false` to hide My Projects) |
+| `projects.enabled` | boolean | Yes (if `projects` present) | When `true`, enable **My Projects** (also requires auth and a resolved API base URL) |
+| `projects.exclusiveSource` | boolean | No | When `true` (default `false`), Search & Install and headless installs are limited to skills/agents permitted by at least one project the caller belongs to |
 | `auth` | object | No | Authentication configuration (omit if no auth required) |
 | `auth.required` | boolean | Yes (if auth present) | Whether authentication is needed to access skills |
 | `auth.oidcDiscoveryUrl` | string (URI) | Yes (if auth.required=true) | URL to the standard OIDC discovery document |
@@ -286,14 +298,65 @@ When `auth.required` is `true`:
 7. On receiving the callback with `?code=...&state=...`:
    - Validates state
    - Exchanges the code for tokens at the `token_endpoint`
-8. Stores the `access_token` and `refresh_token` in `~/.agentman/auth/` (with a warning that this is filesystem-based storage).
-9. Uses the access token for subsequent requests.
+8. Stores tokens in the OS keychain when available, otherwise under `~/.agentman/auth/` (filesystem, permissions `0600`, with a warning when the keychain is unavailable).
+9. Uses a bearer token (ID token when the provider returns one, otherwise the access token) for subsequent authenticated requests.
 
 ### Token Refresh
 
-Before making authenticated requests, agent-manager checks token expiry. If expired, it uses the refresh token to obtain a new access token and updates the stored tokens.
+Agent Manager does **not** rely on a one-shot login at startup. Before each authenticated HTTP use — backend API calls (for example My Projects) and authenticated content downloads (`downloadBundle` / index fetches) — it:
+
+1. Loads tokens for the discovery base URL from the store.
+2. Returns the cached bearer if it is still valid.
+3. If expired (or near expiry) and a refresh token is present, calls the OIDC `token_endpoint` with `grant_type=refresh_token`, saves the new tokens, and continues.
+4. If refresh fails mid-session (non-interactive paths such as API/background), surfaces an auth error so the user can sign in again. Interactive startup can fall through to a full browser login instead.
+
+For API requests that still receive HTTP 401 (for example tokens without a known `expires_in`), Agent Manager force-refreshes once and retries the request a single time.
+
+In headless mode, `AGENTMAN_ACCESS_TOKEN` overrides the store entirely: the value is sent as the bearer and is never refreshed. When that env var is unset, headless uses the same cache/refresh path as the interactive client (browser login is not available in CI — use the env token or a pre-populated store).
 
 ### Token Storage
 
-Tokens are stored at `~/.agentman/auth/<domain>.json` where `<domain>` is derived from the base URL. A warning is displayed to the user that tokens are stored on the filesystem (not in a system keychain).
+Primary backend is the OS keychain (macOS Keychain, Windows Credential Manager, or Linux Secret Service via libsecret). When the keychain is unavailable (typical in CI), tokens fall back to `~/.agentman/auth/<domain>.json` where `<domain>` is derived from the discovery base URL hostname.
+
+---
+
+## Authenticated API (`api`)
+
+Agent-manager can call the publisher's authenticated REST API using the same OIDC bearer token obtained during login. The API base URL is resolved in this order:
+
+1. `API_BASE_URL` environment variable (if set and non-empty)
+2. `api.baseUrl` from the discovery document
+
+Typical pairing when using the discovery document:
+
+| User-provided source | Discovery `api.baseUrl` |
+|----------------------|-------------------------|
+| `https://example.com` | `https://api.example.com` |
+
+Agent Manager does not invent or hardcode API hosts. Use the discovery field for the normal published value, or set `API_BASE_URL` to override it (for example in local development).
+
+```bash
+API_BASE_URL=https://api.example.com npx -y @ai-agent-manager/cli@latest https://example.com
+```
+
+### My Projects
+
+When `auth.required` is `true`, the user has an auth session (successful login or usable stored tokens), `projects.enabled` is `true`, and an API base URL is available (env or `api.baseUrl`), the main menu shows **My Projects**. That screen:
+
+1. Calls `GET {apiBaseUrl}/projects` to list projects the caller can access (bearer refreshed from the token store immediately before the request).
+2. On selection, calls `GET {apiBaseUrl}/projects/{projectId}` for details (same refresh-on-use behaviour).
+3. Shows the project name and description (when present).
+4. Offers **Install Agent Skills** and **Provision Rovo Agents** (same flows as the main menu). When a project restricts agents or skills, the catalogues shown in those flows are filtered client-side using `allowedAgentIds` / `allowedSkillIds` (IDs are catalogue directory names). Unrestricted projects see the full catalogue.
+
+This matches the authenticated backend project API (including project agent/skill restriction fields). Publishers that do not expose projects should omit the `projects` block or set `projects.enabled` to `false` (operators can still set `API_BASE_URL` to override the host when the feature is enabled).
+
+### Exclusive source (`projects.exclusiveSource`)
+
+When `projects.enabled` is `true` and `exclusiveSource` is `true`:
+
+- **Search & Install** shows only skills and Rovo agents permitted by at least one of the caller's projects (union of project allowlists). The highlighted detail row lists the project name(s) that permit that item.
+- **Bulk Sync** (Maintenance → Bulk Sync by Tool) offers the same membership-filtered skill list, so sync cannot install skills outside those allowlists.
+- **Headless** installs fail if any requested skill is not permitted by the caller's project memberships (or is absent from the exclusive catalogue). Authentication is required so memberships can be loaded (`AGENTMAN_ACCESS_TOKEN` or a stored session).
+
+When `exclusiveSource` is omitted or `false`, global Search & Install, Bulk Sync, and headless installs use the full discovery catalogue (project allowlists still apply inside My Projects flows).
 

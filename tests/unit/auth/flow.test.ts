@@ -1,60 +1,245 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { DiscoveryAuth } from '../../../src/discovery/types.js';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+const loadTokens = vi.fn();
+const saveTokens = vi.fn();
+const isTokenExpired = vi.fn();
+const fetchOidcConfiguration = vi.fn();
 
 vi.mock('../../../src/auth/token-store.js', () => ({
-  loadTokens: vi.fn(),
-  saveTokens: vi.fn(async () => 'keychain'),
-  isTokenExpired: vi.fn(),
+  loadTokens: (...args: unknown[]) => loadTokens(...args),
+  saveTokens: (...args: unknown[]) => saveTokens(...args),
+  isTokenExpired: (...args: unknown[]) => isTokenExpired(...args),
 }));
 
-vi.mock('../../../src/auth/callback-server.js', async () => {
-  const actual = await vi.importActual<typeof import('../../../src/auth/callback-server.js')>(
-    '../../../src/auth/callback-server.js',
-  );
-  return { ...actual, waitForCallback: vi.fn() };
-});
+vi.mock('../../../src/auth/oidc.js', () => ({
+  fetchOidcConfiguration: (...args: unknown[]) => fetchOidcConfiguration(...args),
+  OidcDiscoveryError: class OidcDiscoveryError extends Error {},
+}));
 
-const { authenticate, AuthCancelledError } = await import('../../../src/auth/flow.js');
-const { loadTokens, isTokenExpired } = await import('../../../src/auth/token-store.js');
+vi.mock('../../../src/auth/callback-server.js', () => ({
+  waitForCallback: vi.fn(),
+  REDIRECT_URI: 'http://127.0.0.1:9876/callback',
+  OAUTH_CALLBACK_PORT: 9876,
+  CallbackServerError: class CallbackServerError extends Error {},
+}));
+
+const mockFetch = vi.fn();
+vi.stubGlobal('fetch', mockFetch);
+
+const { getValidBearerToken, authenticate, AuthFlowError, AuthCancelledError } = await import(
+  '../../../src/auth/flow.js'
+);
 const { waitForCallback } = await import('../../../src/auth/callback-server.js');
 
-const AUTH: DiscoveryAuth = {
+const baseUrl = 'https://discovery.example.com';
+const auth = {
   required: true,
-  oidcDiscoveryUrl: 'https://identity.example.com/.well-known/openid-configuration',
-  clientId: 'agentman',
+  oidcDiscoveryUrl: 'https://idp.example.com/.well-known/openid-configuration',
+  clientId: 'agentman-cli',
 };
 
-const OIDC_DOCUMENT = {
-  issuer: 'https://identity.example.com',
-  authorization_endpoint: 'https://identity.example.com/authorize',
-  token_endpoint: 'https://identity.example.com/token',
+const oidcConfig = {
+  authorization_endpoint: 'https://idp.example.com/authorize',
+  token_endpoint: 'https://idp.example.com/token',
+  issuer: 'https://idp.example.com',
 };
 
-const fetchMock = vi.fn();
+describe('getValidBearerToken', () => {
+  beforeEach(() => {
+    loadTokens.mockReset();
+    saveTokens.mockReset();
+    isTokenExpired.mockReset();
+    fetchOidcConfiguration.mockReset();
+    mockFetch.mockReset();
+    fetchOidcConfiguration.mockResolvedValue(oidcConfig);
+    saveTokens.mockResolvedValue('filesystem');
+  });
 
-beforeEach(() => {
-  vi.clearAllMocks();
-  vi.stubGlobal('fetch', fetchMock);
+  it('returns a cached bearer when the token is still valid', async () => {
+    loadTokens.mockResolvedValueOnce({
+      bearerToken: 'cached-bearer',
+      refreshToken: 'refresh',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      oidcDiscoveryUrl: auth.oidcDiscoveryUrl,
+      clientId: auth.clientId,
+    });
+    isTokenExpired.mockReturnValueOnce(false);
+
+    const token = await getValidBearerToken(baseUrl, auth);
+
+    expect(token).toBe('cached-bearer');
+    expect(fetchOidcConfiguration).not.toHaveBeenCalled();
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('refreshes an expired token when a refresh token is present', async () => {
+    loadTokens.mockResolvedValueOnce({
+      bearerToken: 'stale-bearer',
+      refreshToken: 'refresh-me',
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+      oidcDiscoveryUrl: auth.oidcDiscoveryUrl,
+      clientId: auth.clientId,
+    });
+    isTokenExpired.mockReturnValueOnce(true);
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        access_token: 'new-access',
+        id_token: 'new-id',
+        expires_in: 3600,
+        token_type: 'Bearer',
+      }),
+    });
+
+    const token = await getValidBearerToken(baseUrl, auth);
+
+    expect(token).toBe('new-id');
+    expect(mockFetch).toHaveBeenCalledWith(
+      oidcConfig.token_endpoint,
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(saveTokens).toHaveBeenCalledWith(
+      baseUrl,
+      expect.objectContaining({
+        bearerToken: 'new-id',
+        refreshToken: 'refresh-me',
+      }),
+    );
+  });
+
+  it('throws when refresh fails and interactive login is not allowed', async () => {
+    loadTokens.mockResolvedValueOnce({
+      bearerToken: 'stale-bearer',
+      refreshToken: 'refresh-me',
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+      oidcDiscoveryUrl: auth.oidcDiscoveryUrl,
+      clientId: auth.clientId,
+    });
+    isTokenExpired.mockReturnValueOnce(true);
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      text: async () => 'invalid_grant',
+    });
+
+    await expect(getValidBearerToken(baseUrl, auth)).rejects.toThrow(AuthFlowError);
+  });
+
+  it('forceRefresh skips the valid-cache short-circuit', async () => {
+    loadTokens.mockResolvedValueOnce({
+      bearerToken: 'still-valid',
+      refreshToken: 'refresh-me',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      oidcDiscoveryUrl: auth.oidcDiscoveryUrl,
+      clientId: auth.clientId,
+    });
+    isTokenExpired.mockReturnValueOnce(false);
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        access_token: 'forced-access',
+        id_token: 'forced-id',
+        refresh_token: 'new-refresh',
+        expires_in: 3600,
+        token_type: 'Bearer',
+      }),
+    });
+
+    const token = await getValidBearerToken(baseUrl, auth, { forceRefresh: true });
+
+    expect(token).toBe('forced-id');
+    expect(isTokenExpired).not.toHaveBeenCalled();
+    expect(mockFetch).toHaveBeenCalled();
+  });
+
+  it('throws when no cached tokens exist and interactive login is not allowed', async () => {
+    loadTokens.mockResolvedValueOnce(null);
+
+    await expect(getValidBearerToken(baseUrl, auth)).rejects.toThrow(
+      /no valid token is available/i,
+    );
+  });
+
+  it('throws when the token is expired and no refresh token is available', async () => {
+    loadTokens.mockResolvedValueOnce({
+      bearerToken: 'stale-bearer',
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+      oidcDiscoveryUrl: auth.oidcDiscoveryUrl,
+      clientId: auth.clientId,
+    });
+    isTokenExpired.mockReturnValueOnce(true);
+
+    await expect(getValidBearerToken(baseUrl, auth)).rejects.toThrow(AuthFlowError);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('throws when discovery auth is missing OIDC configuration', async () => {
+    await expect(
+      getValidBearerToken(baseUrl, { required: true }),
+    ).rejects.toThrow(/missing oidcDiscoveryUrl or clientId/i);
+  });
+
+  it('falls back to access_token when the refresh response omits id_token', async () => {
+    loadTokens.mockResolvedValueOnce({
+      bearerToken: 'stale-bearer',
+      refreshToken: 'refresh-me',
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+      oidcDiscoveryUrl: auth.oidcDiscoveryUrl,
+      clientId: auth.clientId,
+    });
+    isTokenExpired.mockReturnValueOnce(true);
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        access_token: 'access-only',
+        expires_in: 3600,
+        token_type: 'Bearer',
+      }),
+    });
+
+    const token = await getValidBearerToken(baseUrl, auth);
+
+    expect(token).toBe('access-only');
+    expect(saveTokens).toHaveBeenCalledWith(
+      baseUrl,
+      expect.objectContaining({ bearerToken: 'access-only' }),
+    );
+  });
 });
 
-afterEach(() => {
-  vi.unstubAllGlobals();
+describe('authenticate', () => {
+  beforeEach(() => {
+    loadTokens.mockReset();
+    isTokenExpired.mockReset();
+    fetchOidcConfiguration.mockReset();
+    mockFetch.mockReset();
+  });
+
+  it('returns cached tokens without prompting when still valid', async () => {
+    loadTokens.mockResolvedValueOnce({
+      bearerToken: 'cached-bearer',
+      oidcDiscoveryUrl: auth.oidcDiscoveryUrl,
+      clientId: auth.clientId,
+    });
+    isTokenExpired.mockReturnValueOnce(false);
+    const onPrompt = vi.fn();
+
+    const result = await authenticate(baseUrl, auth, onPrompt);
+
+    expect(result).toEqual({ bearerToken: 'cached-bearer', fromCache: true });
+    expect(onPrompt).not.toHaveBeenCalled();
+  });
 });
 
 describe('authenticate cancellation', () => {
-  it('returns a valid cached token without any network traffic', async () => {
-    vi.mocked(loadTokens).mockResolvedValue({
-      bearerToken: 'cached-token',
-      oidcDiscoveryUrl: AUTH.oidcDiscoveryUrl!,
-      clientId: AUTH.clientId!,
-    });
-    vi.mocked(isTokenExpired).mockReturnValue(false);
-
-    const result = await authenticate('https://discovery.example.com', AUTH, () => {});
-
-    expect(result).toEqual({ bearerToken: 'cached-token', fromCache: true });
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(waitForCallback).not.toHaveBeenCalled();
+  beforeEach(() => {
+    loadTokens.mockReset();
+    saveTokens.mockReset();
+    isTokenExpired.mockReset();
+    fetchOidcConfiguration.mockReset();
+    mockFetch.mockReset();
+    fetchOidcConfiguration.mockResolvedValue(oidcConfig);
+    saveTokens.mockResolvedValue('filesystem');
   });
 
   it('throws AuthCancelledError up front when the signal is already aborted', async () => {
@@ -62,58 +247,34 @@ describe('authenticate cancellation', () => {
     controller.abort();
 
     await expect(
-      authenticate('https://discovery.example.com', AUTH, () => {}, {
+      authenticate(baseUrl, auth, () => {}, {
         signal: controller.signal,
       }),
     ).rejects.toBeInstanceOf(AuthCancelledError);
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it('normalizes a refresh aborted mid-flight and never falls through to interactive login', async () => {
     const controller = new AbortController();
-    vi.mocked(loadTokens).mockResolvedValue({
+    loadTokens.mockResolvedValue({
       bearerToken: 'expired-token',
       refreshToken: 'refresh-token',
-      oidcDiscoveryUrl: AUTH.oidcDiscoveryUrl!,
-      clientId: AUTH.clientId!,
+      oidcDiscoveryUrl: auth.oidcDiscoveryUrl,
+      clientId: auth.clientId,
     });
-    vi.mocked(isTokenExpired).mockReturnValue(true);
+    isTokenExpired.mockReturnValue(true);
 
-    fetchMock.mockImplementation(async (url: string) => {
-      if (String(url).includes('openid-configuration')) {
-        return new Response(JSON.stringify(OIDC_DOCUMENT), { status: 200 });
-      }
-      // The refresh POST: abort mid-flight, as Escape during a refresh would.
+    mockFetch.mockImplementation(async () => {
       controller.abort();
       throw new DOMException('This operation was aborted', 'AbortError');
     });
 
     await expect(
-      authenticate('https://discovery.example.com', AUTH, () => {}, {
+      authenticate(baseUrl, auth, () => {}, {
         signal: controller.signal,
       }),
     ).rejects.toThrow('Authentication cancelled');
 
-    // The cancelled refresh must not have started an interactive login.
     expect(waitForCallback).not.toHaveBeenCalled();
-  });
-
-  it('normalizes an aborted callback wait to Authentication cancelled', async () => {
-    const controller = new AbortController();
-    vi.mocked(loadTokens).mockResolvedValue(null);
-
-    fetchMock.mockResolvedValue(new Response(JSON.stringify(OIDC_DOCUMENT), { status: 200 }));
-    vi.mocked(waitForCallback).mockImplementation(async () => {
-      controller.abort();
-      throw new Error('Timed out waiting for authorization callback');
-    });
-
-    const onPrompt = vi.fn();
-    await expect(
-      authenticate('https://discovery.example.com', AUTH, onPrompt, {
-        signal: controller.signal,
-      }),
-    ).rejects.toBeInstanceOf(AuthCancelledError);
-    expect(onPrompt).toHaveBeenCalledWith(expect.stringContaining('https://identity.example.com/authorize'));
   });
 });

@@ -40,7 +40,7 @@ $env:AGENTMAN_CHROME_EXTENSION="1"; npx --yes @ai-agent-manager/cli@latest https
 
 1. **Run agent manager**:
    ```bash
-   npx --yes @ai-agent-manager/cli@latest https://bootstrap.example.com
+   npx --yes @ai-agent-manager/cli@latest https://skills.example.com
    ```
 
 2. **Select**: Install Chrome Extension from menu
@@ -127,7 +127,7 @@ subagents:
 
 Check syntax and availability:
 ```bash
-npx --yes @ai-agent-manager/cli@latest https://bootstrap.example.com
+npx --yes @ai-agent-manager/cli@latest https://skills.example.com
 # Should see your agent in list
 ```
 
@@ -136,7 +136,7 @@ npx --yes @ai-agent-manager/cli@latest https://bootstrap.example.com
 **Step 1: Start Agent Manager Server**
 
 ```bash
-npx --yes @ai-agent-manager/cli@latest https://bootstrap.example.com
+npx --yes @ai-agent-manager/cli@latest https://skills.example.com
 ```
 
 Select: **Provision Rovo Agents → Chrome Extension**
@@ -186,7 +186,7 @@ Progress bar shows each step. Success message when complete.
 
 | Task | Command/Action |
 |------|----------------|
-| Start agent manager | `npx --yes @ai-agent-manager/cli@latest https://bootstrap.example.com` |
+| Start agent manager | `npx --yes @ai-agent-manager/cli@latest https://skills.example.com` |
 | Build extension | `cd chrome-extension && npm run build` |
 | Reload extension | `chrome://extensions` → click 🔄 on extension |
 | Connect extension | Click 🤖 → paste token → Connect |

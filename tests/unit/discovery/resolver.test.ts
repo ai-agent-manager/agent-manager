@@ -67,6 +67,11 @@ vi.mock('../../../src/bundle/artefact-scanner.js', () => ({
   scanArtefactForSkills: vi.fn(async () => ({ skills: [] })),
 }));
 
+const getValidBearerToken = vi.fn();
+vi.mock('../../../src/auth/index.js', () => ({
+  getValidBearerToken: (...args: unknown[]) => getValidBearerToken(...args),
+}));
+
 const { resolveDiscoverySkills } = await import(
   '../../../src/discovery/resolver.js'
 );
@@ -437,5 +442,40 @@ describe('resolveDiscoverySkills', () => {
     const identities = result.skills.map(deriveSkillInstallKey);
     expect(identities[0]).not.toBe(identities[1]);
     expect(identities.every((identity) => identity.endsWith('/http-skill-a'))).toBe(true);
+  });
+
+  it('refreshes a bearer from authSession before HTTP downloads', async () => {
+    getValidBearerToken.mockResolvedValueOnce('fresh-bearer');
+    const { downloadBundle } = await import('../../../src/bundle/downloader.js');
+    const { bundleSourceKey } = await import('../../../src/bundle/skill-source.js');
+
+    const doc: DiscoveryDocument = {
+      version: '1',
+      sources: [
+        { name: 'protected-bundle', type: 'http', url: 'https://cdn.example.com/agents' },
+      ],
+    };
+
+    await resolveDiscoverySkills(doc, undefined, undefined, {
+      authSession: {
+        discoveryBaseUrl: 'https://discovery.example.com',
+        auth: {
+          required: true,
+          oidcDiscoveryUrl: 'https://idp.example.com/.well-known/openid-configuration',
+          clientId: 'cli',
+        },
+      },
+    });
+
+    expect(getValidBearerToken).toHaveBeenCalledWith(
+      'https://discovery.example.com',
+      expect.objectContaining({ required: true, clientId: 'cli' }),
+    );
+    expect(downloadBundle).toHaveBeenCalledWith(
+      'https://cdn.example.com/agents',
+      undefined,
+      'fresh-bearer',
+      bundleSourceKey('protected-bundle'),
+    );
   });
 });

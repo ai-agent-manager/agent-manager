@@ -15,10 +15,13 @@ export { isOriginInDiscovery } from './token-scope.js';
 export type {
   DiscoveryDocument,
   DiscoveryAuth,
+  DiscoveryApi,
+  DiscoveryProjects,
   DiscoverySource,
   HttpDiscoverySource,
   GitDiscoverySource,
   ArtefactDiscoverySource,
+  DiscoveryTelemetry,
   SourceType,
   SourceStatus,
 } from './types.js';

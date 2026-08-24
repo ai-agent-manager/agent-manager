@@ -11,6 +11,36 @@
       "const": "1",
       "description": "Schema version"
     },
+    "api": {
+      "type": "object",
+      "description": "Authenticated backend API configuration. Omit if no API is available.",
+      "required": ["baseUrl"],
+      "properties": {
+        "baseUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "Base URL of the authenticated REST API (e.g. https://api.example.com). Can be overridden by API_BASE_URL."
+        }
+      },
+      "additionalProperties": false
+    },
+    "projects": {
+      "type": "object",
+      "description": "Projects feature. Omit or set enabled false to hide My Projects.",
+      "required": ["enabled"],
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "When true, enable My Projects (requires auth and a resolved API base URL)."
+        },
+        "exclusiveSource": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, Search & Install and headless installs are limited to skills/agents permitted by the caller's project memberships."
+        }
+      },
+      "additionalProperties": false
+    },
     "auth": {
       "type": "object",
       "description": "Authentication configuration. Omit entirely if no authentication is required.",

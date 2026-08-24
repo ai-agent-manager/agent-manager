@@ -36,6 +36,29 @@ export interface AuthResult {
   backend?: TokenBackend;
 }
 
+/** Session identity used to load/refresh tokens before authenticated HTTP calls. */
+export interface AuthSession {
+  /** Discovery base URL — key for the token store (same as authenticate()). */
+  discoveryBaseUrl: string;
+  auth: DiscoveryAuth;
+}
+
+export interface GetValidBearerTokenOptions {
+  onPrompt?: (authorizeUrl: string) => void;
+  /**
+   * When true, fall through to interactive login if cache/refresh cannot
+   * produce a token. Default false (API / background callers).
+   */
+  allowInteractive?: boolean;
+  /**
+   * Skip the “still valid” short-circuit and attempt refresh (or interactive
+   * login). Used after an HTTP 401.
+   */
+  forceRefresh?: boolean;
+  /** Cancels any in-flight stage (OIDC discovery, callback wait, token exchange/refresh). */
+  signal?: AbortSignal;
+}
+
 export class AuthFlowError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
     super(message);
@@ -54,6 +77,99 @@ export class AuthCancelledError extends AuthFlowError {
 export interface AuthenticateOptions {
   /** Cancels any in-flight stage (OIDC discovery, callback wait, token exchange/refresh). */
   signal?: AbortSignal;
+}
+
+function requireAuthConfig(auth: DiscoveryAuth): asserts auth is DiscoveryAuth & {
+  oidcDiscoveryUrl: string;
+  clientId: string;
+} {
+  if (!auth.oidcDiscoveryUrl || !auth.clientId) {
+    throw new AuthFlowError(
+      'Discovery document requires authentication but is missing oidcDiscoveryUrl or clientId',
+    );
+  }
+}
+
+/**
+ * Resolve a usable bearer token (cache → refresh → optional interactive login).
+ */
+async function resolveBearerToken(
+  baseUrl: string,
+  auth: DiscoveryAuth,
+  options: GetValidBearerTokenOptions = {},
+): Promise<AuthResult> {
+  requireAuthConfig(auth);
+
+  const { onPrompt, allowInteractive = false, forceRefresh = false, signal } = options;
+
+  if (signal?.aborted) throw new AuthCancelledError();
+
+  const cached = await loadTokens(baseUrl);
+  if (cached && !forceRefresh && !isTokenExpired(cached)) {
+    return { bearerToken: cached.bearerToken, fromCache: true };
+  }
+
+  try {
+    const oidcConfig = await fetchOidcConfiguration(auth.oidcDiscoveryUrl, { signal });
+
+    const refreshToken = cached?.refreshToken;
+    if (refreshToken) {
+      try {
+        const refreshed = await refreshAccessToken(
+          oidcConfig,
+          auth.clientId,
+          refreshToken,
+          signal,
+        );
+        // Preserve refresh_token when the provider omits a new one.
+        if (!refreshed.refresh_token) {
+          refreshed.refresh_token = refreshToken;
+        }
+        const tokens = toStoredTokens(refreshed, auth);
+        const backend = await saveTokens(baseUrl, tokens);
+        return { bearerToken: tokens.bearerToken, fromCache: false, backend };
+      } catch (err) {
+        // A cancelled refresh must not fall through and start an interactive
+        // login the user just cancelled — rethrow for the outer normalizer.
+        if (signal?.aborted) throw err;
+        // Refresh failed — fall through to interactive or throw
+      }
+    }
+
+    if (allowInteractive && onPrompt) {
+      return interactiveLogin(baseUrl, auth, oidcConfig, onPrompt, signal);
+    }
+
+    throw new AuthFlowError(
+      forceRefresh
+        ? 'Authentication expired and token refresh failed. Please sign in again.'
+        : 'Authentication required but no valid token is available. Please sign in again.',
+    );
+  } catch (err) {
+    // Whichever stage the abort interrupted (each surfaces it differently —
+    // AbortError from fetch, CallbackServerError from the callback wait),
+    // callers see one normalized cancellation error.
+    if (signal?.aborted) throw new AuthCancelledError();
+    throw err;
+  }
+}
+
+/**
+ * Return a usable bearer token, refreshing from the token store when near expiry.
+ *
+ * 1. Load cached tokens for `baseUrl`.
+ * 2. If present, unexpired, and not `forceRefresh` — return the bearer.
+ * 3. If a refresh token is available — refresh, persist, return.
+ * 4. If `allowInteractive` + `onPrompt` — run the authorization-code flow.
+ * 5. Otherwise throw.
+ */
+export async function getValidBearerToken(
+  baseUrl: string,
+  auth: DiscoveryAuth,
+  options: GetValidBearerTokenOptions = {},
+): Promise<string> {
+  const result = await resolveBearerToken(baseUrl, auth, options);
+  return result.bearerToken;
 }
 
 /**
@@ -75,55 +191,11 @@ export async function authenticate(
   onPrompt: (authorizeUrl: string) => void,
   options: AuthenticateOptions = {},
 ): Promise<AuthResult> {
-  const { signal } = options;
-
-  if (!auth.oidcDiscoveryUrl || !auth.clientId) {
-    throw new AuthFlowError(
-      'Discovery document requires authentication but is missing oidcDiscoveryUrl or clientId',
-    );
-  }
-
-  if (signal?.aborted) throw new AuthCancelledError();
-
-  // Check cached tokens first
-  const cached = await loadTokens(baseUrl);
-  if (cached && !isTokenExpired(cached)) {
-    return { bearerToken: cached.bearerToken, fromCache: true };
-  }
-
-  try {
-    // Fetch OIDC configuration
-    const oidcConfig = await fetchOidcConfiguration(auth.oidcDiscoveryUrl, { signal });
-
-    // Try refresh if we have a refresh token
-    if (cached?.refreshToken) {
-      try {
-        const refreshed = await refreshAccessToken(
-          oidcConfig,
-          auth.clientId,
-          cached.refreshToken,
-          signal,
-        );
-        const tokens = toStoredTokens(refreshed, auth);
-        const backend = await saveTokens(baseUrl, tokens);
-        return { bearerToken: tokens.bearerToken, fromCache: false, backend };
-      } catch (err) {
-        // A cancelled refresh must not fall through and start an interactive
-        // login the user just cancelled — rethrow for the outer normalizer.
-        if (signal?.aborted) throw err;
-        // Refresh failed — fall through to interactive login
-      }
-    }
-
-    // Full interactive authorization code flow
-    return await interactiveLogin(baseUrl, auth, oidcConfig, onPrompt, signal);
-  } catch (err) {
-    // Whichever stage the abort interrupted (each surfaces it differently —
-    // AbortError from fetch, CallbackServerError from the callback wait),
-    // callers see one normalized cancellation error.
-    if (signal?.aborted) throw new AuthCancelledError();
-    throw err;
-  }
+  return resolveBearerToken(baseUrl, auth, {
+    allowInteractive: true,
+    onPrompt,
+    signal: options.signal,
+  });
 }
 
 /**

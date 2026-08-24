@@ -40,8 +40,8 @@ export function parseCli() {
     --help      Show this help
 
   ${chalk.bold("Examples")}
-    $ agentman https://bootstrap.example.com
-    $ agentman https://bootstrap.example.com --update
+    $ agentman https://skills.example.com
+    $ agentman https://skills.example.com --update
     $ agentman ./my-agents
     $ agentman /absolute/path/to/agents --update
     $ agentman https://github.com/org/my-skills-repo --config ai-skills.yml

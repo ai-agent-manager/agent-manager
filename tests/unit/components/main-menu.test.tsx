@@ -16,6 +16,34 @@ describe("MainMenu", () => {
             const { lastFrame } = render(<MainMenu hasBundleContents={false} onSelect={noop} />);
             expect(lastFrame()).not.toContain("Search & Install");
         });
+
+        it('shows "My Projects" when hasProjectsAccess is true', () => {
+            const { lastFrame } = render(
+                <MainMenu hasBundleContents={false} hasProjectsAccess={true} onSelect={noop} />,
+            );
+            expect(lastFrame()).toContain("My Projects");
+        });
+
+        it('shows "My Projects" before "Search & Install" when both are available', () => {
+            const { lastFrame } = render(
+                <MainMenu hasBundleContents={true} hasProjectsAccess={true} onSelect={noop} />,
+            );
+            const frame = lastFrame() ?? "";
+            expect(frame.indexOf("My Projects")).toBeGreaterThanOrEqual(0);
+            expect(frame.indexOf("My Projects")).toBeLessThan(frame.indexOf("Search & Install"));
+        });
+
+        it('hides "My Projects" when hasProjectsAccess is false', () => {
+            const { lastFrame } = render(
+                <MainMenu hasBundleContents={false} hasProjectsAccess={false} onSelect={noop} />,
+            );
+            expect(lastFrame()).not.toContain("My Projects");
+        });
+
+        it('hides "My Projects" by default', () => {
+            const { lastFrame } = render(<MainMenu hasBundleContents={false} onSelect={noop} />);
+            expect(lastFrame()).not.toContain("My Projects");
+        });
     });
 
     describe("permanent items", () => {
