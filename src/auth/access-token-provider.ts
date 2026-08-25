@@ -50,6 +50,8 @@ export function createDiscoveryAccessTokenProvider(
 
     const result = await authenticate(context.baseUrl, context.document.auth, onAuthPrompt, {
       signal,
+      interactiveMode: true,
+      requestUrl: contentUrl,
     });
     return result.bearerToken;
   };

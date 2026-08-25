@@ -65,6 +65,10 @@ describe('listProjects', () => {
     expect(getValidBearerToken).toHaveBeenCalledWith(
       authSession.discoveryBaseUrl,
       authSession.auth,
+      {
+        interactiveMode: undefined,
+        requestUrl: 'https://api.example.com/projects',
+      },
     );
     expect(mockFetch).toHaveBeenCalledWith(
       'https://api.example.com/projects',

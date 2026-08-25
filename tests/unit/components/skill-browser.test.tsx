@@ -234,7 +234,10 @@ describe('SkillBrowser', () => {
       await flushInkInput();
       await press(stdin, DOWN);
 
-      expect(lastFrame()).toContain('SECOND-DESC');
+      // Windows CI can lag one tick behind ink's cursor update after arrow input.
+      await vi.waitFor(() => {
+        expect(lastFrame()).toContain('SECOND-DESC');
+      });
       expect(lastFrame()).not.toContain('FIRST-DESC');
     });
   });

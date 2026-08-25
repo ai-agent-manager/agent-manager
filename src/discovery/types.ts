@@ -8,12 +8,14 @@ export interface DiscoveryAuth {
   required: boolean;
   /**
    * URL to the standard OIDC discovery document.
-   * Required when `required` is true.
+   * Required for browser OAuth when `required` is true (optional when clients use
+   * `AGENTMAN_ACCESS_TOKEN` instead).
    */
   oidcDiscoveryUrl?: string;
   /**
    * OAuth2 client ID that agent-manager should use.
-   * Required when `required` is true.
+   * Required for browser OAuth when `required` is true (optional when clients use
+   * `AGENTMAN_ACCESS_TOKEN` instead).
    */
   clientId?: string;
   /** OAuth2 scopes to request. Defaults to ["openid"] if omitted. */

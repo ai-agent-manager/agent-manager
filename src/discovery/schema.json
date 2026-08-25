@@ -53,11 +53,11 @@
         "oidcDiscoveryUrl": {
           "type": "string",
           "format": "uri",
-          "description": "URL to the standard OIDC discovery document (e.g. https://auth.example.com/.well-known/openid-configuration)"
+          "description": "URL to the standard OIDC discovery document (e.g. https://auth.example.com/.well-known/openid-configuration). Required for browser OAuth when auth.required is true; may be omitted when all clients authenticate via AGENTMAN_ACCESS_TOKEN."
         },
         "clientId": {
           "type": "string",
-          "description": "OAuth2 client ID that agent-manager should use"
+          "description": "OAuth2 client ID that agent-manager should use. Required for browser OAuth when auth.required is true; may be omitted when all clients authenticate via AGENTMAN_ACCESS_TOKEN."
         },
         "scopes": {
           "type": "array",
@@ -66,12 +66,7 @@
           "description": "OAuth2 scopes to request. Defaults to [\"openid\"] if omitted."
         }
       },
-      "if": {
-        "properties": { "required": { "const": true } }
-      },
-      "then": {
-        "required": ["required", "oidcDiscoveryUrl", "clientId"]
-      }
+      "additionalProperties": false
     },
     "telemetry": {
       "type": "object",

@@ -71,7 +71,7 @@ The discovery document requires auth, so the CLI will open a browser login. Use:
 | `alice`  | `password123` |
 | `bob`    | `password456` |
 
-After login you should see **My Projects** (projects feature + API base URL + bearer token).
+After login you should see **My Projects** (projects feature + API base URL + bearer token). See [docs/projects.md](../docs/projects.md) for the feature reference.
 
 Interactive backend API sandbox (OpenAPI plugin): [http://localhost:8080/_spec](http://localhost:8080/_spec)
 

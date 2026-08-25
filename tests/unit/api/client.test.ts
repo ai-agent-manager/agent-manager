@@ -178,6 +178,10 @@ describe('apiRequest', () => {
     expect(getValidBearerToken).toHaveBeenCalledWith(
       authSession.discoveryBaseUrl,
       authSession.auth,
+      {
+        interactiveMode: undefined,
+        requestUrl: 'https://api.example.com/projects',
+      },
     );
     expect(mockFetch).toHaveBeenCalledWith(
       'https://api.example.com/projects',
@@ -263,12 +267,20 @@ describe('apiRequest', () => {
       1,
       authSession.discoveryBaseUrl,
       authSession.auth,
+      {
+        interactiveMode: undefined,
+        requestUrl: 'https://api.example.com/projects',
+      },
     );
     expect(getValidBearerToken).toHaveBeenNthCalledWith(
       2,
       authSession.discoveryBaseUrl,
       authSession.auth,
-      { forceRefresh: true },
+      {
+        interactiveMode: undefined,
+        requestUrl: 'https://api.example.com/projects',
+        forceRefresh: true,
+      },
     );
     expect(mockFetch).toHaveBeenNthCalledWith(
       2,

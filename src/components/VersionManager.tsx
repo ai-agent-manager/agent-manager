@@ -97,14 +97,18 @@ export function VersionManager({
   const downloadAuthSession: AuthSession | undefined =
     authSession ??
     (source.type === 'discovery' && source.discovery.auth?.required
-      ? { discoveryBaseUrl: source.baseUrl, auth: source.discovery.auth }
+      ? { discoveryBaseUrl: source.baseUrl, auth: source.discovery.auth, interactiveMode: true }
       : undefined);
 
-  async function resolveDownloadBearer(): Promise<string | undefined> {
+  async function resolveDownloadBearer(requestUrl?: string): Promise<string | undefined> {
     if (!downloadAuthSession) return undefined;
     return getValidBearerToken(
       downloadAuthSession.discoveryBaseUrl,
       downloadAuthSession.auth,
+      {
+        interactiveMode: downloadAuthSession.interactiveMode,
+        requestUrl: requestUrl ?? downloadAuthSession.discoveryBaseUrl,
+      },
     );
   }
 
@@ -269,7 +273,7 @@ export function VersionManager({
             setBrowseLoading(true);
             (async () => {
               try {
-                const bearer = await resolveDownloadBearer();
+                const bearer = await resolveDownloadBearer(source.baseUrl);
                 const { zipPath } = await downloadBundle(source.baseUrl, version, bearer);
 
                 try {
@@ -674,7 +678,7 @@ export function VersionManager({
             setSubScreen('browse');
             (async () => {
               try {
-                const bearer = await resolveDownloadBearer();
+                const bearer = await resolveDownloadBearer(source.baseUrl);
                 const index = await fetchIndex(source.baseUrl, bearer);
                 setRemoteVersions(index.agents);
               } catch (error) {

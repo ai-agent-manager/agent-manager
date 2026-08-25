@@ -152,14 +152,20 @@ function isAuthSession(auth: ApiAuth): auth is AuthSession {
   return 'discoveryBaseUrl' in auth && 'auth' in auth;
 }
 
-async function resolveApiBearer(auth: ApiAuth, forceRefresh = false): Promise<string> {
+async function resolveApiBearer(
+  auth: ApiAuth,
+  requestUrl: string,
+  forceRefresh = false,
+): Promise<string> {
   if (!isAuthSession(auth)) {
     return auth.bearerToken;
   }
-  if (forceRefresh) {
-    return getValidBearerToken(auth.discoveryBaseUrl, auth.auth, { forceRefresh: true });
-  }
-  return getValidBearerToken(auth.discoveryBaseUrl, auth.auth);
+  const tokenOptions = {
+    interactiveMode: auth.interactiveMode,
+    requestUrl,
+    ...(forceRefresh ? { forceRefresh: true as const } : {}),
+  };
+  return getValidBearerToken(auth.discoveryBaseUrl, auth.auth, tokenOptions);
 }
 
 /**
@@ -177,7 +183,7 @@ export async function apiRequest<T>(
   const normalisedPath = path.startsWith('/') ? path : `/${path}`;
   const url = `${base}${normalisedPath}`;
 
-  const bearerToken = await resolveApiBearer(auth);
+  const bearerToken = await resolveApiBearer(auth, url);
 
   try {
     const { data } = await fetchJson<T>(url, path, bearerToken, options);
@@ -188,7 +194,7 @@ export async function apiRequest<T>(
     }
   }
 
-  const refreshed = await resolveApiBearer(auth, true);
+  const refreshed = await resolveApiBearer(auth, url, true);
   const { data } = await fetchJson<T>(url, path, refreshed, options);
   return data as T;
 }

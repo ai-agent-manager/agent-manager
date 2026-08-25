@@ -470,6 +470,10 @@ describe('resolveDiscoverySkills', () => {
     expect(getValidBearerToken).toHaveBeenCalledWith(
       'https://discovery.example.com',
       expect.objectContaining({ required: true, clientId: 'cli' }),
+      {
+        interactiveMode: undefined,
+        requestUrl: 'https://cdn.example.com/agents',
+      },
     );
     expect(downloadBundle).toHaveBeenCalledWith(
       'https://cdn.example.com/agents',
