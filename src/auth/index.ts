@@ -20,7 +20,11 @@ export type {
 } from './access-token-provider.js';
 export {
   AGENTMAN_ACCESS_TOKEN_ENV,
+  AGENTMAN_INTERACTIVE_TOKEN_HOSTS_ENV,
   getEnvAccessToken,
+  getInteractiveTokenHosts,
+  hostKeyFromHttpUrl,
+  isHostAllowedForInteractiveEnvToken,
 } from './env-token.js';
 export { fetchOidcConfiguration, OidcDiscoveryError } from './oidc.js';
 export type { OidcConfiguration } from './oidc.js';

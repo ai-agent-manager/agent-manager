@@ -71,9 +71,13 @@ export interface ResolveDiscoveryOptions {
 async function resolveDownloadBearer(
   accessToken: string | undefined,
   authSession: AuthSession | undefined,
+  requestUrl?: string,
 ): Promise<string | undefined> {
   if (authSession) {
-    return getValidBearerToken(authSession.discoveryBaseUrl, authSession.auth);
+    return getValidBearerToken(authSession.discoveryBaseUrl, authSession.auth, {
+      interactiveMode: authSession.interactiveMode,
+      requestUrl: requestUrl ?? authSession.discoveryBaseUrl,
+    });
   }
   return accessToken;
 }
@@ -116,7 +120,7 @@ export async function resolveDiscoverySkills(
           // source.url is the content root: the client appends index.json and
           // <version>/… to it and inserts no path of its own.
           const sourceKey = bundleSourceKey(source.name);
-          const bearer = await resolveDownloadBearer(accessToken, authSession);
+          const bearer = await resolveDownloadBearer(accessToken, authSession, source.url);
           const { zipPath, version } = await downloadBundle(source.url, undefined, bearer, sourceKey);
           const result = await extractBundle(zipPath, { sourceKey, contentRoot: source.url });
           // Deliberately no setCurrentBundle here: the `current` symlink points
@@ -171,7 +175,7 @@ export async function resolveDiscoverySkills(
             installLayout: 'namespaced',
             sha256: artefactSha256,
           };
-          const bearer = await resolveDownloadBearer(accessToken, authSession);
+          const bearer = await resolveDownloadBearer(accessToken, authSession, source.url);
           const download = await downloadArtefact(artefactSource, {
             bearerToken: bearer,
           });

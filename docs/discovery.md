@@ -2,7 +2,7 @@
 
 ## Overview
 
-Agent Manager uses a **discovery document** served at a well-known path to locate skills and determine authentication requirements. Any team can publish a discovery document to their own domain. When auth is required, see [Authentication](authentication.md). For project-scoped installs, see [My Projects](projects.md).
+Agent Manager uses a **discovery document** served at a well-known path to locate skills and determine authentication requirements. Any team can publish a discovery document to their own domain. When auth is required, see [Authentication](authentication.md) (including env-token behaviour in interactive vs headless mode). For project-scoped installs, see [My Projects](projects.md).
 
 **Well-known path:** `<base_url>/.well-known/agents/discovery.json`
 
@@ -65,7 +65,7 @@ When a user provides a base URL to agent-manager, it fetches the discovery docum
 | `projects.exclusiveSource` | boolean | No | When `true`, limit global installs to project membership allowlists |
 | `auth` | object | No | Authentication configuration — see [Authentication](authentication.md) |
 | `auth.required` | boolean | Yes (if auth present) | Whether authentication is needed to access skills |
-| `auth.oidcDiscoveryUrl` | string (URI) | Yes for browser OAuth when `auth.required` | URL to the OIDC discovery document |
+| `auth.oidcDiscoveryUrl` | string (URI) | Yes for browser OAuth when `auth.required` | URL to the OIDC discovery document (may be omitted when all clients use `AGENTMAN_ACCESS_TOKEN`) |
 | `auth.clientId` | string | Yes for browser OAuth when `auth.required` | OAuth2 client ID for agent-manager to use |
 | `auth.scopes` | string[] | No | OAuth2 scopes to request (defaults to `["openid"]`) |
 | `telemetry` | object | No | Telemetry configuration (omit to leave unconfigured) |
@@ -79,7 +79,7 @@ When a user provides a base URL to agent-manager, it fetches the discovery docum
 
 ### Source Types
 
-- **`http`** — `url` is the **content root**: the directory owning that source's `index.json` and its versioned subdirectories. For version `1.2.3`, agent-manager reads `<url>/index.json`, then `<url>/1.2.3/bundle.zip` and `<url>/1.2.3/bundle.zip.sha256`. It appends nothing else — there is no implicit `agents` path segment, so a source may publish at any path. If [authentication](authentication.md) is required, agent-manager passes the access token as a Bearer header. Supports both skills and rovo agents.
+- **`http`** — `url` is the **content root**: the directory owning that source's `index.json` and its versioned subdirectories. For version `1.2.3`, agent-manager reads `<url>/index.json`, then `<url>/1.2.3/bundle.zip` and `<url>/1.2.3/bundle.zip.sha256`. It appends nothing else — there is no implicit `agents` path segment, so a source may publish at any path. If [authentication](authentication.md) is required, agent-manager passes the access token as a Bearer header. Supports both skills and rovo agents. When using `AGENTMAN_ACCESS_TOKEN` in the interactive TUI, include the content host in `AGENTMAN_INTERACTIVE_TOKEN_HOSTS` if it differs from the discovery base URL.
 - **`git`** — URL points to a git repository in the [Claude Code plugin marketplace format](https://code.claude.com/docs/en/plugin-marketplaces). Agent-manager clones the repo and scans for skills (`.claude-plugin/` directory, `skills/<name>/SKILL.md` files). Only skills are supported in this model.
 - **`artefact`** — URL points directly to a `.zip` file containing one or more packaged skills. Artefact URLs must use `https://` (plain `http://` is only allowed for `localhost` during development). Agent-manager downloads the zip, checks integrity against a `.sha256` sidecar if one exists (the install proceeds with a warning if no sidecar is found — publish a sidecar or set `artefact-sha256` for stronger guarantees), then extracts and scans for skills. Artefact sources are **untrusted third-party packages** — review the source before adding it to your discovery document. Artefact sources produce skills only (no rovo agents).
 

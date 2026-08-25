@@ -35,7 +35,7 @@ Agent Manager does not invent or hardcode API hosts. Use the discovery field for
 API_BASE_URL=https://api.example.com npx -y @ai-agent-manager/cli@latest https://example.com
 ```
 
-All API calls use the same OIDC bearer token as protected skill downloads — see [Authentication](authentication.md) for login, refresh, and `AGENTMAN_ACCESS_TOKEN`.
+All API calls use the same OIDC bearer token as protected skill downloads — see [Authentication](authentication.md) for login, refresh, `AGENTMAN_ACCESS_TOKEN` (headless/CI), and `AGENTMAN_INTERACTIVE_TOKEN_HOSTS` (required in the TUI when using the env token).
 
 ## Interactive menu
 

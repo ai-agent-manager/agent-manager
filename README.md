@@ -151,13 +151,21 @@ If your bundle server requires login, Agent Manager opens a browser OAuth flow o
 3. Tokens are stored in the OS keychain when available, otherwise in `~/.agentman/auth/` (`0600`).
 4. Before each authenticated API or content download, Agent Manager reloads the store and refreshes the token if it is near expiry (or retries once after an HTTP 401).
 
-Prefer a token instead of a browser — works in interactive **and** headless mode:
+**CI / headless** — skip the browser with a token:
 
 ```bash
-AGENTMAN_ACCESS_TOKEN=... npx -y @ai-agent-manager/cli@latest <source>
+AGENTMAN_ACCESS_TOKEN=... npx -y @ai-agent-manager/cli@latest <source> --config .github/ai-skills.yml
 ```
 
-Use that in CI with `--config`. `AGENTMAN_ACCESS_TOKEN` is sent as-is (no store lookup or refresh). See [docs/authentication.md](docs/authentication.md) for the full auth flow.
+**Interactive TUI** — same env var, but you must also allowlist the hosts it may be sent to (discovery, API, and content hosts):
+
+```bash
+AGENTMAN_ACCESS_TOKEN=... \
+AGENTMAN_INTERACTIVE_TOKEN_HOSTS=discovery.example.com,cdn.example.com \
+npx -y @ai-agent-manager/cli@latest https://discovery.example.com
+```
+
+Full details: [docs/authentication.md](docs/authentication.md).
 
 ### Force re-download
 

@@ -140,10 +140,12 @@ async function acquireDiscoverySkills(
             source.baseUrl,
             source.discovery.auth,
             onAuthPrompt,
+            { interactiveMode: true },
         );
         authSession = {
             discoveryBaseUrl: source.baseUrl,
             auth: source.discovery.auth,
+            interactiveMode: true,
         };
         if (!authResult.fromCache && authResult.backend === 'filesystem') {
             warnings.push("Tokens stored at ~/.agentman/auth/ (OS keychain unavailable, using filesystem with restricted permissions)");

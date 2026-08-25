@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { AGENTMAN_ACCESS_TOKEN_ENV } from '../../../src/auth/env-token.js';
+import { AGENTMAN_ACCESS_TOKEN_ENV, AGENTMAN_INTERACTIVE_TOKEN_HOSTS_ENV } from '../../../src/auth/env-token.js';
 
 const loadTokens = vi.fn();
 const saveTokens = vi.fn();
@@ -281,7 +281,8 @@ describe('authenticate cancellation', () => {
 });
 
 describe('AGENTMAN_ACCESS_TOKEN', () => {
-  const previous = process.env[AGENTMAN_ACCESS_TOKEN_ENV];
+  const previousToken = process.env[AGENTMAN_ACCESS_TOKEN_ENV];
+  const previousHosts = process.env[AGENTMAN_INTERACTIVE_TOKEN_HOSTS_ENV];
 
   beforeEach(() => {
     loadTokens.mockReset();
@@ -291,10 +292,15 @@ describe('AGENTMAN_ACCESS_TOKEN', () => {
   });
 
   afterEach(() => {
-    if (previous === undefined) {
+    if (previousToken === undefined) {
       delete process.env[AGENTMAN_ACCESS_TOKEN_ENV];
     } else {
-      process.env[AGENTMAN_ACCESS_TOKEN_ENV] = previous;
+      process.env[AGENTMAN_ACCESS_TOKEN_ENV] = previousToken;
+    }
+    if (previousHosts === undefined) {
+      delete process.env[AGENTMAN_INTERACTIVE_TOKEN_HOSTS_ENV];
+    } else {
+      process.env[AGENTMAN_INTERACTIVE_TOKEN_HOSTS_ENV] = previousHosts;
     }
   });
 
@@ -350,5 +356,56 @@ describe('AGENTMAN_ACCESS_TOKEN', () => {
 
     expect(result.bearerToken).toBe('padded-token');
     expect(result.fromEnv).toBe(true);
+  });
+
+  it('requires AGENTMAN_INTERACTIVE_TOKEN_HOSTS in interactive mode', async () => {
+    process.env[AGENTMAN_ACCESS_TOKEN_ENV] = 'env-bearer-token';
+
+    await expect(
+      authenticate(baseUrl, { required: true }, () => {}, { interactiveMode: true }),
+    ).rejects.toThrow(/AGENTMAN_INTERACTIVE_TOKEN_HOSTS/i);
+  });
+
+  it('uses AGENTMAN_ACCESS_TOKEN in interactive mode when the host is allowlisted', async () => {
+    process.env[AGENTMAN_ACCESS_TOKEN_ENV] = 'env-bearer-token';
+    process.env[AGENTMAN_INTERACTIVE_TOKEN_HOSTS_ENV] = 'discovery.example.com';
+
+    const result = await authenticate(baseUrl, { required: true }, () => {}, {
+      interactiveMode: true,
+    });
+
+    expect(result).toEqual({
+      bearerToken: 'env-bearer-token',
+      fromCache: true,
+      fromEnv: true,
+    });
+  });
+
+  it('refuses AGENTMAN_ACCESS_TOKEN in interactive mode for a non-allowlisted host', async () => {
+    process.env[AGENTMAN_ACCESS_TOKEN_ENV] = 'env-bearer-token';
+    process.env[AGENTMAN_INTERACTIVE_TOKEN_HOSTS_ENV] = 'other.example.com';
+
+    await expect(
+      authenticate(baseUrl, { required: true }, () => {}, { interactiveMode: true }),
+    ).rejects.toThrow(/not listed in AGENTMAN_INTERACTIVE_TOKEN_HOSTS/i);
+  });
+
+  it('checks requestUrl against the allowlist in interactive mode', async () => {
+    process.env[AGENTMAN_ACCESS_TOKEN_ENV] = 'env-bearer-token';
+    process.env[AGENTMAN_INTERACTIVE_TOKEN_HOSTS_ENV] = 'cdn.example.com';
+
+    await expect(
+      getValidBearerToken(baseUrl, auth, {
+        interactiveMode: true,
+        requestUrl: 'https://cdn.example.com/skills.zip',
+      }),
+    ).resolves.toBe('env-bearer-token');
+
+    await expect(
+      getValidBearerToken(baseUrl, auth, {
+        interactiveMode: true,
+        requestUrl: 'https://discovery.example.com',
+      }),
+    ).rejects.toThrow(/not listed in AGENTMAN_INTERACTIVE_TOKEN_HOSTS/i);
   });
 });

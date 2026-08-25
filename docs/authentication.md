@@ -15,18 +15,54 @@ Publishers configure auth in the discovery document's `auth` block. See the [fie
 
 JSON Schema: [`src/discovery/schema.json`](../src/discovery/schema.json).
 
+## Environment variables
+
+| Variable | Required when | Description |
+|----------|---------------|-------------|
+| `AGENTMAN_ACCESS_TOKEN` | Optional | Bearer token that skips browser OAuth when set |
+| `AGENTMAN_INTERACTIVE_TOKEN_HOSTS` | Interactive mode **and** `AGENTMAN_ACCESS_TOKEN` is set | Comma-separated host allowlist for where the env token may be sent |
+
 ## `AGENTMAN_ACCESS_TOKEN`
 
-Set this environment variable to a bearer token to skip the browser OAuth flow. It works in **interactive** and **headless** mode:
+Set this environment variable to a bearer token to skip the browser OAuth flow.
+
+**Headless / CI** (`--config`):
 
 ```bash
-AGENTMAN_ACCESS_TOKEN=eyJ... npx -y @ai-agent-manager/cli@latest https://your-bundle-server.com
 AGENTMAN_ACCESS_TOKEN=eyJ... npx -y @ai-agent-manager/cli@latest https://your-bundle-server.com --config .github/ai-skills.yml
 ```
 
-When set (non-empty after trimming), agent-manager uses the value directly and does not require `oidcDiscoveryUrl` / `clientId` in the discovery document. This is the usual approach for CI.
+When set (non-empty after trimming), agent-manager uses the value directly and does not require `oidcDiscoveryUrl` / `clientId` in the discovery document. This is the usual approach for CI and headless mode.
 
 The token is sent as-is — no store lookup, no refresh.
+
+## `AGENTMAN_INTERACTIVE_TOKEN_HOSTS`
+
+In **interactive** mode (the TUI), setting `AGENTMAN_ACCESS_TOKEN` also requires this variable: a comma-separated list of hosts the env token may be sent to.
+
+Each entry may be:
+
+- a bare hostname (`example.com`)
+- `host:port` (`cdn.example.com:8443`)
+- an `http(s)://` URL (only the host portion is used)
+
+```bash
+AGENTMAN_ACCESS_TOKEN=eyJ... \
+AGENTMAN_INTERACTIVE_TOKEN_HOSTS=discovery.example.com,cdn.example.com,api.example.com \
+npx -y @ai-agent-manager/cli@latest https://discovery.example.com
+```
+
+The allowlist is checked against:
+
+- the discovery base URL you pass on the command line
+- the resolved API base URL (discovery `api.baseUrl` or `API_BASE_URL`)
+- each protected content download URL (HTTP bundle roots, artefact zip URLs, and similar)
+
+If a request target is not listed, agent-manager **refuses** to send the env token and exits with an error — it does not fall back to browser OAuth while the env var remains set.
+
+Headless mode and `--config` installs do **not** require `AGENTMAN_INTERACTIVE_TOKEN_HOSTS`. There, `AGENTMAN_ACCESS_TOKEN` works without a host allowlist.
+
+If `AGENTMAN_ACCESS_TOKEN` is unset, interactive mode uses browser OAuth as usual and the allowlist is not required.
 
 ## Browser OAuth (OIDC)
 
@@ -66,6 +102,8 @@ Agent Manager does **not** rely on a one-shot login at startup. Before each auth
 For API requests that still receive HTTP 401 (for example tokens without a known `expires_in`), Agent Manager force-refreshes once and retries the request a single time.
 
 In headless mode, `AGENTMAN_ACCESS_TOKEN` overrides the store entirely. When that env var is unset, headless uses the same cache/refresh path as the interactive client (browser login is not available in CI — use the env token or a pre-populated store).
+
+In interactive mode, a valid `AGENTMAN_ACCESS_TOKEN` (with a matching host allowlist) also overrides the store for allowed hosts — the same no-refresh behaviour as headless.
 
 ## Token storage
 
