@@ -86,9 +86,9 @@ describe("getRepoSkillsDir", () => {
     expect(tool.getRepoSkillsDir(repoRoot)).toBe(path.join(repoRoot, ".windsurf", "skills"));
   });
 
-  it("github-copilot returns <repo>/.github/copilot/skills/", () => {
+  it("github-copilot returns <repo>/.github/skills/", () => {
     const tool = getSkillTools().find((t) => t.id === "github-copilot")!;
-    expect(tool.getRepoSkillsDir(repoRoot)).toBe(path.join(repoRoot, ".github", "copilot", "skills"));
+    expect(tool.getRepoSkillsDir(repoRoot)).toBe(path.join(repoRoot, ".github", "skills"));
   });
 
   it("agents returns <repo>/.agents/skills/", () => {

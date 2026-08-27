@@ -99,7 +99,7 @@ Repository-scoped installs use tool-specific paths within the repo:
 | Agents | `<repo>/.agents/skills/<skill-name>/` |
 | Claude Code | `<repo>/.claude/skills/<skill-name>/` |
 | Cursor | `<repo>/.cursor/skills/<skill-name>/` |
-| GitHub Copilot | `<repo>/.github/copilot/skills/<skill-name>/` |
+| GitHub Copilot | `<repo>/.github/skills/<skill-name>/` |
 | Kiro | `<repo>/.kiro/skills/<skill-name>/` |
 | Devin Desktop (formerly Windsurf) | `<repo>/.windsurf/skills/<skill-name>/` |
 
