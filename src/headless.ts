@@ -5,12 +5,23 @@ import { extractBundle } from './bundle/extractor.js';
 import { importLocalBundle } from './bundle/importer.js';
 import { scanBundle, type SkillInfo } from './bundle/scanner.js';
 import { setCurrentBundle } from './bundle/cache.js';
-import { resolveSource } from './bundle/source.js';
-import { buildPinForDirectorySource, deriveSkillInstallKey, type SkillSourcePin } from './bundle/skill-source.js';
-
-// Re-exported for backward compatibility with existing importers/tests.
-export { buildPinForDirectorySource } from './bundle/skill-source.js';
-import { resolveDiscoverySkills } from './discovery/index.js';
+import {
+  resolveSkillSource,
+  isRepoSource,
+  isArtefactSource,
+  isBundleSource,
+  buildSourcePin,
+  buildPinForDirectorySource,
+  deriveSkillInstallKey,
+  type SkillSource,
+  type SkillSourcePin,
+} from './bundle/skill-source.js';
+import { downloadRepoArchive } from './bundle/repo-downloader.js';
+import { scanRepoForSkills } from './bundle/repo-scanner.js';
+import { downloadArtefact } from './bundle/artefact-downloader.js';
+import { scanArtefactForSkills } from './bundle/artefact-scanner.js';
+import { fetchDiscoveryDocument, resolveDiscoverySkills } from './discovery/index.js';
+import type { DiscoveryDocument } from './discovery/types.js';
 import { authenticate, type AuthSession } from './auth/index.js';
 import {
   isProjectsExclusiveSource,
@@ -95,20 +106,31 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
   console.log(`  Skills:  ${config.skills.join(", ")}\n`);
   console.log(`  Bundle version: ${config.bundleVersion ?? "latest"}\n`);
 
-  // Acquire skills
-  const source = await resolveSource(sourceInput);
+  // Resolve the source type (repo, artefact, or bundle)
+  const skillSource = await resolveSkillSource(sourceInput);
   let allSkills: SkillInfo[];
   let bundleVersion: string;
   let sourcePin: SkillSourcePin | undefined;
 
-  if (source.type === "discovery") {
-    // sourcePin stays undefined for discovery installs — added in the namespaced-layout follow-up.
+  // For bundle URLs, check if there's a discovery document available
+  let discovery: DiscoveryDocument | undefined;
+  if (isBundleSource(skillSource) && skillSource.baseUrl && !skillSource.dirPath) {
+    try {
+      discovery = await fetchDiscoveryDocument(skillSource.baseUrl);
+    } catch {
+      // No discovery document found - treat as legacy bundle
+    }
+  }
+
+  // Handle each source type
+  if (discovery) {
+    // Discovery document found for bundle URL
     console.log("[agentman] Discovery document found");
 
     let accessToken: string | undefined;
     let authSession: AuthSession | undefined;
 
-    if (source.discovery.auth?.required) {
+    if (discovery.auth?.required) {
       const envToken = process.env['AGENTMAN_ACCESS_TOKEN'];
       if (envToken) {
         accessToken = envToken;
@@ -116,8 +138,8 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
       } else {
         console.log('[agentman] Attempting cached token authentication...');
         await authenticate(
-          source.baseUrl,
-          source.discovery.auth,
+          skillSource.type === 'bundle' && skillSource.baseUrl ? skillSource.baseUrl : '',
+          discovery.auth,
           (url) => {
             console.error(`\n[agentman] ERROR: Authentication required. Visit this URL to authorise:`);
             console.error(`  ${url}\n`);
@@ -126,15 +148,15 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
           },
         );
         authSession = {
-          discoveryBaseUrl: source.baseUrl,
-          auth: source.discovery.auth,
+          discoveryBaseUrl: skillSource.type === 'bundle' && skillSource.baseUrl ? skillSource.baseUrl : '',
+          auth: discovery.auth,
         };
       }
     }
 
-    console.log(`[agentman] Resolving ${source.discovery.sources.length} source(s) from discovery document...`);
+    console.log(`[agentman] Resolving ${discovery.sources.length} source(s) from discovery document...`);
     const result = await resolveDiscoverySkills(
-      source.discovery,
+      discovery,
       accessToken,
       (msg) => console.log(`[agentman] ${msg}`),
       {
@@ -159,8 +181,8 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
     allSkills = result.skills;
     bundleVersion = result.bundleVersion ?? "discovery";
 
-    if (isProjectsExclusiveSource(source.discovery.projects)) {
-      const apiBaseUrl = resolveApiBaseUrl(source.discovery.api?.baseUrl);
+    if (isProjectsExclusiveSource(discovery.projects)) {
+      const apiBaseUrl = resolveApiBaseUrl(discovery.api?.baseUrl);
       if (!apiBaseUrl) {
         console.error(
           '\n[agentman] ERROR: projects.exclusiveSource is enabled but no API base URL is configured.\n' +
@@ -184,11 +206,11 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
 
       console.log('[agentman] Loading project memberships (exclusiveSource)...');
       const membershipProjects = await listProjects(apiBaseUrl, apiAuth);
-      const scope = resolveCatalogueScope({
+      const catalogueScope = resolveCatalogueScope({
         exclusiveSource: true,
         membershipProjects,
       });
-      const { permitted, excluded } = partitionSkillsByScope(allSkills, scope);
+      const { permitted, excluded } = partitionSkillsByScope(allSkills, catalogueScope);
       allSkills = permitted;
       if (excluded.length > 0) {
         console.log(
@@ -197,13 +219,42 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
         );
       }
     }
-  } else {
+  } else if (isRepoSource(skillSource)) {
+    // GitHub repository source
+    console.log(`[agentman] Downloading repository: ${skillSource.repoUrl}`);
+    const token = process.env.GITHUB_TOKEN;
+    const { extractDir } = await downloadRepoArchive(skillSource, { forceUpdate: _forceUpdate, token });
+
+    console.log("[agentman] Scanning for skills...");
+    const scanResult = await scanRepoForSkills(extractDir, skillSource);
+
+    allSkills = scanResult.skills;
+    bundleVersion = '';
+    sourcePin = buildSourcePin(skillSource);
+  } else if (isArtefactSource(skillSource)) {
+    // Artefact (.zip) source
+    console.log(`[agentman] Downloading artefact: ${skillSource.artefactUrl}`);
+    const artefactSource = config.artefactSha256 ? { ...skillSource, sha256: config.artefactSha256 } : skillSource;
+    const download = await downloadArtefact(artefactSource, { forceUpdate: _forceUpdate });
+
+    console.log("[agentman] Scanning for skills...");
+    const scanResult = await scanArtefactForSkills(download.extractDir, artefactSource);
+
+    allSkills = scanResult.skills;
+    bundleVersion = '';
+    sourcePin = buildSourcePin({
+      ...artefactSource,
+      sha256: download.sha256 ?? artefactSource.sha256,
+      version: download.version,
+    });
+  } else if (isBundleSource(skillSource)) {
+    // Legacy bundle source (URL or directory)
     let bundleDir: string;
 
-    if (source.type === "url") {
-      // sourcePin stays undefined here — this branch is dead code (resolveSource never returns 'url').
+    if (skillSource.baseUrl) {
+      // HTTP bundle URL
       console.log("[agentman] Downloading bundle...");
-      const { zipPath } = await downloadBundle(source.baseUrl, config.bundleVersion);
+      const { zipPath } = await downloadBundle(skillSource.baseUrl, config.bundleVersion);
       console.log("[agentman] Extracting bundle...");
       const result = await extractBundle(zipPath);
       bundleDir = result.bundleDir;
@@ -211,17 +262,22 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
       if (result.isNew) {
         await setCurrentBundle(bundleVersion);
       }
+      sourcePin = buildSourcePin(skillSource, bundleVersion);
     } else {
+      // Local directory bundle
       console.log("[agentman] Importing local bundle...");
-      const result = await importLocalBundle(source.dirPath);
+      const result = await importLocalBundle(skillSource.dirPath!);
       bundleDir = result.bundleDir;
       bundleVersion = result.manifest.version;
-      sourcePin = buildPinForDirectorySource(source.dirPath, bundleVersion);
+      sourcePin = buildPinForDirectorySource(skillSource.dirPath!, bundleVersion);
     }
 
     console.log(`[agentman] Bundle version: ${bundleVersion}`);
     const contents = await scanBundle(bundleDir);
     allSkills = contents.skills;
+  } else {
+    // This should never happen with the discriminated union
+    throw new Error(`Unknown source type: ${(skillSource as SkillSource).type}`);
   }
 
   // Key by qualified identity so same-named skills from different sources both survive.
@@ -269,24 +325,11 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
   }
 
   if (notFound.length > 0) {
-    console.warn(`\n[agentman] WARNING: The following skills were not found in the bundle:`);
+    console.warn(`\n[agentman] WARNING: The following skills were not found:`);
     for (const name of notFound) {
       console.warn(`  - ${name}`);
     }
     console.warn(`\n  Available skills: ${[...availableSkills.keys()].join(", ")}`);
-  }
-
-  if (
-    source.type === 'discovery' &&
-    isProjectsExclusiveSource(source.discovery.projects) &&
-    notFound.length > 0
-  ) {
-    console.error(
-      `\n[agentman] ERROR: projects.exclusiveSource is enabled — refusing to install skills that are ` +
-        `not permitted by your project memberships (or were not found in the exclusive catalogue):\n` +
-        notFound.map((name) => `  - ${name}`).join('\n'),
-    );
-    process.exit(1);
   }
 
   if (toInstall.length === 0) {

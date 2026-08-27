@@ -2,20 +2,54 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { parseHeadlessConfig, buildPinForDirectorySource, runHeadless } from '../../src/headless.js';
+import { parseHeadlessConfig, runHeadless } from '../../src/headless.js';
+import { buildPinForDirectorySource } from '../../src/bundle/skill-source.js';
 
-vi.mock('../../src/bundle/source.js', () => ({
-  resolveSource: vi.fn(async () => ({
-    type: 'discovery',
-    discovery: {
-      version: '1' as const,
-      sources: [{ name: 'test-artefact', type: 'artefact', url: 'https://cdn.example.com/skill.zip' }],
-    },
+vi.mock('../../src/bundle/skill-source.js', () => ({
+  resolveSkillSource: vi.fn(async (input: string) => ({
+    type: 'bundle',
+    baseUrl: input,
+    installLayout: 'flat' as const,
   })),
+  isRepoSource: vi.fn((s) => s.type === 'repo'),
+  isArtefactSource: vi.fn((s) => s.type === 'artefact'),
+  isBundleSource: vi.fn((s) => s.type === 'bundle'),
+  buildSourcePin: vi.fn((s) => ({
+    sourceType: s.type,
+    installLayout: s.installLayout,
+    ...(s.type === 'repo' ? { repoUrl: s.repoUrl, ref: s.ref, skillPath: s.skillPath } : {}),
+  })),
+  buildPinForDirectorySource: vi.fn((dir, version) => ({
+    sourceType: 'bundle',
+    bundleVersion: version,
+    installLayout: 'flat',
+  })),
+  deriveSkillInstallKey: vi.fn((skill) => {
+    // Match real behavior: derive namespace from sourcePin when present
+    if (skill.sourcePin?.sourceType === 'repo' && skill.sourcePin.repoUrl) {
+      const url = new URL(skill.sourcePin.repoUrl);
+      const segments = url.pathname.split('/').filter(Boolean);
+      const namespace = [url.host, ...segments].join('/');
+      return `${namespace}/${skill.dirName}`;
+    }
+    return skill.dirName;
+  }),
 }));
 
 vi.mock('../../src/discovery/index.js', () => ({
+  fetchDiscoveryDocument: vi.fn(async () => ({
+    version: '1' as const,
+    sources: [{ name: 'test-artefact', type: 'artefact', url: 'https://cdn.example.com/skill.zip' }],
+  })),
   resolveDiscoverySkills: vi.fn(),
+}));
+
+vi.mock('../../src/bundle/repo-downloader.js', () => ({
+  downloadRepoArchive: vi.fn(),
+}));
+
+vi.mock('../../src/bundle/repo-scanner.js', () => ({
+  scanRepoForSkills: vi.fn(),
 }));
 
 // Hoisted so tests can assert on install's actual call arguments, not just that it fired.
@@ -131,6 +165,61 @@ describe('runHeadless', () => {
   afterEach(async () => {
     await rm(tmpDir, { recursive: true, force: true });
     vi.restoreAllMocks();
+  });
+
+  it('installs from a GitHub repository without requesting discovery', async () => {
+    const { resolveSkillSource } = await import('../../src/bundle/skill-source.js');
+    const { fetchDiscoveryDocument } = await import('../../src/discovery/index.js');
+    const { downloadRepoArchive } = await import('../../src/bundle/repo-downloader.js');
+    const { scanRepoForSkills } = await import('../../src/bundle/repo-scanner.js');
+    const repoSource = {
+      type: 'repo' as const,
+      repoUrl: 'https://github.com/example-org/example-repo',
+      defaultBranch: 'main',
+      ref: 'main',
+      installLayout: 'namespaced' as const,
+    };
+    const repoSkill = {
+      dirName: 'my-skill',
+      dirPath: '/tmp/example-repo/skills/my-skill',
+      skillMdPath: '/tmp/example-repo/skills/my-skill/SKILL.md',
+      meta: null,
+    };
+
+    vi.mocked(resolveSkillSource).mockResolvedValueOnce(repoSource);
+    vi.mocked(downloadRepoArchive).mockResolvedValueOnce({
+      extractDir: '/tmp/example-repo',
+      isNew: true,
+    });
+    vi.mocked(scanRepoForSkills).mockResolvedValueOnce({
+      skills: [repoSkill],
+      skillsDir: '/tmp/example-repo/skills',
+    });
+
+    const configPath = path.join(tmpDir, 'ai-skills.yml');
+    await writeFile(configPath, 'tools: claude-code\nscope: repo\nskills:\n  - my-skill\n');
+    installMock.mockClear();
+
+    await expect(
+      runHeadless('https://github.com/example-org/example-repo', configPath, false),
+    ).resolves.toBeUndefined();
+
+    expect(fetchDiscoveryDocument).not.toHaveBeenCalled();
+    expect(downloadRepoArchive).toHaveBeenCalledWith(
+      repoSource,
+      expect.objectContaining({ forceUpdate: false }),
+    );
+    expect(scanRepoForSkills).toHaveBeenCalledWith('/tmp/example-repo', repoSource);
+    expect(installMock).toHaveBeenCalledWith(
+      [repoSkill],
+      '',
+      expect.objectContaining({
+        sourceType: 'repo',
+        installLayout: 'namespaced',
+        repoUrl: repoSource.repoUrl,
+        ref: 'main',
+      }),
+    );
   });
 
   it('exits non-zero when a requested skill name is ambiguous across sources', async () => {

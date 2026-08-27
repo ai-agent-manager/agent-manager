@@ -4,6 +4,7 @@ import { render } from "ink";
 import { parseCli, BANNER } from "./cli.js";
 import { App } from "./app.js";
 import { resolveSource, resolvePersistedSource, type BundleSource } from "./bundle/source.js";
+import { resolveSkillSource, type SkillSource } from "./bundle/skill-source.js";
 import { addSource, classifyStoredSource } from "./bundle/cache.js";
 import { startConsoleSpinner } from "./lib/console-spinner.js";
 import {
@@ -28,7 +29,10 @@ if (configPath) {
     }
 
     try {
-        const source = await resolveSource(sourceInput);
+        // Use the new multi-source resolver for headless mode
+        const skillSource = await resolveSkillSource(sourceInput);
+        // Map to legacy BundleSource for telemetry compatibility
+        const source = skillSourceToBundleSource(skillSource);
         trackTelemetryEvent({
             action: "agentman_started",
             properties: { forceUpdate, ...getBundleSourceTelemetryProperties(source) },
@@ -94,4 +98,23 @@ function telemetryForInput(input: string | undefined): { source: string; bundleE
         return { source: "directory", bundleEndpoint: "local-directory" };
     }
     return { source: "persisted", bundleEndpoint: "persisted-source" };
+}
+
+/**
+ * Convert a SkillSource to a legacy BundleSource for telemetry compatibility.
+ * This is a temporary bridge until telemetry is updated to understand SkillSource.
+ */
+function skillSourceToBundleSource(source: SkillSource): BundleSource {
+    if (source.type === 'bundle') {
+        if (source.dirPath) {
+            return { type: 'directory', dirPath: source.dirPath };
+        }
+        return { type: 'url', baseUrl: source.baseUrl ?? '' };
+    }
+    // For repo and artefact sources, map to URL type for telemetry
+    if (source.type === 'repo') {
+        return { type: 'url', baseUrl: source.repoUrl };
+    }
+    // source.type === 'artefact'
+    return { type: 'url', baseUrl: source.artefactUrl };
 }
