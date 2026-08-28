@@ -83,7 +83,7 @@ export function SourceManager({ onBack }: SourceManagerProps) {
                         placeholder="https://bootstrap.example.com or ./my-agents"
                     />
                 </Box>
-                <Text dimColor>{"  "}A URL is stored as a discovery source; a path as a local directory. Esc to cancel.</Text>
+                <Text dimColor>{"  "}GitHub repositories and discovery URLs are detected automatically; paths are stored as local directories. Esc to cancel.</Text>
             </Box>
         );
     }

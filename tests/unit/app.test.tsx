@@ -40,6 +40,13 @@ const manageFlowState = vi.hoisted(() => ({
     },
 }));
 
+const urlInstallFlowState = vi.hoisted(() => ({
+    initialSource: null as null | {
+        type: "repo";
+        repoUrl: string;
+    },
+}));
+
 vi.mock("../../src/components/MainMenu.js", () => ({
     MainMenu: function MockMainMenu(props: { onSelect: (action: string) => void }) {
         mainMenuState.props = props;
@@ -123,6 +130,15 @@ vi.mock("../../src/components/RovoMenu.js", () => ({
 vi.mock("../../src/components/SourceManager.js", () => ({
     SourceManager: function MockSourceManager() {
         return <Text>Source Manager Screen</Text>;
+    },
+}));
+
+vi.mock("../../src/components/UrlInstallFlow.js", () => ({
+    UrlInstallFlow: function MockUrlInstallFlow(props: {
+        initialSource?: { type: "repo"; repoUrl: string };
+    }) {
+        urlInstallFlowState.initialSource = props.initialSource ?? null;
+        return <Text>URL Install Flow</Text>;
     },
 }));
 
@@ -229,6 +245,7 @@ describe("App", () => {
         skillSelectorState.props = null;
         skillSelectorState.mountEvents = [];
         manageFlowState.props = null;
+        urlInstallFlowState.initialSource = null;
 
         vi.mocked(readConfig).mockResolvedValue({ installations: {} });
         vi.mocked(writeConfig).mockResolvedValue(undefined);
@@ -426,6 +443,28 @@ describe("App", () => {
 
         expect(downloadBundle).not.toHaveBeenCalled();
         expect(scanBundle).not.toHaveBeenCalled();
+    });
+
+    it("opens the URL install flow for a direct GitHub repository source", async () => {
+        const directInstallSource = {
+            type: "repo" as const,
+            repoUrl: "https://github.com/example-org/example-repo",
+            defaultBranch: "main",
+            ref: "main",
+            installLayout: "namespaced" as const,
+        };
+        const { lastFrame } = render(
+            <App
+                source={undefined}
+                directInstallSource={directInstallSource}
+                forceUpdate={false}
+            />,
+        );
+
+        await vi.waitFor(() => {
+            expect(lastFrame()).toContain("URL Install Flow");
+        });
+        expect(urlInstallFlowState.initialSource).toEqual(directInstallSource);
     });
 
     it("opens Source Management with the failure reason when all configured sources fail to resolve", async () => {

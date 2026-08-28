@@ -3,8 +3,8 @@ import React from "react";
 import { render } from "ink";
 import { parseCli, BANNER } from "./cli.js";
 import { App } from "./app.js";
-import { resolveSource, resolvePersistedSource, type BundleSource } from "./bundle/source.js";
-import { resolveSkillSource, type SkillSource } from "./bundle/skill-source.js";
+import { resolveSource, resolvePersistedSource, type BundleSource, type StartupSource } from "./bundle/source.js";
+import { resolveSkillSource, type RepoSkillSource, type SkillSource } from "./bundle/skill-source.js";
 import { addSource, classifyStoredSource } from "./bundle/cache.js";
 import { startConsoleSpinner } from "./lib/console-spinner.js";
 import {
@@ -51,19 +51,21 @@ const spinner = startConsoleSpinner("Resolving source...");
 
 try {
     let source: BundleSource | undefined;
+    let directInstallSource: RepoSkillSource | undefined;
     let sourceError: string | undefined;
 
     if (sourceInput) {
-        // One-liner: resolve exactly as before, then persist the source so a
-        // later bare `agentman` invocation reaches the same place.
-        source = await resolveSource(sourceInput);
+        const resolved = await resolveSource(sourceInput);
+        ({ source, directInstallSource } = splitStartupSource(resolved));
         await addSource(classifyStoredSource(sourceInput), { setActive: true });
     } else {
         try {
             const resolved = await resolvePersistedSource();
             // No persisted source is not fatal: the TUI still opens so the user can
             // reach Source Management and add one, instead of hitting a dead end.
-            source = resolved?.source;
+            if (resolved) {
+                ({ source, directInstallSource } = splitStartupSource(resolved.source));
+            }
         } catch (err) {
             // All configured sources failed to resolve (e.g. unreachable URLs).
             // Also not fatal: fall through to the TUI with the failure surfaced,
@@ -74,20 +76,44 @@ try {
     }
 
     spinner.stop();
-    if (source) {
+    const telemetrySource = source ?? directInstallSource;
+    if (telemetrySource) {
         trackTelemetryEvent({
             action: "agentman_started",
-            properties: { forceUpdate, ...getBundleSourceTelemetryProperties(source) },
+            properties: {
+                forceUpdate,
+                ...getBundleSourceTelemetryProperties(
+                    telemetrySource.type === "repo"
+                        ? skillSourceToBundleSource(telemetrySource)
+                        : telemetrySource,
+                ),
+            },
         });
     }
 
-    render(<App source={source} forceUpdate={forceUpdate} sourceError={sourceError} />);
+    render(
+        <App
+            source={source}
+            directInstallSource={directInstallSource}
+            forceUpdate={forceUpdate}
+            sourceError={sourceError}
+        />,
+    );
 } catch (err) {
     spinner.stop();
     trackTelemetryError("bundle_source_resolve_failed", err, telemetryForInput(sourceInput));
     trackTelemetryError("agentman_start_failed", err, telemetryForInput(sourceInput));
     console.log(`  Error: ${err instanceof Error ? err.message : String(err)}\n`);
     process.exit(1);
+}
+
+function splitStartupSource(startupSource: StartupSource): {
+    source: BundleSource | undefined;
+    directInstallSource: RepoSkillSource | undefined;
+} {
+    return startupSource.type === "repo"
+        ? { source: undefined, directInstallSource: startupSource }
+        : { source: startupSource, directInstallSource: undefined };
 }
 
 function telemetryForInput(input: string | undefined): { source: string; bundleEndpoint: string } {

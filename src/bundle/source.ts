@@ -1,58 +1,45 @@
-import path from 'node:path';
-import { stat } from 'node:fs/promises';
 import { fetchDiscoveryDocument, type DiscoveryDocument } from '../discovery/index.js';
 import { readConfig, orderedSources, type StoredSource } from './cache.js';
+import {
+  isRepoSource,
+  resolveSkillSource,
+  type RepoSkillSource,
+} from './skill-source.js';
 
 export type BundleSource =
   | { type: 'url'; baseUrl: string }
   | { type: 'directory'; dirPath: string }
   | { type: 'discovery'; baseUrl: string; discovery: DiscoveryDocument };
 
+export type StartupSource = BundleSource | RepoSkillSource;
+
 /**
- * Determine whether the user-supplied input is a URL or a local directory path.
+ * Resolve a user-supplied startup source.
  *
- * - Strings starting with http:// or https:// are treated as URL sources.
- *   The discovery document is fetched from the well-known path. If it cannot
- *   be found or is invalid, the error is propagated (no fallback).
- * - Everything else is treated as a filesystem path (resolved to absolute).
- *   The path must exist and be a directory. manifest.json is optional.
+ * Direct GitHub repository URLs are returned as repository sources so the TUI
+ * can open its repository installation flow. Other URLs remain discovery base
+ * URLs, and local directories retain the legacy bundle representation.
  *
  * Throws descriptive errors for invalid inputs.
- *
- * @deprecated Use `resolveSkillSource()` from './skill-source.js' instead,
- * which returns a first-class `SkillSource` (repo | artefact | bundle) rather
- * than the legacy `BundleSource` (url | directory).
- *
- * Retained for backward compatibility until existing callers are migrated to
- * the multi-source model. Do not add new callers.
  */
-export async function resolveSource(input: string): Promise<BundleSource> {
-  if (/^https?:\/\//i.test(input)) {
-    // Validate it parses as a URL
-    new URL(input);
+export async function resolveSource(input: string): Promise<StartupSource> {
+  const source = await resolveSkillSource(input);
 
-    const discovery = await fetchDiscoveryDocument(input);
-    return { type: 'discovery', baseUrl: input, discovery };
+  if (isRepoSource(source)) {
+    return source;
   }
 
-  const dirPath = path.resolve(input);
-
-  let stats;
-  try {
-    stats = await stat(dirPath);
-  } catch {
-    throw new Error(`Path does not exist: ${dirPath}`);
+  if (source.type === 'bundle' && source.dirPath) {
+    return { type: 'directory', dirPath: source.dirPath };
   }
 
-  if (!stats.isDirectory()) {
-    throw new Error(`Path is not a directory: ${dirPath}`);
-  }
-
-  return { type: 'directory', dirPath };
+  const baseUrl = source.type === 'bundle' ? source.baseUrl : source.artefactUrl;
+  const discovery = await fetchDiscoveryDocument(baseUrl!);
+  return { type: 'discovery', baseUrl: baseUrl!, discovery };
 }
 
 export interface ResolvedPersistedSource {
-  source: BundleSource;
+  source: StartupSource;
   stored: StoredSource;
 }
 

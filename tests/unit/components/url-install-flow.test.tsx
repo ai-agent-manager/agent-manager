@@ -118,6 +118,25 @@ async function renderReady(props: { onBack?: () => void } = {}) {
 }
 
 describe('UrlInstallFlow', () => {
+  it('acquires an initial GitHub repository source without prompting for coordinates', async () => {
+    const initialSource = {
+      type: 'repo' as const,
+      repoUrl: 'https://github.com/acme/skills',
+      defaultBranch: 'main',
+      ref: 'main',
+      installLayout: 'namespaced' as const,
+    };
+    const { lastFrame } = render(
+      <UrlInstallFlow initialSource={initialSource} onBack={() => {}} />,
+    );
+
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain('Select skills to install:');
+    });
+    expect(acquireSource).toHaveBeenCalledWith(initialSource);
+    expect(lastFrame()).not.toContain('Install from GitHub repository');
+  });
+
   it('walks repo URL → acquire → picker → scope → tool → confirm → install', async () => {
     const { lastFrame, stdin } = await renderReady();
 

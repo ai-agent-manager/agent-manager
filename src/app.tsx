@@ -13,6 +13,7 @@ import { SettingsScreen } from "./components/SettingsScreen.js";
 import { ManageFlow } from "./components/ManageFlow.js";
 import { SkillInstallFlow } from "./components/SkillInstallFlow.js";
 import { SourceManager } from "./components/SourceManager.js";
+import { UrlInstallFlow } from "./components/UrlInstallFlow.js";
 import { RovoMenu } from "./components/RovoMenu.js";
 import { RovoMethodMenu } from "./components/RovoMethodMenu.js";
 import { ScopeSelector } from "./components/ScopeSelector.js";
@@ -38,7 +39,12 @@ import { checkForStartupUpdates, shouldRunStartupUpdateChecks } from "./lib/star
 import { getBundleSourceTelemetryProperties, setTelemetryDisabledByConfig, trackTelemetryError, trackTelemetryEvent, type TelemetryValue } from "./telemetry.js";
 import { featureFlags } from "./lib/feature-flags.js";
 import { resolveDiscoverySkills, type ResolvedSkill } from "./discovery/index.js";
-import { buildPinForDirectorySource, buildSourcePin, type BundleSkillSource } from "./bundle/skill-source.js";
+import {
+    buildPinForDirectorySource,
+    buildSourcePin,
+    type BundleSkillSource,
+    type RepoSkillSource,
+} from "./bundle/skill-source.js";
 import {
     canAccessMyProjects,
     isApiAuthFailure,
@@ -64,6 +70,7 @@ export type Screen =
     | "maintenance-menu"
     | "settings"
     | "skill-install"
+    | "url-install"
     | "source-manager"
     | "manage-installed"
     | "scope-selector"
@@ -79,6 +86,7 @@ export type Screen =
 
 interface AppProps {
     source: BundleSource | undefined;
+    directInstallSource?: RepoSkillSource;
     forceUpdate: boolean;
     sourceError?: string;
 }
@@ -173,8 +181,8 @@ async function acquireDiscoverySkills(
     };
 }
 
-export function App({ source, forceUpdate, sourceError }: AppProps) {
-    const [screen, setScreen] = useState<Screen>("loading");
+export function App({ source, directInstallSource, forceUpdate, sourceError }: AppProps) {
+    const [screen, setScreen] = useState<Screen>(directInstallSource ? "url-install" : "loading");
     const [manifest, setManifest] = useState<BundleManifest | null>(null);
     const [bundleContents, setBundleContents] = useState<BundleContents | null>(null);
     const [bundleDir, setBundleDir] = useState<string>("");
@@ -363,6 +371,11 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
     );
 
     useEffect(() => {
+        if (directInstallSource) {
+            setScreen("url-install");
+            return;
+        }
+
         if (!source) {
             // No usable source: skip bundle/discovery resolution entirely and land
             // straight on Source Management instead of a dead end. This covers both
@@ -759,6 +772,13 @@ export function App({ source, forceUpdate, sourceError }: AppProps) {
                         setScreen(featureFlags.chromeExtension ? "rovo-method" : "rovo-menu");
                     }}
                     onBack={leaveInstallFlow}
+                />
+            )}
+
+            {screen === "url-install" && directInstallSource && (
+                <UrlInstallFlow
+                    initialSource={directInstallSource}
+                    onBack={() => setScreen("source-manager")}
                 />
             )}
 

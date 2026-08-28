@@ -171,6 +171,19 @@ function isGithubRepoParsed(parsed: URL, knownHosts: readonly string[]): boolean
   return knownHosts.includes(parsed.hostname) && segments.length >= 2;
 }
 
+export function isGithubRepoUrl(url: string, knownHosts: readonly string[] = GITHUB_HOSTS_DEFAULT): boolean {
+  try {
+    const parsed = new URL(url);
+    return (
+      /^https?:$/.test(parsed.protocol) &&
+      !parsed.pathname.toLowerCase().endsWith('.zip') &&
+      isGithubRepoParsed(parsed, knownHosts)
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** Hosts considered loopback for the artefact https requirement. */
 function isLoopbackHost(hostname: string): boolean {
   return (

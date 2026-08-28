@@ -20,6 +20,7 @@ vi.mock('../../../src/bundle/cache.js', async () => {
   return { ...actual, readConfig: vi.fn(async () => configState.value) };
 });
 
+const { fetchDiscoveryDocument } = await import('../../../src/discovery/index.js');
 const { resolveSource, resolvePersistedSource } = await import('../../../src/bundle/source.js');
 
 describe('resolveSource', () => {
@@ -32,6 +33,20 @@ describe('resolveSource', () => {
 
   afterEach(async () => {
     await rm(tempDir, { recursive: true, force: true });
+    vi.clearAllMocks();
+  });
+
+  it('returns a repo source for a GitHub URL without requesting discovery', async () => {
+    const result = await resolveSource('https://github.com/example-org/example-repo');
+
+    expect(result).toEqual({
+      type: 'repo',
+      repoUrl: 'https://github.com/example-org/example-repo',
+      defaultBranch: 'main',
+      ref: 'main',
+      installLayout: 'namespaced',
+    });
+    expect(fetchDiscoveryDocument).not.toHaveBeenCalled();
   });
 
   it('returns discovery source for https URL', async () => {
@@ -120,6 +135,24 @@ describe('resolvePersistedSource', () => {
     const resolved = await resolvePersistedSource();
     expect(resolved?.source).toEqual({ type: 'directory', dirPath: tempDir });
     expect(resolved?.stored).toEqual({ kind: 'directory', value: tempDir });
+  });
+
+  it('resolves a persisted GitHub URL without requesting discovery', async () => {
+    const stored = {
+      kind: 'discovery' as const,
+      value: 'https://github.com/example-org/example-repo',
+    };
+    configState.value = {
+      installations: {},
+      sources: [stored],
+      activeSource: stored,
+    };
+
+    const resolved = await resolvePersistedSource();
+
+    expect(resolved?.source.type).toBe('repo');
+    expect(resolved?.stored).toEqual(stored);
+    expect(fetchDiscoveryDocument).not.toHaveBeenCalled();
   });
 
   it('skips a source that fails to resolve and tries the next (per-source isolation)', async () => {

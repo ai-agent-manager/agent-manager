@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text } from 'ink';
 import SelectInput from 'ink-select-input';
 import { InstallSourceMenu, type InstallSourceType } from './InstallSourceMenu.js';
@@ -36,11 +36,14 @@ type FlowScreen =
 
 interface UrlInstallFlowProps {
   onBack: () => void;
+  initialSource?: SkillSource;
 }
 
-export function UrlInstallFlow({ onBack }: UrlInstallFlowProps) {
-  const [screen, setScreen] = useState<FlowScreen>('source-type');
-  const [sourceType, setSourceType] = useState<InstallSourceType>('repo');
+export function UrlInstallFlow({ onBack, initialSource }: UrlInstallFlowProps) {
+  const [screen, setScreen] = useState<FlowScreen>(initialSource ? 'acquiring' : 'source-type');
+  const [sourceType, setSourceType] = useState<InstallSourceType>(
+    initialSource ? menuTypeFor(initialSource) : 'repo',
+  );
   const [source, setSource] = useState<SkillSource | null>(null);
   const [acquired, setAcquired] = useState<AcquireResult | null>(null);
   const [selectedSkills, setSelectedSkills] = useState<SkillInfo[]>([]);
@@ -50,21 +53,13 @@ export function UrlInstallFlow({ onBack }: UrlInstallFlowProps) {
   const [coordsError, setCoordsError] = useState<string | null>(null);
   const [result, setResult] = useState<InstallResult | null>(null);
   const [installError, setInstallError] = useState<string | null>(null);
+  const initialAcquisitionStarted = useRef(false);
 
   useEscapeBack(() => setScreen('tool-selector'), screen === 'confirm');
   useEscapeBack(onBack, screen === 'result');
 
-  const acquire = async (input: string) => {
-    setScreen('acquiring');
+  const acquireResolved = async (resolved: SkillSource) => {
     try {
-      const resolved = await resolveSkillSource(input);
-      if (resolved.type !== typeForMenu(sourceType)) {
-        setCoordsError(
-          `Not a ${sourceType} source: ${input} (resolved as ${resolved.type}).`,
-        );
-        setScreen('coords');
-        return;
-      }
       const acquireResult = await acquireSource(resolved);
       if (acquireResult.skills.length === 0) {
         setCoordsError('No skills found at that source.');
@@ -80,6 +75,30 @@ export function UrlInstallFlow({ onBack }: UrlInstallFlowProps) {
       setScreen('coords');
     }
   };
+
+  const acquire = async (input: string) => {
+    setScreen('acquiring');
+    try {
+      const resolved = await resolveSkillSource(input);
+      if (resolved.type !== typeForMenu(sourceType)) {
+        setCoordsError(
+          `Not a ${sourceType} source: ${input} (resolved as ${resolved.type}).`,
+        );
+        setScreen('coords');
+        return;
+      }
+      await acquireResolved(resolved);
+    } catch (err) {
+      setCoordsError(err instanceof Error ? err.message : String(err));
+      setScreen('coords');
+    }
+  };
+
+  useEffect(() => {
+    if (!initialSource || initialAcquisitionStarted.current) return;
+    initialAcquisitionStarted.current = true;
+    void acquireResolved(initialSource);
+  }, [initialSource]);
 
   const confirmInstall = async () => {
     if (!acquired) return;
@@ -262,6 +281,12 @@ export function UrlInstallFlow({ onBack }: UrlInstallFlowProps) {
 function typeForMenu(menuType: InstallSourceType): SkillSource['type'] {
   if (menuType === 'repo') return 'repo';
   if (menuType === 'artefact') return 'artefact';
+  return 'bundle';
+}
+
+function menuTypeFor(source: SkillSource): InstallSourceType {
+  if (source.type === 'repo') return 'repo';
+  if (source.type === 'artefact') return 'artefact';
   return 'bundle';
 }
 
