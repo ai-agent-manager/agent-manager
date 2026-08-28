@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { filterCatalogue, type CatalogueEntry, type SkillCandidate } from '../discovery/catalogue.js';
+import type { SourceStatus } from '../discovery/types.js';
 import { useListViewport } from '../lib/use-list-viewport.js';
 
 interface DisplayRow {
@@ -129,6 +130,6 @@ export function SkillBrowser({ entries, onSelect, onBack }: SkillBrowserProps) {
   );
 }
 
-export function TrustBadge({ status }: { status: 'official' | 'community' }) {
-  return <Text color={status === 'official' ? 'green' : 'yellow'}>{status}</Text>;
+export function TrustBadge({ status }: { status: SourceStatus }) {
+  return <Text color={status === 'community' ? 'yellow' : 'green'}>{status}</Text>;
 }

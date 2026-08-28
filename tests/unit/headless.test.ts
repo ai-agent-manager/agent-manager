@@ -36,12 +36,30 @@ vi.mock('../../src/bundle/skill-source.js', () => ({
   }),
 }));
 
-vi.mock('../../src/discovery/index.js', () => ({
-  fetchDiscoveryDocument: vi.fn(async () => ({
-    version: '1' as const,
-    sources: [{ name: 'test-artefact', type: 'artefact', url: 'https://cdn.example.com/skill.zip' }],
-  })),
-  resolveDiscoverySkills: vi.fn(),
+vi.mock('../../src/discovery/index.js', async () => {
+  const actual = await vi.importActual<typeof import('../../src/discovery/index.js')>(
+    '../../src/discovery/index.js',
+  );
+  return {
+    ...actual,
+    fetchDiscoveryDocument: vi.fn(async () => ({
+      version: '1' as const,
+      sources: [{ name: 'test-artefact', type: 'artefact', url: 'https://cdn.example.com/skill.zip' }],
+    })),
+    resolveDiscoverySkills: vi.fn(),
+  };
+});
+
+vi.mock('../../src/bundle/downloader.js', () => ({
+  downloadBundle: vi.fn(),
+}));
+
+vi.mock('../../src/bundle/extractor.js', () => ({
+  extractBundle: vi.fn(),
+}));
+
+vi.mock('../../src/bundle/scanner.js', () => ({
+  scanBundle: vi.fn(),
 }));
 
 vi.mock('../../src/bundle/repo-downloader.js', () => ({
@@ -222,6 +240,104 @@ describe('runHeadless', () => {
     );
   });
 
+  it('does not partially install from a GitHub repository when a requested skill is missing', async () => {
+    const { resolveSkillSource } = await import('../../src/bundle/skill-source.js');
+    const { downloadRepoArchive } = await import('../../src/bundle/repo-downloader.js');
+    const { scanRepoForSkills } = await import('../../src/bundle/repo-scanner.js');
+    const repoSource = {
+      type: 'repo' as const,
+      repoUrl: 'https://github.com/example-org/example-repo',
+      defaultBranch: 'main',
+      ref: 'main',
+      installLayout: 'namespaced' as const,
+    };
+
+    vi.mocked(resolveSkillSource).mockResolvedValueOnce(repoSource);
+    vi.mocked(downloadRepoArchive).mockResolvedValueOnce({
+      extractDir: '/tmp/example-repo',
+      isNew: true,
+    });
+    vi.mocked(scanRepoForSkills).mockResolvedValueOnce({
+      skills: [{
+        dirName: 'available-skill',
+        dirPath: '/tmp/example-repo/skills/available-skill',
+        skillMdPath: '/tmp/example-repo/skills/available-skill/SKILL.md',
+        meta: null,
+      }],
+      skillsDir: '/tmp/example-repo/skills',
+    });
+
+    const configPath = path.join(tmpDir, 'ai-skills.yml');
+    await writeFile(
+      configPath,
+      'tools: claude-code\nscope: repo\nskills:\n  - available-skill\n  - missing-skill\n',
+    );
+    installMock.mockClear();
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((_code) => {
+      throw new Error('process.exit called');
+    });
+
+    await expect(
+      runHeadless('https://github.com/example-org/example-repo', configPath, false),
+    ).rejects.toThrow('process.exit called');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(installMock).not.toHaveBeenCalled();
+  });
+
+  it('falls back to a legacy bundle when the discovery document returns 404', async () => {
+    const { DiscoveryError, fetchDiscoveryDocument } = await import('../../src/discovery/index.js');
+    const { downloadBundle } = await import('../../src/bundle/downloader.js');
+    const { extractBundle } = await import('../../src/bundle/extractor.js');
+    const { scanBundle } = await import('../../src/bundle/scanner.js');
+    vi.mocked(fetchDiscoveryDocument).mockRejectedValueOnce(
+      new DiscoveryError('Discovery document not found', 'https://cdn.example.com', undefined, 404),
+    );
+    vi.mocked(downloadBundle).mockResolvedValueOnce({
+      zipPath: '/tmp/bundle.zip',
+      version: '1.0.0',
+      sha256: null,
+    });
+    vi.mocked(extractBundle).mockResolvedValueOnce({
+      bundleDir: '/tmp/bundle',
+      manifest: { version: '1.0.0', published: '2026-08-28' },
+      isNew: false,
+    });
+    vi.mocked(scanBundle).mockResolvedValueOnce({
+      skills: [{
+        dirName: 'my-skill',
+        dirPath: '/tmp/bundle/my-skill',
+        skillMdPath: '/tmp/bundle/my-skill/SKILL.md',
+        meta: null,
+      }],
+      rovoAgents: [],
+    });
+    const configPath = path.join(tmpDir, 'ai-skills.yml');
+    await writeFile(configPath, 'tools: claude-code\nscope: repo\nskills:\n  - my-skill\n');
+    installMock.mockClear();
+
+    await expect(runHeadless('https://cdn.example.com', configPath, false)).resolves.toBeUndefined();
+
+    expect(downloadBundle).toHaveBeenCalledWith('https://cdn.example.com', undefined);
+    expect(installMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not fall back when the discovery document is invalid', async () => {
+    const { DiscoveryError, fetchDiscoveryDocument } = await import('../../src/discovery/index.js');
+    const { downloadBundle } = await import('../../src/bundle/downloader.js');
+    vi.mocked(fetchDiscoveryDocument).mockRejectedValueOnce(
+      new DiscoveryError('Discovery document validation failed', 'https://cdn.example.com'),
+    );
+    vi.mocked(downloadBundle).mockClear();
+    const configPath = path.join(tmpDir, 'ai-skills.yml');
+    await writeFile(configPath, 'tools: claude-code\nscope: repo\nskills:\n  - my-skill\n');
+
+    await expect(runHeadless('https://cdn.example.com', configPath, false)).rejects.toThrow(
+      'Discovery document validation failed',
+    );
+    expect(downloadBundle).not.toHaveBeenCalled();
+  });
+
   it('exits non-zero when a requested skill name is ambiguous across sources', async () => {
     const { resolveDiscoverySkills } = await import('../../src/discovery/index.js');
     vi.mocked(resolveDiscoverySkills).mockResolvedValueOnce({
@@ -240,6 +356,13 @@ describe('runHeadless', () => {
           meta: null,
           sourcePin: { sourceType: 'repo' as const, installLayout: 'namespaced' as const, repoUrl: 'https://github.com/example-org/repo-b' },
         },
+        {
+          dirName: 'available-skill',
+          dirPath: '/tmp/source-a/available-skill',
+          skillMdPath: '/tmp/source-a/available-skill/SKILL.md',
+          meta: null,
+          sourcePin: { sourceType: 'repo' as const, installLayout: 'namespaced' as const, repoUrl: 'https://github.com/example-org/repo-a' },
+        },
       ],
       rovoAgents: [],
       errors: [],
@@ -247,7 +370,11 @@ describe('runHeadless', () => {
     });
 
     const configPath = path.join(tmpDir, 'ai-skills.yml');
-    await writeFile(configPath, 'tools: claude-code\nscope: repo\nskills:\n  - my-skill\n');
+    await writeFile(
+      configPath,
+      'tools: claude-code\nscope: repo\nskills:\n  - available-skill\n  - my-skill\n',
+    );
+    installMock.mockClear();
 
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation((_code) => {
       throw new Error('process.exit called');
@@ -258,6 +385,7 @@ describe('runHeadless', () => {
     ).rejects.toThrow('process.exit called');
 
     expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(installMock).not.toHaveBeenCalled();
   });
 
   it('installs successfully when a qualified name is used to disambiguate', async () => {

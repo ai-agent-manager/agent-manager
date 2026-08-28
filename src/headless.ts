@@ -20,7 +20,7 @@ import { downloadRepoArchive } from './bundle/repo-downloader.js';
 import { scanRepoForSkills } from './bundle/repo-scanner.js';
 import { downloadArtefact } from './bundle/artefact-downloader.js';
 import { scanArtefactForSkills } from './bundle/artefact-scanner.js';
-import { fetchDiscoveryDocument, resolveDiscoverySkills } from './discovery/index.js';
+import { DiscoveryError, fetchDiscoveryDocument, resolveDiscoverySkills } from './discovery/index.js';
 import type { DiscoveryDocument } from './discovery/types.js';
 import { authenticate, type AuthSession } from './auth/index.js';
 import {
@@ -117,8 +117,11 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
   if (isBundleSource(skillSource) && skillSource.baseUrl && !skillSource.dirPath) {
     try {
       discovery = await fetchDiscoveryDocument(skillSource.baseUrl);
-    } catch {
-      // No discovery document found - treat as legacy bundle
+    } catch (error) {
+      if (!(error instanceof DiscoveryError) || error.status !== 404) {
+        throw error;
+      }
+      // No discovery document exists at this origin, so treat it as a legacy bundle.
     }
   }
 
@@ -332,13 +335,18 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
     console.warn(`\n  Available skills: ${[...availableSkills.keys()].join(", ")}`);
   }
 
+  if (notFound.length > 0 || ambiguous.length > 0) {
+    console.error("\n[agentman] ERROR: Requested skill set is invalid. Nothing was installed.");
+    process.exit(1);
+  }
+
   if (toInstall.length === 0) {
     console.error("\n[agentman] ERROR: No valid skills to install. Exiting.");
     process.exit(1);
   }
 
   // Install for each tool in sequence
-  let hasErrors = ambiguous.length > 0;
+  let hasErrors = false;
 
   for (const toolId of config.tools) {
     console.log(`\n[agentman] Installing ${toInstall.length} skill(s) for ${toolId}...`);

@@ -75,7 +75,7 @@ When a user provides a base URL to agent-manager, it fetches the discovery docum
 | `sources[].name` | string | Yes | Stable logical source name, unique within the document. Identifies the source everywhere — install namespaces and pins — independently of where its content is hosted |
 | `sources[].type` | `"http"` \| `"git"` \| `"artefact"` | Yes | How to fetch the source |
 | `sources[].url` | string (URI) | Yes | Content root for `http`, repository URL for `git`, direct zip URL for `artefact` |
-| `sources[].status` | `"official"` \| `"community"` | No | Informational label set by the discovery document publisher — agentman does not enforce or act on this value |
+| `sources[].status` | `"official"` \| `"verified"` \| `"community"` | No | Trust label set by the discovery document publisher. Agentman uses it to order source choices but does not enforce trust decisions |
 
 ### Source Types
 
@@ -356,7 +356,7 @@ When `projects.enabled` is `true` and `exclusiveSource` is `true`:
 
 - **Search & Install** shows only skills and Rovo agents permitted by at least one of the caller's projects (union of project allowlists). The highlighted detail row lists the project name(s) that permit that item.
 - **Bulk Sync** (Maintenance → Bulk Sync by Tool) offers the same membership-filtered skill list, so sync cannot install skills outside those allowlists.
-- **Headless** installs fail if any requested skill is not permitted by the caller's project memberships (or is absent from the exclusive catalogue). Authentication is required so memberships can be loaded (`AGENTMAN_ACCESS_TOKEN` or a stored session).
+- **Headless** validates the complete requested skill set before installing anything. Missing or ambiguous skills fail the run without making changes for every source type. With an exclusive catalogue, this includes skills not permitted by the caller's project memberships. Authentication is required so memberships can be loaded (`AGENTMAN_ACCESS_TOKEN` or a stored session).
 
 When `exclusiveSource` is omitted or `false`, global Search & Install, Bulk Sync, and headless installs use the full discovery catalogue (project allowlists still apply inside My Projects flows).
 

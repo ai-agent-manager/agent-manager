@@ -51,10 +51,10 @@ export interface RovoCatalogueEntry extends BaseCatalogueEntry {
  */
 export type CatalogueEntry = SkillCatalogueEntry | RovoCatalogueEntry;
 
-const STATUS_RANK: Record<string, number> = { official: 0, community: 1 };
+const STATUS_RANK: Record<SourceStatus, number> = { official: 0, verified: 1, community: 2 };
 
 function statusRank(status?: SourceStatus): number {
-  return status !== undefined ? STATUS_RANK[status] : 2;
+  return status !== undefined ? STATUS_RANK[status] : 3;
 }
 
 export function buildCatalogue(skills: ResolvedSkill[]): SkillCatalogueEntry[] {
@@ -84,7 +84,7 @@ export function buildCatalogue(skills: ResolvedSkill[]): SkillCatalogueEntry[] {
   }
 
   for (const entry of entries.values()) {
-    // Stable sort: official → community → unlabeled, source order preserved within.
+    // Stable sort: official → verified → community → unlabeled, source order preserved within.
     entry.candidates.sort((a, b) => statusRank(a.sourceStatus) - statusRank(b.sourceStatus));
   }
 

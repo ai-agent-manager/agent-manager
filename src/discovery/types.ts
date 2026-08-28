@@ -21,7 +21,7 @@ export interface DiscoveryAuth {
 }
 
 export type SourceType = 'http' | 'git' | 'artefact';
-export type SourceStatus = 'official' | 'community';
+export type SourceStatus = 'official' | 'verified' | 'community';
 
 interface DiscoverySourceBase {
   /**
