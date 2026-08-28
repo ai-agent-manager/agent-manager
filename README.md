@@ -212,7 +212,7 @@ Skills are installed as symlinks into each tool's native skills directory:
 | Agents (Generic) | `~/.agents/skills/<skill>/` | `<repo>/.agents/skills/<skill>/` |
 | Claude Code | `~/.claude/skills/<skill>/` | `<repo>/.claude/skills/<skill>/` |
 | Cursor | `~/.cursor/skills/<skill>/` | `<repo>/.cursor/skills/<skill>/` |
-| GitHub Copilot | `~/.copilot/skills/<skill>/` | `<repo>/.github/copilot/skills/<skill>/` |
+| GitHub Copilot | `~/.copilot/skills/<skill>/` | `<repo>/.github/skills/<skill>/` |
 | Kiro | `~/.kiro/skills/<skill>/` | `<repo>/.kiro/skills/<skill>/` |
 | Devin Desktop (formerly Windsurf) | `~/.codeium/windsurf/skills/<skill>/` | `<repo>/.windsurf/skills/<skill>/` |
 

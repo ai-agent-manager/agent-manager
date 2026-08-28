@@ -67,10 +67,14 @@ afterEach(async () => {
 });
 
 describe('stored sources', () => {
-  it('classifies URLs as discovery and paths as directory', () => {
+  it('classifies discovery URLs, GitHub repositories, and paths', () => {
     expect(classifyStoredSource('https://bootstrap.example.com')).toEqual({
       kind: 'discovery',
       value: 'https://bootstrap.example.com',
+    });
+    expect(classifyStoredSource('https://github.com/example-org/example-repo')).toEqual({
+      kind: 'repo',
+      value: 'https://github.com/example-org/example-repo',
     });
     expect(classifyStoredSource('./my-agents')).toEqual({ kind: 'directory', value: path.resolve('./my-agents') });
   });

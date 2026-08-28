@@ -77,9 +77,9 @@ describe("SkillProvisioner (repo scope)", () => {
       expect(prov.getRepoSkillsDir(repoRoot)).toBe(path.join(repoRoot, ".windsurf", "skills"));
     });
 
-    it("Copilot installs to <repo>/.github/copilot/skills/", () => {
+    it("Copilot installs to <repo>/.github/skills/", () => {
       const prov = new CopilotProvisioner({ scope: "repo", repoRoot });
-      expect(prov.getRepoSkillsDir(repoRoot)).toBe(path.join(repoRoot, ".github", "copilot", "skills"));
+      expect(prov.getRepoSkillsDir(repoRoot)).toBe(path.join(repoRoot, ".github", "skills"));
     });
 
     it("Agents installs to <repo>/.agents/skills/", () => {

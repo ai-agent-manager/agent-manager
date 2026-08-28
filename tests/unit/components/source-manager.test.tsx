@@ -14,8 +14,12 @@ vi.mock("../../../src/bundle/cache.js", () => ({
     addSource: vi.fn(async () => {}),
     removeSource: vi.fn(async () => {}),
     setActiveSource: vi.fn(async () => {}),
-    classifyStoredSource: (input: string): StoredSource =>
-        /^https?:\/\//i.test(input) ? { kind: "discovery", value: input } : { kind: "directory", value: input },
+    classifyStoredSource: (input: string): StoredSource => {
+        if (input.startsWith("https://github.com/")) return { kind: "repo", value: input };
+        return /^https?:\/\//i.test(input)
+            ? { kind: "discovery", value: input }
+            : { kind: "directory", value: input };
+    },
 }));
 
 vi.mock("../../../src/components/UrlInstallFlow.js", () => ({
@@ -101,6 +105,29 @@ describe("SourceManager", () => {
         await vi.waitFor(() => {
             expect(addSource).toHaveBeenCalledWith(
                 { kind: "discovery", value: "https://new.example.com" },
+                { setActive: true },
+            );
+        });
+    });
+
+    it("adds a GitHub URL as a repository source", async () => {
+        const { lastFrame, stdin } = render(<SourceManager onBack={() => {}} />);
+        await vi.waitFor(() => {
+            expect(lastFrame()).toContain("Add a source");
+        });
+        await flushInkInput();
+
+        await press(stdin, ENTER);
+        await vi.waitFor(() => {
+            expect(lastFrame()).toContain("Add a source");
+        });
+
+        await press(stdin, "https://github.com/example-org/example-repo");
+        await press(stdin, ENTER);
+
+        await vi.waitFor(() => {
+            expect(addSource).toHaveBeenCalledWith(
+                { kind: "repo", value: "https://github.com/example-org/example-repo" },
                 { setActive: true },
             );
         });

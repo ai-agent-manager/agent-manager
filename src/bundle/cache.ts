@@ -14,17 +14,16 @@ import { scanBundle } from "./scanner.js";
 import { getPlatform } from "../lib/platform.js";
 import { writeFileAtomic } from "../lib/fs.js";
 import { withLock } from "../lib/file-lock.js";
-import type { SkillSourcePin } from "./skill-source.js";
+import { isGithubRepoUrl, type SkillSourcePin } from "./skill-source.js";
 
 const CONFIG_SCHEMA_VERSION = 2;
 
 /**
- * A source agentman resolves at startup to build the catalogue. At this
- * top-level layer resolveSource classifies a URL as a discovery document and a
- * path as a local directory, so `kind` is unambiguous — it is persisted
- * alongside the value so a stored URL is never mistaken for anything else.
+ * A source agentman resolves at startup. The kind is persisted for display and
+ * source management; resolution still validates the value so legacy GitHub
+ * URLs stored as discovery sources continue to work.
  */
-export type StoredSourceKind = "discovery" | "directory";
+export type StoredSourceKind = "discovery" | "repo" | "directory";
 
 export interface StoredSource {
     kind: StoredSourceKind;
@@ -32,12 +31,14 @@ export interface StoredSource {
 }
 
 /**
- * Classify a raw source string the same way resolveSource does. Directory
- * sources are resolved to an absolute path at classification time so a stored
- * source keeps working when a later bare invocation runs from a different
- * working directory. URLs are stored verbatim.
+ * Classify a raw source string for persistence. Directory sources are resolved
+ * to an absolute path so they keep working when a later invocation starts from
+ * a different working directory. URLs are stored verbatim.
  */
 export function classifyStoredSource(input: string): StoredSource {
+    if (isGithubRepoUrl(input)) {
+        return { kind: "repo", value: input };
+    }
     return /^https?:\/\//i.test(input)
         ? { kind: "discovery", value: input }
         : { kind: "directory", value: path.resolve(input) };

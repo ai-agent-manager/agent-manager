@@ -16,6 +16,6 @@ export class CopilotProvisioner extends SkillProvisioner {
   }
 
   getRepoSkillsDir(repoRoot: string): string {
-    return path.join(repoRoot, '.github', 'copilot', 'skills');
+    return path.join(repoRoot, '.github', 'skills');
   }
 }

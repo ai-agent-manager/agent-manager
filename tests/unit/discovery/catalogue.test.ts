@@ -79,15 +79,17 @@ describe('buildCatalogue', () => {
     expect(mySkill.candidates.map((c) => c.sourceName)).toEqual(['repo-a', 'artefact-b']);
   });
 
-  it('orders candidates official → community → unlabeled', () => {
+  it('orders candidates official → verified → community → unlabeled', () => {
     const entries = buildCatalogue([
       makeSkill({ dirName: 'my-skill', sourceName: 'unlabeled', sourcePin: repoPin }),
       makeSkill({ dirName: 'my-skill', sourceName: 'community-src', sourceStatus: 'community', sourcePin: artefactPin }),
+      makeSkill({ dirName: 'my-skill', sourceName: 'verified-src', sourceStatus: 'verified', sourcePin: repoPin }),
       makeSkill({ dirName: 'my-skill', sourceName: 'official-src', sourceStatus: 'official', sourcePin: bundlePin }),
     ]);
 
     expect(entries[0]!.candidates.map((c) => c.sourceName)).toEqual([
       'official-src',
+      'verified-src',
       'community-src',
       'unlabeled',
     ]);

@@ -15,6 +15,7 @@ export class DiscoveryError extends Error {
     message: string,
     public readonly baseUrl: string,
     public readonly cause?: unknown,
+    public readonly status?: number,
   ) {
     super(message);
     this.name = 'DiscoveryError';
@@ -52,6 +53,8 @@ export async function fetchDiscoveryDocument(
     throw new DiscoveryError(
       `Discovery document not found at ${url} (HTTP ${response.status})`,
       baseUrl,
+      undefined,
+      response.status,
     );
   }
 

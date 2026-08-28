@@ -63,6 +63,21 @@ describe('fetchDiscoveryDocument', () => {
     );
   });
 
+  it('accepts a verified source', async () => {
+    const document: DiscoveryDocument = {
+      version: '1',
+      sources: [{
+        name: 'bootstrap',
+        type: 'http',
+        url: 'https://content.example.com/agents',
+        status: 'verified',
+      }],
+    };
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => document });
+
+    await expect(fetchDiscoveryDocument('https://example.com')).resolves.toEqual(document);
+  });
+
   it('passes Bearer token when provided', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
@@ -285,9 +300,10 @@ describe('fetchDiscoveryDocument', () => {
       status: 404,
     });
 
-    await expect(
-      fetchDiscoveryDocument('https://example.com'),
-    ).rejects.toThrow('Discovery document not found');
+    await expect(fetchDiscoveryDocument('https://example.com')).rejects.toMatchObject({
+      message: expect.stringContaining('Discovery document not found'),
+      status: 404,
+    });
   });
 
   it('throws DiscoveryError on invalid JSON', async () => {
