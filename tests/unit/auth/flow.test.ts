@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const loadTokens = vi.fn();
 const saveTokens = vi.fn();
@@ -26,7 +26,7 @@ vi.mock('../../../src/auth/callback-server.js', () => ({
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
-const { getValidBearerToken, authenticate, AuthFlowError, AuthCancelledError } = await import(
+const { getValidBearerToken, authenticate, bearerOptionsFromSession, AuthFlowError, AuthCancelledError } = await import(
   '../../../src/auth/flow.js'
 );
 const { waitForCallback } = await import('../../../src/auth/callback-server.js');
@@ -46,6 +46,7 @@ const oidcConfig = {
 
 describe('getValidBearerToken', () => {
   beforeEach(() => {
+    vi.unstubAllEnvs();
     loadTokens.mockReset();
     saveTokens.mockReset();
     isTokenExpired.mockReset();
@@ -209,6 +210,7 @@ describe('getValidBearerToken', () => {
 
 describe('authenticate', () => {
   beforeEach(() => {
+    vi.unstubAllEnvs();
     loadTokens.mockReset();
     isTokenExpired.mockReset();
     fetchOidcConfiguration.mockReset();
@@ -233,6 +235,7 @@ describe('authenticate', () => {
 
 describe('authenticate cancellation', () => {
   beforeEach(() => {
+    vi.unstubAllEnvs();
     loadTokens.mockReset();
     saveTokens.mockReset();
     isTokenExpired.mockReset();
@@ -276,5 +279,106 @@ describe('authenticate cancellation', () => {
     ).rejects.toThrow('Authentication cancelled');
 
     expect(waitForCallback).not.toHaveBeenCalled();
+  });
+});
+
+describe('bearerOptionsFromSession', () => {
+  const session = {
+    discoveryBaseUrl: baseUrl,
+    auth,
+  };
+
+  it('always includes requestUrl', () => {
+    expect(bearerOptionsFromSession(session, 'https://cdn.example.com/x.zip')).toEqual({
+      requestUrl: 'https://cdn.example.com/x.zip',
+    });
+  });
+
+  it('forwards interactiveMode and forceRefresh when set', () => {
+    expect(
+      bearerOptionsFromSession(
+        { ...session, interactiveMode: true },
+        'https://api.example.com/projects',
+        { forceRefresh: true },
+      ),
+    ).toEqual({
+      requestUrl: 'https://api.example.com/projects',
+      interactiveMode: true,
+      forceRefresh: true,
+    });
+  });
+});
+
+describe('AGENTMAN_ACCESS_TOKEN', () => {
+  beforeEach(() => {
+    vi.unstubAllEnvs();
+    loadTokens.mockReset();
+    fetchOidcConfiguration.mockReset();
+    mockFetch.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('returns the env token without OIDC or store lookup in headless mode', async () => {
+    vi.stubEnv('AGENTMAN_ACCESS_TOKEN', 'env-bearer');
+
+    const token = await getValidBearerToken(baseUrl, { required: true });
+
+    expect(token).toBe('env-bearer');
+    expect(loadTokens).not.toHaveBeenCalled();
+    expect(fetchOidcConfiguration).not.toHaveBeenCalled();
+  });
+
+  it('overrides a cached OAuth token', async () => {
+    vi.stubEnv('AGENTMAN_ACCESS_TOKEN', 'env-bearer');
+    loadTokens.mockResolvedValueOnce({
+      bearerToken: 'cached-oauth',
+      oidcDiscoveryUrl: auth.oidcDiscoveryUrl,
+      clientId: auth.clientId,
+    });
+
+    const result = await authenticate(baseUrl, auth, vi.fn());
+
+    expect(result).toEqual({ bearerToken: 'env-bearer', fromCache: true, fromEnv: true });
+    expect(loadTokens).not.toHaveBeenCalled();
+  });
+
+  it('requires AGENTMAN_INTERACTIVE_TOKEN_HOSTS in interactive mode', async () => {
+    vi.stubEnv('AGENTMAN_ACCESS_TOKEN', 'env-bearer');
+
+    await expect(
+      authenticate(baseUrl, auth, vi.fn(), { interactiveMode: true, requestUrl: baseUrl }),
+    ).rejects.toThrow(/AGENTMAN_INTERACTIVE_TOKEN_HOSTS is not/);
+    expect(fetchOidcConfiguration).not.toHaveBeenCalled();
+  });
+
+  it('sends the env token to an allowlisted host in interactive mode', async () => {
+    vi.stubEnv('AGENTMAN_ACCESS_TOKEN', 'env-bearer');
+    vi.stubEnv('AGENTMAN_INTERACTIVE_TOKEN_HOSTS', 'discovery.example.com,cdn.example.com');
+
+    const result = await authenticate(baseUrl, { required: true }, vi.fn(), {
+      interactiveMode: true,
+      requestUrl: 'https://cdn.example.com/bundle.zip',
+    });
+
+    expect(result.fromEnv).toBe(true);
+    expect(result.bearerToken).toBe('env-bearer');
+  });
+
+  it('refuses the env token for a host that is not allowlisted and does not fall through to OAuth', async () => {
+    vi.stubEnv('AGENTMAN_ACCESS_TOKEN', 'env-bearer');
+    vi.stubEnv('AGENTMAN_INTERACTIVE_TOKEN_HOSTS', 'discovery.example.com');
+    const onPrompt = vi.fn();
+
+    await expect(
+      authenticate(baseUrl, auth, onPrompt, {
+        interactiveMode: true,
+        requestUrl: 'https://evil.example.com/bundle.zip',
+      }),
+    ).rejects.toThrow(/Refusing to send AGENTMAN_ACCESS_TOKEN to evil.example.com/);
+    expect(onPrompt).not.toHaveBeenCalled();
+    expect(loadTokens).not.toHaveBeenCalled();
   });
 });

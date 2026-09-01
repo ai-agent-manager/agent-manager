@@ -16,6 +16,12 @@ import {
   type StoredTokens,
   type TokenBackend,
 } from './token-store.js';
+import {
+  getEnvAccessToken,
+  getInteractiveTokenHosts,
+  hostKeyFromHttpUrl,
+  isHostAllowedForInteractiveEnvToken,
+} from './env-token.js';
 import type { DiscoveryAuth } from '../discovery/types.js';
 import { getPlatform } from '../lib/platform.js';
 
@@ -32,6 +38,8 @@ export interface AuthResult {
   bearerToken: string;
   /** Whether the token was obtained from cache (true) or a fresh login (false). */
   fromCache: boolean;
+  /** Whether the token came from `AGENTMAN_ACCESS_TOKEN` rather than OAuth. */
+  fromEnv?: boolean;
   /** Where the token was persisted — 'keychain' (OS credential store) or 'filesystem' (~/.agentman/auth/). */
   backend?: TokenBackend;
 }
@@ -41,6 +49,11 @@ export interface AuthSession {
   /** Discovery base URL — key for the token store (same as authenticate()). */
   discoveryBaseUrl: string;
   auth: DiscoveryAuth;
+  /**
+   * When true, `AGENTMAN_ACCESS_TOKEN` requires `AGENTMAN_INTERACTIVE_TOKEN_HOSTS`
+   * and is only sent to listed hosts. Set by the TUI; omit for headless.
+   */
+  interactiveMode?: boolean;
 }
 
 export interface GetValidBearerTokenOptions {
@@ -57,6 +70,13 @@ export interface GetValidBearerTokenOptions {
   forceRefresh?: boolean;
   /** Cancels any in-flight stage (OIDC discovery, callback wait, token exchange/refresh). */
   signal?: AbortSignal;
+  /**
+   * When true, `AGENTMAN_ACCESS_TOKEN` requires `AGENTMAN_INTERACTIVE_TOKEN_HOSTS`
+   * and is only sent to listed hosts.
+   */
+  interactiveMode?: boolean;
+  /** Host check target when using `AGENTMAN_ACCESS_TOKEN` (defaults to `baseUrl`). */
+  requestUrl?: string;
 }
 
 export class AuthFlowError extends Error {
@@ -77,6 +97,29 @@ export class AuthCancelledError extends AuthFlowError {
 export interface AuthenticateOptions {
   /** Cancels any in-flight stage (OIDC discovery, callback wait, token exchange/refresh). */
   signal?: AbortSignal;
+  /**
+   * When true, `AGENTMAN_ACCESS_TOKEN` requires `AGENTMAN_INTERACTIVE_TOKEN_HOSTS`
+   * and is only sent to listed hosts.
+   */
+  interactiveMode?: boolean;
+  /** Host check target when using `AGENTMAN_ACCESS_TOKEN` (defaults to `baseUrl`). */
+  requestUrl?: string;
+}
+
+/**
+ * Options for {@link getValidBearerToken} from a session at a specific request URL.
+ * Interactive sessions pass `interactiveMode` so the env-token allowlist applies.
+ */
+export function bearerOptionsFromSession(
+  session: AuthSession,
+  requestUrl: string,
+  extras: { forceRefresh?: boolean; signal?: AbortSignal } = {},
+): GetValidBearerTokenOptions {
+  const options: GetValidBearerTokenOptions = { requestUrl };
+  if (session.interactiveMode) options.interactiveMode = true;
+  if (extras.forceRefresh) options.forceRefresh = true;
+  if (extras.signal) options.signal = extras.signal;
+  return options;
 }
 
 function requireAuthConfig(auth: DiscoveryAuth): asserts auth is DiscoveryAuth & {
@@ -90,14 +133,57 @@ function requireAuthConfig(auth: DiscoveryAuth): asserts auth is DiscoveryAuth &
   }
 }
 
+function assertInteractiveEnvTokenConfigured(): void {
+  if (!getEnvAccessToken()) return;
+  const hosts = getInteractiveTokenHosts();
+  if (!hosts?.length) {
+    throw new AuthFlowError(
+      'AGENTMAN_ACCESS_TOKEN is set but AGENTMAN_INTERACTIVE_TOKEN_HOSTS is not. ' +
+        'In interactive mode, set a comma-separated host allowlist or unset AGENTMAN_ACCESS_TOKEN.',
+    );
+  }
+}
+
+function resolveEnvBearerToken(
+  baseUrl: string,
+  options: Pick<GetValidBearerTokenOptions, 'interactiveMode' | 'requestUrl'>,
+): AuthResult | undefined {
+  const envToken = getEnvAccessToken();
+  if (!envToken) return undefined;
+
+  if (!options.interactiveMode) {
+    return { bearerToken: envToken, fromCache: true, fromEnv: true };
+  }
+
+  assertInteractiveEnvTokenConfigured();
+  const allowed = getInteractiveTokenHosts()!;
+  const checkUrl = options.requestUrl ?? baseUrl;
+  if (!isHostAllowedForInteractiveEnvToken(checkUrl, allowed)) {
+    const host = hostKeyFromHttpUrl(checkUrl) ?? checkUrl;
+    throw new AuthFlowError(
+      `Refusing to send AGENTMAN_ACCESS_TOKEN to ${host}: host is not listed in AGENTMAN_INTERACTIVE_TOKEN_HOSTS`,
+    );
+  }
+
+  return { bearerToken: envToken, fromCache: true, fromEnv: true };
+}
+
 /**
- * Resolve a usable bearer token (cache → refresh → optional interactive login).
+ * Resolve a usable bearer token (env → cache → refresh → optional interactive login).
  */
 async function resolveBearerToken(
   baseUrl: string,
   auth: DiscoveryAuth,
   options: GetValidBearerTokenOptions = {},
 ): Promise<AuthResult> {
+  const envResult = resolveEnvBearerToken(baseUrl, {
+    interactiveMode: options.interactiveMode,
+    requestUrl: options.requestUrl,
+  });
+  if (envResult) {
+    return envResult;
+  }
+
   requireAuthConfig(auth);
 
   const { onPrompt, allowInteractive = false, forceRefresh = false, signal } = options;
@@ -157,11 +243,12 @@ async function resolveBearerToken(
 /**
  * Return a usable bearer token, refreshing from the token store when near expiry.
  *
- * 1. Load cached tokens for `baseUrl`.
- * 2. If present, unexpired, and not `forceRefresh` — return the bearer.
- * 3. If a refresh token is available — refresh, persist, return.
- * 4. If `allowInteractive` + `onPrompt` — run the authorization-code flow.
- * 5. Otherwise throw.
+ * 1. Check `AGENTMAN_ACCESS_TOKEN` — if set, return it (interactive when allowlisted).
+ * 2. Load cached tokens for `baseUrl`.
+ * 3. If present, unexpired, and not `forceRefresh` — return the bearer.
+ * 4. If a refresh token is available — refresh, persist, return.
+ * 5. If `allowInteractive` + `onPrompt` — run the authorization-code flow.
+ * 6. Otherwise throw.
  */
 export async function getValidBearerToken(
   baseUrl: string,
@@ -175,15 +262,16 @@ export async function getValidBearerToken(
 /**
  * Obtain a valid access token for the given base URL.
  *
- * 1. Check for a cached token — if valid, return it.
- * 2. If expired but has a refresh token, attempt a refresh.
- * 3. Otherwise, run the full interactive authorization flow.
+ * 1. Check `AGENTMAN_ACCESS_TOKEN` — if set, return it (headless/CI; interactive when allowlisted).
+ * 2. Check for a cached token — if valid, return it.
+ * 3. If expired but has a refresh token, attempt a refresh.
+ * 4. Otherwise, run the full interactive authorization flow.
  *
  * @param baseUrl   The base URL of the discovery endpoint.
  * @param auth      The auth configuration from the discovery document.
  * @param onPrompt  Callback invoked with the authorization URL so the
  *                  TUI can display it to the user.
- * @param options   Optional abort signal covering every network stage.
+ * @param options   Abort signal, interactive host-allowlist flags, and request URL.
  */
 export async function authenticate(
   baseUrl: string,
@@ -195,6 +283,8 @@ export async function authenticate(
     allowInteractive: true,
     onPrompt,
     signal: options.signal,
+    interactiveMode: options.interactiveMode,
+    requestUrl: options.requestUrl,
   });
 }
 

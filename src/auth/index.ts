@@ -1,6 +1,7 @@
 export {
   authenticate,
   getValidBearerToken,
+  bearerOptionsFromSession,
   openInBrowser,
   AuthFlowError,
   AuthCancelledError,
@@ -18,6 +19,12 @@ export type {
   InteractiveAuthOptions,
   DiscoveryAuthContext,
 } from './access-token-provider.js';
+export {
+  getEnvAccessToken,
+  getInteractiveTokenHosts,
+  AGENTMAN_ACCESS_TOKEN_ENV,
+  AGENTMAN_INTERACTIVE_TOKEN_HOSTS_ENV,
+} from './env-token.js';
 export { fetchOidcConfiguration, OidcDiscoveryError } from './oidc.js';
 export type { OidcConfiguration } from './oidc.js';
 export { generateCodeVerifier, generateCodeChallenge, generateState } from './pkce.js';

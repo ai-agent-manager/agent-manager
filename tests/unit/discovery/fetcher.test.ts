@@ -110,6 +110,17 @@ describe('fetchDiscoveryDocument', () => {
     expect(result.telemetry?.siteId).toBe('test-site');
   });
 
+  it('accepts auth.required without OIDC fields for env-token-only publishers', async () => {
+    const document: DiscoveryDocument = {
+      version: '1',
+      auth: { required: true },
+      sources: [{ name: 'protected', type: 'http', url: 'https://skills.example.com/bundle' }],
+    };
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => document });
+
+    await expect(fetchDiscoveryDocument('https://example.com')).resolves.toEqual(document);
+  });
+
   it('accepts an HTTP source whose url is a content root at any path', async () => {
     const document: DiscoveryDocument = {
       version: '1',
