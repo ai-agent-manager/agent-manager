@@ -16,7 +16,7 @@ import { readRepoConfig, type RepoAgentmanConfig } from '../bundle/repo-config.j
 import type { BundleSource } from '../bundle/source.js';
 import { getSkillTools } from '../config/tools.js';
 import { findRepoRoot } from '../lib/repo.js';
-import { getValidBearerToken, type AuthSession } from '../auth/index.js';
+import { getValidBearerToken, bearerOptionsFromSession, type AuthSession } from '../auth/index.js';
 import {
   getBundleSourceTelemetryProperties,
   trackTelemetryError,
@@ -97,14 +97,16 @@ export function VersionManager({
   const downloadAuthSession: AuthSession | undefined =
     authSession ??
     (source.type === 'discovery' && source.discovery.auth?.required
-      ? { discoveryBaseUrl: source.baseUrl, auth: source.discovery.auth }
+      ? { discoveryBaseUrl: source.baseUrl, auth: source.discovery.auth, interactiveMode: true }
       : undefined);
 
   async function resolveDownloadBearer(): Promise<string | undefined> {
     if (!downloadAuthSession) return undefined;
+    const requestUrl = source.type === 'url' || source.type === 'discovery' ? source.baseUrl : downloadAuthSession.discoveryBaseUrl;
     return getValidBearerToken(
       downloadAuthSession.discoveryBaseUrl,
       downloadAuthSession.auth,
+      bearerOptionsFromSession(downloadAuthSession, requestUrl),
     );
   }
 

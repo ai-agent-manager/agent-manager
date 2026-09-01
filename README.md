@@ -158,6 +158,13 @@ AGENTMAN_ACCESS_TOKEN=... npx -y @ai-agent-manager/cli@latest https://your-bundl
   --config .github/ai-skills.yml
 ```
 
+The TUI uses the same variable. Set `AGENTMAN_INTERACTIVE_TOKEN_HOSTS` to a comma-separated host allowlist so the token is not sent to a server you typed by mistake:
+
+```bash
+AGENTMAN_ACCESS_TOKEN=... AGENTMAN_INTERACTIVE_TOKEN_HOSTS=your-bundle-server.com,cdn.example.com \
+  npx -y @ai-agent-manager/cli@latest https://your-bundle-server.com
+```
+
 `AGENTMAN_ACCESS_TOKEN` is used as-is (no store lookup or refresh). See [docs/discovery.md](docs/discovery.md) for the full auth flow.
 
 ### Force re-download

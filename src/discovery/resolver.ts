@@ -20,7 +20,7 @@ import {
   type ArtefactSkillSource,
   type BundleSkillSource,
 } from '../bundle/skill-source.js';
-import { getValidBearerToken, type AuthSession } from '../auth/index.js';
+import { getValidBearerToken, bearerOptionsFromSession, type AuthSession } from '../auth/index.js';
 import type { DiscoveryDocument, DiscoverySource, SourceType, SourceStatus } from './types.js';
 
 /** A skill resolved from a discovery source, tagged with catalogue metadata. */
@@ -71,9 +71,14 @@ export interface ResolveDiscoveryOptions {
 async function resolveDownloadBearer(
   accessToken: string | undefined,
   authSession: AuthSession | undefined,
+  requestUrl: string,
 ): Promise<string | undefined> {
   if (authSession) {
-    return getValidBearerToken(authSession.discoveryBaseUrl, authSession.auth);
+    return getValidBearerToken(
+      authSession.discoveryBaseUrl,
+      authSession.auth,
+      bearerOptionsFromSession(authSession, requestUrl),
+    );
   }
   return accessToken;
 }
@@ -116,7 +121,7 @@ export async function resolveDiscoverySkills(
           // source.url is the content root: the client appends index.json and
           // <version>/… to it and inserts no path of its own.
           const sourceKey = bundleSourceKey(source.name);
-          const bearer = await resolveDownloadBearer(accessToken, authSession);
+          const bearer = await resolveDownloadBearer(accessToken, authSession, source.url);
           const { zipPath, version } = await downloadBundle(source.url, undefined, bearer, sourceKey);
           const result = await extractBundle(zipPath, { sourceKey, contentRoot: source.url });
           // Deliberately no setCurrentBundle here: the `current` symlink points
@@ -171,7 +176,7 @@ export async function resolveDiscoverySkills(
             installLayout: 'namespaced',
             sha256: artefactSha256,
           };
-          const bearer = await resolveDownloadBearer(accessToken, authSession);
+          const bearer = await resolveDownloadBearer(accessToken, authSession, source.url);
           const download = await downloadArtefact(artefactSource, {
             bearerToken: bearer,
           });

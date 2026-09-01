@@ -48,7 +48,7 @@ describe('createDiscoveryAccessTokenProvider', () => {
       'https://discovery.example.com',
       DOCUMENT.auth,
       options.onAuthPrompt,
-      { signal: options.signal },
+      { signal: options.signal, interactiveMode: true, requestUrl: 'https://cdn.example.com/skills/tool.zip' },
     );
   });
 

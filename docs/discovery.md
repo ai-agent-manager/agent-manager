@@ -65,8 +65,8 @@ When a user provides a base URL to agent-manager, it fetches the discovery docum
 | `projects.exclusiveSource` | boolean | No | When `true` (default `false`), Search & Install and headless installs are limited to skills/agents permitted by at least one project the caller belongs to |
 | `auth` | object | No | Authentication configuration (omit if no auth required) |
 | `auth.required` | boolean | Yes (if auth present) | Whether authentication is needed to access skills |
-| `auth.oidcDiscoveryUrl` | string (URI) | Yes (if auth.required=true) | URL to the standard OIDC discovery document |
-| `auth.clientId` | string | Yes (if auth.required=true) | OAuth2 client ID for agent-manager to use |
+| `auth.oidcDiscoveryUrl` | string (URI) | No | URL to the standard OIDC discovery document. Required for browser login; omit when clients authenticate only via `AGENTMAN_ACCESS_TOKEN` |
+| `auth.clientId` | string | No | OAuth2 client ID for agent-manager to use. Required for browser login; omit when clients authenticate only via `AGENTMAN_ACCESS_TOKEN` |
 | `auth.scopes` | string[] | No | OAuth2 scopes to request (defaults to `["openid"]`) |
 | `telemetry` | object | No | Telemetry configuration (omit to leave unconfigured) |
 | `telemetry.url` | string (URI) | Yes (if telemetry present) | Base URL of the telemetry endpoint |
@@ -279,7 +279,11 @@ shasum -a 256 code-reviewer-1.0.0.zip | awk '{print $1}' > code-reviewer-1.0.0.z
 
 ## Authentication Flow
 
-When `auth.required` is `true`:
+When `auth.required` is `true`, clients authenticate with either a static bearer (`AGENTMAN_ACCESS_TOKEN`) or the browser OAuth flow below. OIDC fields may be omitted when every client uses the env token.
+
+### Browser login
+
+When `auth.oidcDiscoveryUrl` and `auth.clientId` are present:
 
 1. Agent-manager fetches the OIDC discovery document from `auth.oidcDiscoveryUrl`.
 2. From the OIDC document, it extracts `authorization_endpoint` and `token_endpoint`.
@@ -305,14 +309,19 @@ When `auth.required` is `true`:
 
 Agent Manager does **not** rely on a one-shot login at startup. Before each authenticated HTTP use — backend API calls (for example My Projects) and authenticated content downloads (`downloadBundle` / index fetches) — it:
 
-1. Loads tokens for the discovery base URL from the store.
-2. Returns the cached bearer if it is still valid.
-3. If expired (or near expiry) and a refresh token is present, calls the OIDC `token_endpoint` with `grant_type=refresh_token`, saves the new tokens, and continues.
-4. If refresh fails mid-session (non-interactive paths such as API/background), surfaces an auth error so the user can sign in again. Interactive startup can fall through to a full browser login instead.
+1. Returns `AGENTMAN_ACCESS_TOKEN` if set (interactive mode also checks `AGENTMAN_INTERACTIVE_TOKEN_HOSTS`).
+2. Loads tokens for the discovery base URL from the store.
+3. Returns the cached bearer if it is still valid.
+4. If expired (or near expiry) and a refresh token is present, calls the OIDC `token_endpoint` with `grant_type=refresh_token`, saves the new tokens, and continues.
+5. If refresh fails mid-session (non-interactive paths such as API/background), surfaces an auth error so the user can sign in again. Interactive startup can fall through to a full browser login instead.
 
 For API requests that still receive HTTP 401 (for example tokens without a known `expires_in`), Agent Manager force-refreshes once and retries the request a single time.
 
 In headless mode, `AGENTMAN_ACCESS_TOKEN` overrides the store entirely: the value is sent as the bearer and is never refreshed. When that env var is unset, headless uses the same cache/refresh path as the interactive client (browser login is not available in CI — use the env token or a pre-populated store).
+
+The TUI honours the same env token so you can skip the browser flow there too. Because a user can point the TUI at any URL, interactive mode also requires `AGENTMAN_INTERACTIVE_TOKEN_HOSTS` (comma-separated hosts). The token is sent only to listed hosts at each authenticated request (discovery, API, and content URLs). A missing allowlist or a host that is not listed fails closed. There is no silent fallback to OAuth while the env token remains set. Headless and `--config` do not use the allowlist.
+
+Protected content downloads still go through `createDiscoveryAccessTokenProvider`, which refuses to authenticate for origins the discovery document does not declare.
 
 ### Token Storage
 
@@ -322,7 +331,7 @@ Primary backend is the OS keychain (macOS Keychain, Windows Credential Manager, 
 
 ## Authenticated API (`api`)
 
-Agent-manager can call the publisher's authenticated REST API using the same OIDC bearer token obtained during login. The API base URL is resolved in this order:
+Agent-manager can call the publisher's authenticated REST API using the same bearer token obtained during login or from `AGENTMAN_ACCESS_TOKEN`. The API base URL is resolved in this order:
 
 1. `API_BASE_URL` environment variable (if set and non-empty)
 2. `api.baseUrl` from the discovery document

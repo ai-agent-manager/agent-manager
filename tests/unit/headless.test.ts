@@ -183,6 +183,7 @@ describe('runHeadless', () => {
   afterEach(async () => {
     await rm(tmpDir, { recursive: true, force: true });
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
   });
 
   it('installs from a GitHub repository without requesting discovery', async () => {
@@ -540,5 +541,51 @@ describe('runHeadless', () => {
     expect(warned).toContain('github.com/example-org/example-repo/my-skill');
     expect(warned).toContain('/tmp/source-a/my-skill');
     expect(warned).toContain('/tmp/source-b/my-skill');
+  });
+
+  it('uses AGENTMAN_ACCESS_TOKEN without a host allowlist in headless mode', async () => {
+    vi.stubEnv('AGENTMAN_ACCESS_TOKEN', 'env-bearer');
+    const { fetchDiscoveryDocument, resolveDiscoverySkills } = await import('../../src/discovery/index.js');
+    vi.mocked(fetchDiscoveryDocument).mockResolvedValueOnce({
+      version: '1',
+      auth: { required: true },
+      sources: [{ name: 'test-artefact', type: 'artefact', url: 'https://cdn.example.com/skill.zip' }],
+    });
+    vi.mocked(resolveDiscoverySkills).mockResolvedValueOnce({
+      skills: [{
+        dirName: 'my-skill',
+        dirPath: '/tmp/skill/my-skill',
+        skillMdPath: '/tmp/skill/my-skill/SKILL.md',
+        meta: null,
+      }],
+      rovoAgents: [],
+      errors: [],
+      bundleVersion: 'discovery',
+    });
+
+    const configPath = path.join(tmpDir, 'ai-skills.yml');
+    await writeFile(configPath, 'tools: claude-code\nscope: repo\nskills:\n  - my-skill\n');
+    installMock.mockClear();
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await expect(
+      runHeadless('https://cdn.example.com', configPath, false),
+    ).resolves.toBeUndefined();
+
+    expect(logSpy.mock.calls.map((c) => String(c[0])).join('\n')).toContain(
+      'Using access token from AGENTMAN_ACCESS_TOKEN',
+    );
+    expect(resolveDiscoverySkills).toHaveBeenCalledWith(
+      expect.objectContaining({ auth: { required: true } }),
+      undefined,
+      expect.any(Function),
+      expect.objectContaining({
+        authSession: expect.objectContaining({
+          discoveryBaseUrl: 'https://cdn.example.com',
+          auth: { required: true },
+        }),
+      }),
+    );
+    expect(installMock).toHaveBeenCalledTimes(1);
   });
 });

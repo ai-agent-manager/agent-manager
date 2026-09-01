@@ -68,9 +68,15 @@ vi.mock('../../../src/bundle/artefact-scanner.js', () => ({
 }));
 
 const getValidBearerToken = vi.fn();
-vi.mock('../../../src/auth/index.js', () => ({
-  getValidBearerToken: (...args: unknown[]) => getValidBearerToken(...args),
-}));
+vi.mock('../../../src/auth/index.js', async () => {
+  const actual = await vi.importActual<typeof import('../../../src/auth/index.js')>(
+    '../../../src/auth/index.js',
+  );
+  return {
+    ...actual,
+    getValidBearerToken: (...args: unknown[]) => getValidBearerToken(...args),
+  };
+});
 
 const { resolveDiscoverySkills } = await import(
   '../../../src/discovery/resolver.js'
@@ -470,11 +476,45 @@ describe('resolveDiscoverySkills', () => {
     expect(getValidBearerToken).toHaveBeenCalledWith(
       'https://discovery.example.com',
       expect.objectContaining({ required: true, clientId: 'cli' }),
+      { requestUrl: 'https://cdn.example.com/agents' },
     );
     expect(downloadBundle).toHaveBeenCalledWith(
       'https://cdn.example.com/agents',
       undefined,
       'fresh-bearer',
+      bundleSourceKey('protected-bundle'),
+    );
+  });
+
+  it('forwards interactiveMode from authSession so the env-token allowlist applies', async () => {
+    getValidBearerToken.mockResolvedValueOnce('env-bearer');
+    const { downloadBundle } = await import('../../../src/bundle/downloader.js');
+    const { bundleSourceKey } = await import('../../../src/bundle/skill-source.js');
+
+    const doc: DiscoveryDocument = {
+      version: '1',
+      sources: [
+        { name: 'protected-bundle', type: 'http', url: 'https://cdn.example.com/agents' },
+      ],
+    };
+
+    await resolveDiscoverySkills(doc, undefined, undefined, {
+      authSession: {
+        discoveryBaseUrl: 'https://discovery.example.com',
+        auth: { required: true },
+        interactiveMode: true,
+      },
+    });
+
+    expect(getValidBearerToken).toHaveBeenCalledWith(
+      'https://discovery.example.com',
+      { required: true },
+      { requestUrl: 'https://cdn.example.com/agents', interactiveMode: true },
+    );
+    expect(downloadBundle).toHaveBeenCalledWith(
+      'https://cdn.example.com/agents',
+      undefined,
+      'env-bearer',
       bundleSourceKey('protected-bundle'),
     );
   });
