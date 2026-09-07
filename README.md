@@ -11,7 +11,7 @@ Agent Manager pulls a versioned bundle of skills and Rovo agent configs from a U
 ## Quick Start
 
 ```bash
-npx -y @ai-agent-manager/cli@latest https://your-bundle-server.com
+npx @ai-agent-manager/cli@latest https://your-bundle-server.com
 ```
 
 That's it. It fetches your team's discovery document, authenticates (if required), downloads the latest bundle, caches it at `~/.agentman/`, and opens an interactive menu.
@@ -38,7 +38,7 @@ Agent Manager gives you a single source of truth for your team's agent skills â€
 ### Interactive (recommended for local use)
 
 ```bash
-npx -y @ai-agent-manager/cli@latest <source>
+npx @ai-agent-manager/cli@latest <source>
 ```
 
 `<source>` can be a bundle URL, a GitHub repo (`owner/repo` or a full URL), or a local directory. For HTTP bases it fetches `.well-known/agents/discovery.json`; for git remotes it probes `.agents/discovery.json` inside the repo first.
@@ -48,7 +48,7 @@ npx -y @ai-agent-manager/cli@latest <source>
 Skip the menu entirely with a config file:
 
 ```bash
-npx -y @ai-agent-manager/cli@latest <source> --config .github/ai-skills.yml
+npx @ai-agent-manager/cli@latest <source> --config .github/ai-skills.yml
 ```
 
 The `<source>` can be a **bundle URL**, a **GitHub repo** (`owner/repo` or full URL), or a **local directory** â€” agentman detects the type automatically. Published artefacts (`.zip` URLs) are supported as sources within a [discovery document](docs/discovery.md).
@@ -97,13 +97,13 @@ my-skills-repo/
 
 ```bash
 # Short form (same as https://github.com/org/agent-skills):
-npx -y @ai-agent-manager/cli@latest org/agent-skills
+npx @ai-agent-manager/cli@latest org/agent-skills
 
 # Catalogue hosted in git (discovery document present):
-npx -y @ai-agent-manager/cli@latest https://github.com/org/agent-skills
+npx @ai-agent-manager/cli@latest https://github.com/org/agent-skills
 
 # Bare skills repo (no discovery document):
-npx -y @ai-agent-manager/cli@latest org/my-skills-repo \
+npx @ai-agent-manager/cli@latest org/my-skills-repo \
   --config .github/ai-skills.yml
 ```
 
@@ -111,14 +111,14 @@ An existing local directory named like `owner/repo` still wins over the GitHub s
 For private repositories, set `GITHUB_TOKEN` to a personal access token with repo read access:
 
 ```bash
-GITHUB_TOKEN=ghp_... npx -y @ai-agent-manager/cli@latest https://github.com/org/my-skills-repo \
+GITHUB_TOKEN=ghp_... npx @ai-agent-manager/cli@latest https://github.com/org/my-skills-repo \
   --config .github/ai-skills.yml
 ```
 
 To pin to a specific branch or tag, use the `/tree/<ref>` GitHub URL format:
 
 ```bash
-npx -y @ai-agent-manager/cli@latest https://github.com/org/my-skills-repo/tree/v2.0 \
+npx @ai-agent-manager/cli@latest https://github.com/org/my-skills-repo/tree/v2.0 \
   --config .github/ai-skills.yml
 ```
 
@@ -146,7 +146,7 @@ Artefact URLs must use `https://`. Plain `http://` is only accepted for localhos
 #### Install from a bundle server
 
 ```bash
-npx -y @ai-agent-manager/cli@latest https://bundles.example.com \
+npx @ai-agent-manager/cli@latest https://bundles.example.com \
   --config .github/ai-skills.yml
 ```
 
@@ -173,13 +173,13 @@ AGENTMAN_ACCESS_TOKEN=... npx -y @ai-agent-manager/cli@latest https://your-bundl
 Bypass the local cache and pull fresh content:
 
 ```bash
-npx -y @ai-agent-manager/cli@latest <source> --update
+npx @ai-agent-manager/cli@latest <source> --update
 ```
 
 ### Help
 
 ```bash
-npx -y @ai-agent-manager/cli@latest --help
+npx @ai-agent-manager/cli@latest --help
 ```
 
 ---
@@ -204,7 +204,7 @@ On startup, if a newer app version or bundle is available, a bordered update pan
 To suppress startup update checks:
 
 ```bash
-AGENTMAN_DISABLE_STARTUP_UPDATE_CHECKS=1 npx -y @ai-agent-manager/cli@latest <base-url>
+AGENTMAN_DISABLE_STARTUP_UPDATE_CHECKS=1 npx @ai-agent-manager/cli@latest <base-url>
 ```
 
 Or toggle it from **Settings & Config** in the menu, or set `"startupUpdateChecksDisabled": true` in `~/.agentman/config.json`.
