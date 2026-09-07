@@ -38,10 +38,10 @@ Agent Manager gives you a single source of truth for your team's agent skills �
 ### Interactive (recommended for local use)
 
 ```bash
-npx -y @ai-agent-manager/cli@latest <base-url>
+npx -y @ai-agent-manager/cli@latest <source>
 ```
 
-Fetches `.well-known/agents/discovery.json` from your bundle server to discover available skills and authentication requirements, then downloads the latest bundle and opens the TUI.
+`<source>` can be a bundle URL, a GitHub repo (`owner/repo` or a full URL), or a local directory. For HTTP bases it fetches `.well-known/agents/discovery.json`; for git remotes it probes that same path inside the repo first.
 
 ### Headless (recommended for CI)
 
@@ -51,7 +51,7 @@ Skip the menu entirely with a config file:
 npx -y @ai-agent-manager/cli@latest <source> --config .github/ai-skills.yml
 ```
 
-The `<source>` can be a **bundle URL**, a **GitHub repository URL**, or a **local directory** — agentman detects the type automatically. Published artefacts (`.zip` URLs) are supported as sources within a [discovery document](docs/discovery.md).
+The `<source>` can be a **bundle URL**, a **GitHub repo** (`owner/repo` or full URL), or a **local directory** — agentman detects the type automatically. Published artefacts (`.zip` URLs) are supported as sources within a [discovery document](docs/discovery.md).
 
 **Config format:**
 
@@ -84,7 +84,7 @@ Unknown skill names log a warning and are skipped. Ambiguous bare names (matchin
 
 #### Install from a GitHub repository
 
-Point agentman at any GitHub repository that contains skills under a `skills/` directory:
+Point agentman at any GitHub repository — short form or full URL. On startup it probes the remote for `.well-known/agents/discovery.json`. When that file exists, the repo is a discovery catalogue. When it does not, agentman installs skills from the repository's `skills/` directory:
 
 ```
 my-skills-repo/
@@ -96,10 +96,18 @@ my-skills-repo/
 ```
 
 ```bash
-npx -y @ai-agent-manager/cli@latest https://github.com/org/my-skills-repo \
+# Short form (same as https://github.com/org/agent-skills):
+npx -y @ai-agent-manager/cli@latest org/agent-skills
+
+# Catalogue hosted in git (discovery document present):
+npx -y @ai-agent-manager/cli@latest https://github.com/org/agent-skills
+
+# Bare skills repo (no discovery document):
+npx -y @ai-agent-manager/cli@latest org/my-skills-repo \
   --config .github/ai-skills.yml
 ```
 
+An existing local directory named like `owner/repo` still wins over the GitHub shorthand — use `./owner/repo` if you need to be explicit.
 For private repositories, set `GITHUB_TOKEN` to a personal access token with repo read access:
 
 ```bash

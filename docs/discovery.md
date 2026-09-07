@@ -6,7 +6,11 @@ Agent Manager uses a **discovery document** served at a well-known path to locat
 
 **Well-known path:** `<base_url>/.well-known/agents/discovery.json`
 
-When a user provides a base URL to agent-manager, it fetches the discovery document from this path. There is no fallback; the discovery document must exist.
+When a user provides an HTTP base URL to agent-manager, it fetches the discovery document from this path. There is no fallback; the discovery document must exist.
+
+When a user provides a **git remote** — GitHub `owner/repo` shorthand, GitHub HTTPS, `*.git`, or `git@…` — agent-manager shallow-clones the remote and looks for the same path inside the repository. If the file is present, that document is the catalogue. If it is absent, GitHub remotes fall back to installing skills directly from the repo; other git hosts require the discovery file.
+
+`owner/repo` expands to `https://github.com/owner/repo`. If that string already names an existing local directory, the local directory wins.
 
 ## Discovery Document Format
 

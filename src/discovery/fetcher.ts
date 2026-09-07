@@ -10,6 +10,9 @@ import type { DiscoveryDocument } from './types.js';
 
 const WELL_KNOWN_PATH = '/.well-known/agents/discovery.json';
 
+/** Repo-relative path of the discovery document for git probes. */
+export const GIT_DISCOVERY_PATH = '.well-known/agents/discovery.json';
+
 export class DiscoveryError extends Error {
   constructor(
     message: string,
@@ -23,52 +26,15 @@ export class DiscoveryError extends Error {
 }
 
 /**
- * Fetch and validate the discovery document from the well-known path.
+ * Validate a parsed discovery document body.
+ *
+ * Shared by HTTP fetch and git probe so both paths enforce the same schema and
+ * source-name uniqueness rules.
  */
-export async function fetchDiscoveryDocument(
+export function parseDiscoveryDocument(
+  body: unknown,
   baseUrl: string,
-  accessToken?: string,
-): Promise<DiscoveryDocument> {
-  const url = new URL(WELL_KNOWN_PATH, baseUrl).toString();
-
-  const headers: Record<string, string> = {
-    Accept: 'application/json',
-  };
-  if (accessToken) {
-    headers['Authorization'] = `Bearer ${accessToken}`;
-  }
-
-  let response: Response;
-  try {
-    response = await fetch(url, { headers });
-  } catch (err) {
-    throw new DiscoveryError(
-      `Failed to fetch discovery document from ${url}`,
-      baseUrl,
-      err,
-    );
-  }
-
-  if (!response.ok) {
-    throw new DiscoveryError(
-      `Discovery document not found at ${url} (HTTP ${response.status})`,
-      baseUrl,
-      undefined,
-      response.status,
-    );
-  }
-
-  let body: unknown;
-  try {
-    body = await response.json();
-  } catch (err) {
-    throw new DiscoveryError(
-      `Discovery document at ${url} is not valid JSON`,
-      baseUrl,
-      err,
-    );
-  }
-
+): DiscoveryDocument {
   const ajv = new Ajv2020({ allErrors: true });
   addFormats(ajv);
   const validate = ajv.compile<DiscoveryDocument>(schema);
@@ -120,4 +86,54 @@ export async function fetchDiscoveryDocument(
   }
 
   return body;
+}
+
+/**
+ * Fetch and validate the discovery document from the well-known path.
+ */
+export async function fetchDiscoveryDocument(
+  baseUrl: string,
+  accessToken?: string,
+): Promise<DiscoveryDocument> {
+  const url = new URL(WELL_KNOWN_PATH, baseUrl).toString();
+
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+  };
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(url, { headers });
+  } catch (err) {
+    throw new DiscoveryError(
+      `Failed to fetch discovery document from ${url}`,
+      baseUrl,
+      err,
+    );
+  }
+
+  if (!response.ok) {
+    throw new DiscoveryError(
+      `Discovery document not found at ${url} (HTTP ${response.status})`,
+      baseUrl,
+      undefined,
+      response.status,
+    );
+  }
+
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch (err) {
+    throw new DiscoveryError(
+      `Discovery document at ${url} is not valid JSON`,
+      baseUrl,
+      err,
+    );
+  }
+
+  return parseDiscoveryDocument(body, baseUrl);
 }

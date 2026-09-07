@@ -76,7 +76,30 @@ describe('stored sources', () => {
       kind: 'repo',
       value: 'https://github.com/example-org/example-repo',
     });
+    expect(classifyStoredSource('https://gitlab.example.com/org/catalogue.git')).toEqual({
+      kind: 'repo',
+      value: 'https://gitlab.example.com/org/catalogue.git',
+    });
+    expect(classifyStoredSource('my-org/my-repo')).toEqual({
+      kind: 'repo',
+      value: 'my-org/my-repo',
+    });
     expect(classifyStoredSource('./my-agents')).toEqual({ kind: 'directory', value: path.resolve('./my-agents') });
+  });
+
+  it('classifies an existing local owner/repo path as a directory, not GitHub shorthand', async () => {
+    const nested = path.join(tempDir, 'team', 'skills');
+    await mkdir(nested, { recursive: true });
+    const previous = process.cwd();
+    process.chdir(tempDir);
+    try {
+      expect(classifyStoredSource('team/skills')).toEqual({
+        kind: 'directory',
+        value: path.resolve('team/skills'),
+      });
+    } finally {
+      process.chdir(previous);
+    }
   });
 
   it('migrates a legacy baseUrl-only config into sources + activeSource on read', async () => {

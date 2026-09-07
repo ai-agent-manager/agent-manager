@@ -4,7 +4,7 @@ import { render } from "ink";
 import { parseCli, BANNER } from "./cli.js";
 import { App } from "./app.js";
 import { resolveSource, resolvePersistedSource, type BundleSource, type StartupSource } from "./bundle/source.js";
-import { resolveSkillSource, type RepoSkillSource, type SkillSource } from "./bundle/skill-source.js";
+import { type RepoSkillSource, type SkillSource } from "./bundle/skill-source.js";
 import { addSource, classifyStoredSource } from "./bundle/cache.js";
 import { startConsoleSpinner } from "./lib/console-spinner.js";
 import {
@@ -29,10 +29,13 @@ if (configPath) {
     }
 
     try {
-        // Use the new multi-source resolver for headless mode
-        const skillSource = await resolveSkillSource(sourceInput);
-        // Map to legacy BundleSource for telemetry compatibility
-        const source = skillSourceToBundleSource(skillSource);
+        // resolveSource expands GitHub shorthand and probes git remotes;
+        // resolveSkillSource alone would treat owner/repo as a missing path.
+        const resolved = await resolveSource(sourceInput);
+        const source =
+            resolved.type === 'repo'
+                ? skillSourceToBundleSource(resolved)
+                : resolved;
         trackTelemetryEvent({
             action: "agentman_started",
             properties: { forceUpdate, ...getBundleSourceTelemetryProperties(source) },
