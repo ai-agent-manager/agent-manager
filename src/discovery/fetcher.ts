@@ -11,7 +11,7 @@ import type { DiscoveryDocument } from './types.js';
 const WELL_KNOWN_PATH = '/.well-known/agents/discovery.json';
 
 /** Repo-relative path of the discovery document for git probes. */
-export const GIT_DISCOVERY_PATH = '.well-known/agents/discovery.json';
+export const GIT_DISCOVERY_PATH = '.agents/discovery.json';
 
 export class DiscoveryError extends Error {
   constructor(

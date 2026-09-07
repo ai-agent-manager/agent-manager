@@ -34,10 +34,10 @@ async function isExistingDirectory(input: string): Promise<boolean> {
  * Resolve a user-supplied startup source.
  *
  * Git remotes (GitHub HTTPS, `owner/repo` shorthand, `*.git`, `git@…`) are
- * probed for `.well-known/agents/discovery.json`. When that file exists the
- * remote is a discovery catalogue; when it does not, GitHub remotes fall back
- * to the bare skills-repo install path. An existing local directory wins over
- * `owner/repo` shorthand. Other http(s) URLs remain discovery base URLs.
+ * probed for `.agents/discovery.json`. When that file exists the remote is a
+ * discovery catalogue; when it does not, GitHub remotes fall back to the bare
+ * skills-repo install path. An existing local directory wins over `owner/repo`
+ * shorthand. Other http(s) URLs remain discovery base URLs.
  *
  * Throws descriptive errors for invalid inputs.
  */
@@ -58,7 +58,7 @@ export async function resolveSource(input: string): Promise<StartupSource> {
       return gitRemoteToRepoSource(gitRemote);
     }
     throw new Error(
-      `No discovery document found at .well-known/agents/discovery.json in ${gitRemote.identity}.\n` +
+      `No discovery document found at .agents/discovery.json in ${gitRemote.identity}.\n` +
         `  Direct skill install from a git remote without a discovery document is only supported for GitHub repositories.`,
     );
   }

@@ -190,7 +190,7 @@ export function gitRemoteToRepoSource(
 }
 
 /**
- * Shallow-clone a git remote and look for `.well-known/agents/discovery.json`.
+ * Shallow-clone a git remote and look for `.agents/discovery.json`.
  *
  * Returns the validated document when present, or `null` when the file is
  * absent (caller falls back to bare skills-repo install when supported).

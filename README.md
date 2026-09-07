@@ -41,7 +41,7 @@ Agent Manager gives you a single source of truth for your team's agent skills �
 npx -y @ai-agent-manager/cli@latest <source>
 ```
 
-`<source>` can be a bundle URL, a GitHub repo (`owner/repo` or a full URL), or a local directory. For HTTP bases it fetches `.well-known/agents/discovery.json`; for git remotes it probes that same path inside the repo first.
+`<source>` can be a bundle URL, a GitHub repo (`owner/repo` or a full URL), or a local directory. For HTTP bases it fetches `.well-known/agents/discovery.json`; for git remotes it probes `.agents/discovery.json` inside the repo first.
 
 ### Headless (recommended for CI)
 
@@ -84,7 +84,7 @@ Unknown skill names log a warning and are skipped. Ambiguous bare names (matchin
 
 #### Install from a GitHub repository
 
-Point agentman at any GitHub repository — short form or full URL. On startup it probes the remote for `.well-known/agents/discovery.json`. When that file exists, the repo is a discovery catalogue. When it does not, agentman installs skills from the repository's `skills/` directory:
+Point agentman at any GitHub repository — short form or full URL. On startup it probes the remote for `.agents/discovery.json`. When that file exists, the repo is a discovery catalogue. When it does not, agentman installs skills from the repository's `skills/` directory:
 
 ```
 my-skills-repo/
