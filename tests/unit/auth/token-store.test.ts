@@ -121,6 +121,23 @@ describe('token-store', () => {
       });
       expect(a).toBe(b);
     });
+
+    it('preserves pathname case so differently cased paths are distinct keys', () => {
+      const mixed = tokenStorageKey({
+        discoveryBaseUrl: 'https://github.com/Org/Repo',
+        oidcDiscoveryUrl: sampleIdentity.oidcDiscoveryUrl,
+        clientId: 'cli',
+      });
+      const lower = tokenStorageKey({
+        discoveryBaseUrl: 'https://github.com/org/repo',
+        oidcDiscoveryUrl: sampleIdentity.oidcDiscoveryUrl,
+        clientId: 'cli',
+      });
+      expect(mixed).not.toBe(lower);
+      expect(normalizeAuthUrl('https://github.com/Org/Repo')).toBe(
+        'https://github.com/Org/Repo',
+      );
+    });
   });
 
   describe('tokensMatchIdentity', () => {
@@ -216,6 +233,47 @@ describe('token-store', () => {
 
       expect(await loadTokens(other)).toBeNull();
       expect(await loadTokens(pathIdentity)).toEqual(sampleTokens);
+    });
+
+    it('does not share tokens across differently cased catalogue paths', async () => {
+      const mixedCase: TokenStoreIdentity = {
+        discoveryBaseUrl: 'https://github.com/Org/Repo',
+        oidcDiscoveryUrl: sampleIdentity.oidcDiscoveryUrl,
+        clientId: sampleIdentity.clientId,
+      };
+      const lowerCase: TokenStoreIdentity = {
+        discoveryBaseUrl: 'https://github.com/org/repo',
+        oidcDiscoveryUrl: sampleIdentity.oidcDiscoveryUrl,
+        clientId: sampleIdentity.clientId,
+      };
+
+      await saveTokens(mixedCase, sampleTokens);
+
+      expect(await loadTokens(lowerCase)).toBeNull();
+      expect(await loadTokens(mixedCase)).toEqual(sampleTokens);
+      const files = await readdir(tempDir);
+      expect(files).toHaveLength(1);
+      expect(files[0]).toBe(`${tokenStorageKey(mixedCase)}.json`);
+      expect(files[0]).not.toBe(`${tokenStorageKey(lowerCase)}.json`);
+    });
+
+    it('rejects saves whose token IdP or clientId do not match the identity', async () => {
+      await expect(
+        saveTokens(sampleIdentity, {
+          ...sampleTokens,
+          clientId: 'other-client',
+        }),
+      ).rejects.toThrow(/do not match the storage identity/i);
+
+      await expect(
+        saveTokens(sampleIdentity, {
+          ...sampleTokens,
+          oidcDiscoveryUrl: 'https://other.example.com/.well-known/openid-configuration',
+        }),
+      ).rejects.toThrow(/do not match the storage identity/i);
+
+      const files = await readdir(tempDir);
+      expect(files).toEqual([]);
     });
 
     it('returns null when no tokens are stored', async () => {

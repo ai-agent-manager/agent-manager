@@ -44,8 +44,13 @@ export interface StoredTokens {
 }
 
 /**
- * Normalise a URL for use as part of the storage key: lowercase origin,
- * significant pathname (no trailing slash except root), no query/hash.
+ * Normalise a URL for use as part of the storage key: host is lowercased by
+ * the URL parser, significant pathname is kept (no trailing slash except
+ * root), query and hash are dropped.
+ *
+ * Pathname case is preserved deliberately — `/Org/Repo` and `/org/repo` are
+ * distinct keys. Callers that treat paths as case-insensitive must normalise
+ * case before building a {@link TokenStoreIdentity}.
  */
 export function normalizeAuthUrl(url: string): string {
   const parsed = new URL(url);
@@ -187,6 +192,11 @@ export async function saveTokens(
   identity: TokenStoreIdentity,
   tokens: StoredTokens,
 ): Promise<TokenBackend> {
+  if (!tokensMatchIdentity(tokens, identity)) {
+    throw new Error(
+      'Refusing to store tokens whose oidcDiscoveryUrl or clientId do not match the storage identity',
+    );
+  }
   if (tryKeychainSave(identity, tokens)) {
     await fsDelete(identity);
     return 'keychain';
