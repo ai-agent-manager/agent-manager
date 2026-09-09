@@ -12,12 +12,26 @@ import { waitForCallback, REDIRECT_URI } from './callback-server.js';
 import {
   saveTokens,
   loadTokens,
+  deleteTokens,
   isTokenExpired,
+  tokensMatchIdentity,
   type StoredTokens,
   type TokenBackend,
+  type TokenStoreIdentity,
 } from './token-store.js';
 import type { DiscoveryAuth } from '../discovery/types.js';
 import { getPlatform } from '../lib/platform.js';
+
+function tokenIdentity(
+  baseUrl: string,
+  auth: DiscoveryAuth & { oidcDiscoveryUrl: string; clientId: string },
+): TokenStoreIdentity {
+  return {
+    discoveryBaseUrl: baseUrl,
+    oidcDiscoveryUrl: auth.oidcDiscoveryUrl,
+    clientId: auth.clientId,
+  };
+}
 
 export interface TokenResponse {
   access_token: string;
@@ -38,7 +52,10 @@ export interface AuthResult {
 
 /** Session identity used to load/refresh tokens before authenticated HTTP calls. */
 export interface AuthSession {
-  /** Discovery base URL — key for the token store (same as authenticate()). */
+  /**
+   * Discovery catalogue base URL — part of the token store identity
+   * (together with auth.oidcDiscoveryUrl and auth.clientId).
+   */
   discoveryBaseUrl: string;
   auth: DiscoveryAuth;
 }
@@ -104,7 +121,13 @@ async function resolveBearerToken(
 
   if (signal?.aborted) throw new AuthCancelledError();
 
-  const cached = await loadTokens(baseUrl);
+  const identity = tokenIdentity(baseUrl, auth);
+  let cached = await loadTokens(identity);
+  // Corrupt or mismatched payloads must not be reused — delete and treat as miss.
+  if (cached && !tokensMatchIdentity(cached, identity)) {
+    await deleteTokens(identity);
+    cached = null;
+  }
   if (cached && !forceRefresh && !isTokenExpired(cached)) {
     return { bearerToken: cached.bearerToken, fromCache: true };
   }
@@ -126,7 +149,7 @@ async function resolveBearerToken(
           refreshed.refresh_token = refreshToken;
         }
         const tokens = toStoredTokens(refreshed, auth);
-        const backend = await saveTokens(baseUrl, tokens);
+        const backend = await saveTokens(identity, tokens);
         return { bearerToken: tokens.bearerToken, fromCache: false, backend };
       } catch (err) {
         // A cancelled refresh must not fall through and start an interactive
@@ -203,7 +226,7 @@ export async function authenticate(
  */
 async function interactiveLogin(
   baseUrl: string,
-  auth: DiscoveryAuth,
+  auth: DiscoveryAuth & { oidcDiscoveryUrl: string; clientId: string },
   oidcConfig: OidcConfiguration,
   onPrompt: (authorizeUrl: string) => void,
   signal?: AbortSignal,
@@ -214,7 +237,7 @@ async function interactiveLogin(
   const scopes = auth.scopes ?? ['openid'];
 
   const params = new URLSearchParams({
-    client_id: auth.clientId!,
+    client_id: auth.clientId,
     response_type: 'code',
     redirect_uri: REDIRECT_URI,
     scope: scopes.join(' '),
@@ -235,14 +258,14 @@ async function interactiveLogin(
   // visible while this fetch runs, so cancel must cover it too.
   const tokenResponse = await exchangeCode(
     oidcConfig,
-    auth.clientId!,
+    auth.clientId,
     code,
     codeVerifier,
     signal,
   );
 
   const tokens = toStoredTokens(tokenResponse, auth);
-  const backend = await saveTokens(baseUrl, tokens);
+  const backend = await saveTokens(tokenIdentity(baseUrl, auth), tokens);
 
   return { bearerToken: tokens.bearerToken, fromCache: false, backend };
 }

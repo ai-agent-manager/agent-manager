@@ -316,7 +316,15 @@ In headless mode, `AGENTMAN_ACCESS_TOKEN` overrides the store entirely: the valu
 
 ### Token Storage
 
-Primary backend is the OS keychain (macOS Keychain, Windows Credential Manager, or Linux Secret Service via libsecret). When the keychain is unavailable (typical in CI), tokens fall back to `~/.agentman/auth/<domain>.json` where `<domain>` is derived from the discovery base URL hostname.
+Primary backend is the OS keychain (macOS Keychain, Windows Credential Manager, or Linux Secret Service via libsecret). When the keychain is unavailable (typical in CI), tokens fall back to `~/.agentman/auth/<key>.json`.
+
+Each entry is keyed by a SHA-256 hash of:
+
+1. the discovery catalogue base URL (scheme + host + path),
+2. the OIDC discovery URL from the catalogue's `auth` block, and
+3. the OAuth `clientId`.
+
+Catalogues that share a hostname (for example two GitHub-hosted discovery repos), or the same catalogue with a different IdP/client, therefore get separate stored sessions. Changing any of those values requires signing in again; mismatched payloads found under a key are deleted rather than reused.
 
 ---
 

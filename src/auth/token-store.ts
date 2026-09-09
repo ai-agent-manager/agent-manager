@@ -5,8 +5,13 @@
  * Linux Secret Service (libsecret). Falls back to JSON files at
  * ~/.agentman/auth/ (permissions 0o600) when the keychain is unavailable
  * (e.g. headless CI, missing libsecret).
+ *
+ * Entries are keyed by a SHA-256 hash of the discovery base URL plus the OIDC
+ * discovery URL and client ID, so catalogues that share a hostname (or the same
+ * catalogue with a different IdP) never reuse each other's tokens.
  */
 
+import { createHash } from 'node:crypto';
 import { readFile, writeFile, mkdir, unlink } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -15,6 +20,16 @@ import { getAuthDir } from '../config/paths.js';
 const KEYRING_SERVICE = 'agent-manager';
 
 export type TokenBackend = 'keychain' | 'filesystem';
+
+/** Identity that uniquely selects a stored auth session. */
+export interface TokenStoreIdentity {
+  /** Discovery catalogue base URL (scheme + host + path). */
+  discoveryBaseUrl: string;
+  /** OIDC discovery document URL from the catalogue's auth config. */
+  oidcDiscoveryUrl: string;
+  /** OAuth client ID from the catalogue's auth config. */
+  clientId: string;
+}
 
 export interface StoredTokens {
   /** The token sent as Bearer — ID token when available (required by Cognito authorisers), otherwise access token. */
@@ -28,20 +43,50 @@ export interface StoredTokens {
   clientId: string;
 }
 
-function keychainUser(baseUrl: string): string {
-  return new URL(baseUrl).hostname;
+/**
+ * Normalise a URL for use as part of the storage key: lowercase origin,
+ * significant pathname (no trailing slash except root), no query/hash.
+ */
+export function normalizeAuthUrl(url: string): string {
+  const parsed = new URL(url);
+  parsed.hash = '';
+  parsed.search = '';
+  let pathname = parsed.pathname;
+  if (pathname.length > 1 && pathname.endsWith('/')) {
+    pathname = pathname.slice(0, -1);
+  }
+  if (pathname === '/') {
+    pathname = '';
+  }
+  return `${parsed.protocol}//${parsed.host}${pathname}`;
 }
 
-function tokenFileName(baseUrl: string): string {
-  const hostname = new URL(baseUrl).hostname.replace(/\./g, '_');
-  return `${hostname}.json`;
+/**
+ * Stable storage key (hex SHA-256) for keychain account names and filenames.
+ * Includes discovery base URL, IdP discovery URL, and client ID.
+ */
+export function tokenStorageKey(identity: TokenStoreIdentity): string {
+  const material = [
+    normalizeAuthUrl(identity.discoveryBaseUrl),
+    normalizeAuthUrl(identity.oidcDiscoveryUrl),
+    identity.clientId.trim(),
+  ].join('\n');
+  return createHash('sha256').update(material, 'utf8').digest('hex');
+}
+
+function keychainUser(identity: TokenStoreIdentity): string {
+  return tokenStorageKey(identity);
+}
+
+function tokenFileName(identity: TokenStoreIdentity): string {
+  return `${tokenStorageKey(identity)}.json`;
 }
 
 // ── Keychain helpers ──────────────────────────────────────────────────────
 
 let _keychainAvailable: boolean | undefined;
 
-function getKeyringEntry(baseUrl: string) {
+function getKeyringEntry(identity: TokenStoreIdentity) {
   if (_keychainAvailable === false) return null;
   try {
     // Use createRequire so the native addon resolves correctly under both
@@ -49,15 +94,15 @@ function getKeyringEntry(baseUrl: string) {
     const esmRequire = createRequire(import.meta.url);
     const { Entry } = esmRequire('@napi-rs/keyring');
     _keychainAvailable = true;
-    return new Entry(KEYRING_SERVICE, keychainUser(baseUrl));
+    return new Entry(KEYRING_SERVICE, keychainUser(identity));
   } catch {
     _keychainAvailable = false;
     return null;
   }
 }
 
-function tryKeychainLoad(baseUrl: string): StoredTokens | null {
-  const entry = getKeyringEntry(baseUrl);
+function tryKeychainLoad(identity: TokenStoreIdentity): StoredTokens | null {
+  const entry = getKeyringEntry(identity);
   if (!entry) return null;
   try {
     const raw = entry.getPassword();
@@ -68,8 +113,8 @@ function tryKeychainLoad(baseUrl: string): StoredTokens | null {
   }
 }
 
-function tryKeychainSave(baseUrl: string, tokens: StoredTokens): boolean {
-  const entry = getKeyringEntry(baseUrl);
+function tryKeychainSave(identity: TokenStoreIdentity, tokens: StoredTokens): boolean {
+  const entry = getKeyringEntry(identity);
   if (!entry) return false;
   try {
     entry.setPassword(JSON.stringify(tokens));
@@ -79,8 +124,8 @@ function tryKeychainSave(baseUrl: string, tokens: StoredTokens): boolean {
   }
 }
 
-function tryKeychainDelete(baseUrl: string): void {
-  const entry = getKeyringEntry(baseUrl);
+function tryKeychainDelete(identity: TokenStoreIdentity): void {
+  const entry = getKeyringEntry(identity);
   if (!entry) return;
   try {
     entry.deletePassword();
@@ -101,8 +146,8 @@ export function _disableKeychain(): void {
 
 // ── Filesystem helpers ────────────────────────────────────────────────────
 
-async function fsLoad(baseUrl: string): Promise<StoredTokens | null> {
-  const filePath = path.join(getAuthDir(), tokenFileName(baseUrl));
+async function fsLoad(identity: TokenStoreIdentity): Promise<StoredTokens | null> {
+  const filePath = path.join(getAuthDir(), tokenFileName(identity));
   try {
     const raw = await readFile(filePath, 'utf-8');
     return JSON.parse(raw) as StoredTokens;
@@ -111,18 +156,18 @@ async function fsLoad(baseUrl: string): Promise<StoredTokens | null> {
   }
 }
 
-async function fsSave(baseUrl: string, tokens: StoredTokens): Promise<void> {
+async function fsSave(identity: TokenStoreIdentity, tokens: StoredTokens): Promise<void> {
   const dir = getAuthDir();
   await mkdir(dir, { recursive: true, mode: 0o700 });
-  const filePath = path.join(dir, tokenFileName(baseUrl));
+  const filePath = path.join(dir, tokenFileName(identity));
   await writeFile(filePath, JSON.stringify(tokens, null, 2), {
     encoding: 'utf-8',
     mode: 0o600,
   });
 }
 
-async function fsDelete(baseUrl: string): Promise<void> {
-  const filePath = path.join(getAuthDir(), tokenFileName(baseUrl));
+async function fsDelete(identity: TokenStoreIdentity): Promise<void> {
+  const filePath = path.join(getAuthDir(), tokenFileName(identity));
   try {
     await unlink(filePath);
   } catch {
@@ -132,25 +177,27 @@ async function fsDelete(baseUrl: string): Promise<void> {
 
 // ── Public API ────────────────────────────────────────────────────────────
 
-export async function loadTokens(baseUrl: string): Promise<StoredTokens | null> {
-  return tryKeychainLoad(baseUrl) ?? await fsLoad(baseUrl);
+export async function loadTokens(
+  identity: TokenStoreIdentity,
+): Promise<StoredTokens | null> {
+  return tryKeychainLoad(identity) ?? (await fsLoad(identity));
 }
 
 export async function saveTokens(
-  baseUrl: string,
+  identity: TokenStoreIdentity,
   tokens: StoredTokens,
 ): Promise<TokenBackend> {
-  if (tryKeychainSave(baseUrl, tokens)) {
-    await fsDelete(baseUrl);
+  if (tryKeychainSave(identity, tokens)) {
+    await fsDelete(identity);
     return 'keychain';
   }
-  await fsSave(baseUrl, tokens);
+  await fsSave(identity, tokens);
   return 'filesystem';
 }
 
-export async function deleteTokens(baseUrl: string): Promise<void> {
-  tryKeychainDelete(baseUrl);
-  await fsDelete(baseUrl);
+export async function deleteTokens(identity: TokenStoreIdentity): Promise<void> {
+  tryKeychainDelete(identity);
+  await fsDelete(identity);
 }
 
 export function isTokenExpired(
@@ -160,4 +207,20 @@ export function isTokenExpired(
   if (!tokens.expiresAt) return false;
   const expiresAt = new Date(tokens.expiresAt).getTime();
   return Date.now() + graceMs >= expiresAt;
+}
+
+/** True when stored tokens were issued for the given IdP / client. */
+export function tokensMatchIdentity(
+  tokens: StoredTokens,
+  identity: TokenStoreIdentity,
+): boolean {
+  try {
+    return (
+      normalizeAuthUrl(tokens.oidcDiscoveryUrl) ===
+        normalizeAuthUrl(identity.oidcDiscoveryUrl) &&
+      tokens.clientId.trim() === identity.clientId.trim()
+    );
+  } catch {
+    return false;
+  }
 }

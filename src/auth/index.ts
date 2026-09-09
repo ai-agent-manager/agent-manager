@@ -32,5 +32,8 @@ export {
   saveTokens,
   deleteTokens,
   isTokenExpired,
+  tokensMatchIdentity,
+  normalizeAuthUrl,
+  tokenStorageKey,
 } from './token-store.js';
-export type { StoredTokens } from './token-store.js';
+export type { StoredTokens, TokenStoreIdentity, TokenBackend } from './token-store.js';
