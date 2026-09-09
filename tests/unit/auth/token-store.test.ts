@@ -15,6 +15,7 @@ const {
   deleteTokens,
   isTokenExpired,
   normalizeAuthUrl,
+  normalizeOidcDiscoveryUrl,
   tokenStorageKey,
   tokensMatchIdentity,
   _resetKeychainCache,
@@ -70,10 +71,24 @@ describe('token-store', () => {
   });
 
   describe('normalizeAuthUrl / tokenStorageKey', () => {
-    it('strips trailing slashes, query, and hash from discovery URLs', () => {
+    it('strips trailing slashes, query, and hash from catalogue base URLs', () => {
       expect(normalizeAuthUrl('https://Example.com/foo/')).toBe('https://example.com/foo');
       expect(normalizeAuthUrl('https://example.com/')).toBe('https://example.com');
       expect(normalizeAuthUrl('https://example.com?x=1#y')).toBe('https://example.com');
+    });
+
+    it('preserves OIDC pathname trailing slash and query, dropping only the hash', () => {
+      expect(
+        normalizeOidcDiscoveryUrl(
+          'https://IdP.example.com/discovery?tenant=first#frag',
+        ),
+      ).toBe('https://idp.example.com/discovery?tenant=first');
+      expect(
+        normalizeOidcDiscoveryUrl('https://idp.example.com/discovery/'),
+      ).toBe('https://idp.example.com/discovery/');
+      expect(
+        normalizeOidcDiscoveryUrl('https://idp.example.com/discovery'),
+      ).toBe('https://idp.example.com/discovery');
     });
 
     it('produces distinct keys for different catalogue paths on the same host', () => {
@@ -108,10 +123,10 @@ describe('token-store', () => {
       );
     });
 
-    it('treats equivalent URL normalisations as the same key', () => {
+    it('treats equivalent catalogue URL normalisations as the same key', () => {
       const a = tokenStorageKey({
         discoveryBaseUrl: 'https://example.com/catalog/',
-        oidcDiscoveryUrl: 'https://idp.example.com/.well-known/openid-configuration/',
+        oidcDiscoveryUrl: 'https://idp.example.com/.well-known/openid-configuration',
         clientId: 'cli',
       });
       const b = tokenStorageKey({
@@ -120,6 +135,31 @@ describe('token-store', () => {
         clientId: 'cli',
       });
       expect(a).toBe(b);
+    });
+
+    it('produces distinct keys for OIDC query or trailing-slash differences', () => {
+      const base = {
+        discoveryBaseUrl: 'https://catalogue.example.com',
+        clientId: 'cli',
+      };
+      const tenantFirst = tokenStorageKey({
+        ...base,
+        oidcDiscoveryUrl: 'https://idp.example.com/discovery?tenant=first',
+      });
+      const tenantSecond = tokenStorageKey({
+        ...base,
+        oidcDiscoveryUrl: 'https://idp.example.com/discovery?tenant=second',
+      });
+      const withSlash = tokenStorageKey({
+        ...base,
+        oidcDiscoveryUrl: 'https://idp.example.com/discovery/',
+      });
+      const withoutSlash = tokenStorageKey({
+        ...base,
+        oidcDiscoveryUrl: 'https://idp.example.com/discovery',
+      });
+      expect(tenantFirst).not.toBe(tenantSecond);
+      expect(withSlash).not.toBe(withoutSlash);
     });
 
     it('preserves pathname case so differently cased paths are distinct keys', () => {
@@ -157,6 +197,28 @@ describe('token-store', () => {
           ...sampleIdentity,
           oidcDiscoveryUrl: 'https://other.example.com/.well-known/openid-configuration',
         }),
+      ).toBe(false);
+    });
+
+    it('returns false when OIDC query or trailing slash differs', () => {
+      const tokens = {
+        ...sampleTokens,
+        oidcDiscoveryUrl: 'https://idp.example.com/discovery?tenant=first',
+      };
+      expect(
+        tokensMatchIdentity(tokens, {
+          ...sampleIdentity,
+          oidcDiscoveryUrl: 'https://idp.example.com/discovery?tenant=second',
+        }),
+      ).toBe(false);
+      expect(
+        tokensMatchIdentity(
+          { ...sampleTokens, oidcDiscoveryUrl: 'https://idp.example.com/discovery/' },
+          {
+            ...sampleIdentity,
+            oidcDiscoveryUrl: 'https://idp.example.com/discovery',
+          },
+        ),
       ).toBe(false);
     });
   });
@@ -255,6 +317,44 @@ describe('token-store', () => {
       expect(files).toHaveLength(1);
       expect(files[0]).toBe(`${tokenStorageKey(mixedCase)}.json`);
       expect(files[0]).not.toBe(`${tokenStorageKey(lowerCase)}.json`);
+    });
+
+    it('does not share tokens across OIDC query or trailing-slash variants', async () => {
+      const tenantFirst: TokenStoreIdentity = {
+        discoveryBaseUrl: 'https://catalogue.example.com',
+        oidcDiscoveryUrl: 'https://idp.example.com/discovery?tenant=first',
+        clientId: sampleIdentity.clientId,
+      };
+      const tenantSecond: TokenStoreIdentity = {
+        ...tenantFirst,
+        oidcDiscoveryUrl: 'https://idp.example.com/discovery?tenant=second',
+      };
+      const withSlash: TokenStoreIdentity = {
+        discoveryBaseUrl: 'https://catalogue.example.com',
+        oidcDiscoveryUrl: 'https://idp.example.com/discovery/',
+        clientId: sampleIdentity.clientId,
+      };
+      const withoutSlash: TokenStoreIdentity = {
+        ...withSlash,
+        oidcDiscoveryUrl: 'https://idp.example.com/discovery',
+      };
+
+      const firstTokens = {
+        ...sampleTokens,
+        oidcDiscoveryUrl: tenantFirst.oidcDiscoveryUrl,
+      };
+      const slashTokens = {
+        ...sampleTokens,
+        oidcDiscoveryUrl: withSlash.oidcDiscoveryUrl,
+      };
+
+      await saveTokens(tenantFirst, firstTokens);
+      expect(await loadTokens(tenantSecond)).toBeNull();
+      expect(await loadTokens(tenantFirst)).toEqual(firstTokens);
+
+      await saveTokens(withSlash, slashTokens);
+      expect(await loadTokens(withoutSlash)).toBeNull();
+      expect(await loadTokens(withSlash)).toEqual(slashTokens);
     });
 
     it('rejects saves whose token IdP or clientId do not match the identity', async () => {

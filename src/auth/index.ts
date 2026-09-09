@@ -34,6 +34,7 @@ export {
   isTokenExpired,
   tokensMatchIdentity,
   normalizeAuthUrl,
+  normalizeOidcDiscoveryUrl,
   tokenStorageKey,
 } from './token-store.js';
 export type { StoredTokens, TokenStoreIdentity, TokenBackend } from './token-store.js';

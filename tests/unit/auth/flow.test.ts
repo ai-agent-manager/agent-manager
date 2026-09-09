@@ -6,18 +6,18 @@ const deleteTokens = vi.fn();
 const isTokenExpired = vi.fn();
 const fetchOidcConfiguration = vi.fn();
 
-vi.mock('../../../src/auth/token-store.js', () => ({
-  loadTokens: (...args: unknown[]) => loadTokens(...args),
-  saveTokens: (...args: unknown[]) => saveTokens(...args),
-  deleteTokens: (...args: unknown[]) => deleteTokens(...args),
-  isTokenExpired: (...args: unknown[]) => isTokenExpired(...args),
-  tokensMatchIdentity: (
-    tokens: { oidcDiscoveryUrl: string; clientId: string },
-    identity: { oidcDiscoveryUrl: string; clientId: string },
-  ) =>
-    tokens.oidcDiscoveryUrl === identity.oidcDiscoveryUrl &&
-    tokens.clientId === identity.clientId,
-}));
+vi.mock('../../../src/auth/token-store.js', async () => {
+  const actual = await vi.importActual<typeof import('../../../src/auth/token-store.js')>(
+    '../../../src/auth/token-store.js',
+  );
+  return {
+    ...actual,
+    loadTokens: (...args: unknown[]) => loadTokens(...args),
+    saveTokens: (...args: unknown[]) => saveTokens(...args),
+    deleteTokens: (...args: unknown[]) => deleteTokens(...args),
+    isTokenExpired: (...args: unknown[]) => isTokenExpired(...args),
+  };
+});
 
 vi.mock('../../../src/auth/oidc.js', () => ({
   fetchOidcConfiguration: (...args: unknown[]) => fetchOidcConfiguration(...args),
@@ -102,6 +102,51 @@ describe('getValidBearerToken', () => {
     );
     expect(deleteTokens).toHaveBeenCalledWith(tokenIdentity);
     expect(isTokenExpired).not.toHaveBeenCalled();
+  });
+
+  it('does not reuse a bearer or forward a refresh token when the OIDC query differs', async () => {
+    const authTenantSecond = {
+      ...auth,
+      oidcDiscoveryUrl: 'https://idp.example.com/discovery?tenant=second',
+    };
+    loadTokens.mockResolvedValueOnce({
+      bearerToken: 'tenant-first-bearer',
+      refreshToken: 'tenant-first-refresh',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      oidcDiscoveryUrl: 'https://idp.example.com/discovery?tenant=first',
+      clientId: auth.clientId,
+    });
+
+    await expect(getValidBearerToken(baseUrl, authTenantSecond)).rejects.toThrow(
+      /no valid token is available/i,
+    );
+    expect(deleteTokens).toHaveBeenCalledWith({
+      discoveryBaseUrl: baseUrl,
+      oidcDiscoveryUrl: authTenantSecond.oidcDiscoveryUrl,
+      clientId: auth.clientId,
+    });
+    // Must not POST the prior IdP's refresh token (or any token exchange).
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('does not reuse a bearer when the OIDC pathname trailing slash differs', async () => {
+    const authWithSlash = {
+      ...auth,
+      oidcDiscoveryUrl: 'https://idp.example.com/discovery/',
+    };
+    loadTokens.mockResolvedValueOnce({
+      bearerToken: 'no-slash-bearer',
+      refreshToken: 'no-slash-refresh',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      oidcDiscoveryUrl: 'https://idp.example.com/discovery',
+      clientId: auth.clientId,
+    });
+
+    await expect(getValidBearerToken(baseUrl, authWithSlash)).rejects.toThrow(
+      /no valid token is available/i,
+    );
+    expect(deleteTokens).toHaveBeenCalled();
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it('refreshes an expired token when a refresh token is present', async () => {

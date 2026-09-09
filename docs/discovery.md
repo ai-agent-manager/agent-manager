@@ -324,7 +324,9 @@ Each entry is keyed by a SHA-256 hash of:
 2. the OIDC discovery URL from the catalogue's `auth` block, and
 3. the OAuth `clientId`.
 
-URL normalisation lowercases the host and strips trailing slashes, query, and hash. **Pathname case is not normalised** — `/Org/Repo` and `/org/repo` are distinct keys (and therefore distinct sessions). If a host treats paths as case-insensitive, prefer a single casing when passing the catalogue URL.
+URL normalisation for the **catalogue base URL** lowercases the host and strips trailing slashes, query, and hash. **Pathname case is not normalised** — `/Org/Repo` and `/org/repo` are distinct keys (and therefore distinct sessions). If a host treats paths as case-insensitive, prefer a single casing when passing the catalogue URL.
+
+The **OIDC discovery URL** is normalised more strictly: host is lowercased and only the hash fragment is dropped. Pathname (including a trailing slash) and query string are preserved, so distinct discovery documents — for example different `tenant=` query values, or `/discovery` vs `/discovery/` — never share a stored session.
 
 Catalogues that share a hostname (for example two GitHub-hosted discovery repos), or the same catalogue with a different IdP/client, therefore get separate stored sessions. Changing any of those values requires signing in again. Saves whose token payload does not match the IdP/`clientId` identity are rejected; mismatched payloads found under a key on load are deleted rather than reused.
 

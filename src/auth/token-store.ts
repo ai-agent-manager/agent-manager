@@ -44,9 +44,9 @@ export interface StoredTokens {
 }
 
 /**
- * Normalise a URL for use as part of the storage key: host is lowercased by
- * the URL parser, significant pathname is kept (no trailing slash except
- * root), query and hash are dropped.
+ * Normalise a discovery catalogue base URL for the storage key: host is
+ * lowercased by the URL parser, trailing slash on the path is stripped,
+ * query and hash are dropped.
  *
  * Pathname case is preserved deliberately — `/Org/Repo` and `/org/repo` are
  * distinct keys. Callers that treat paths as case-insensitive must normalise
@@ -67,13 +67,27 @@ export function normalizeAuthUrl(url: string): string {
 }
 
 /**
+ * Normalise an OIDC discovery URL for the storage key and identity checks.
+ *
+ * Host is lowercased; the pathname (including a trailing slash) and query
+ * string are preserved so distinct discovery documents (for example different
+ * `tenant=` query values, or `/discovery` vs `/discovery/`) never share a
+ * session. Only the hash fragment is dropped.
+ */
+export function normalizeOidcDiscoveryUrl(url: string): string {
+  const parsed = new URL(url);
+  parsed.hash = '';
+  return `${parsed.protocol}//${parsed.host}${parsed.pathname}${parsed.search}`;
+}
+
+/**
  * Stable storage key (hex SHA-256) for keychain account names and filenames.
  * Includes discovery base URL, IdP discovery URL, and client ID.
  */
 export function tokenStorageKey(identity: TokenStoreIdentity): string {
   const material = [
     normalizeAuthUrl(identity.discoveryBaseUrl),
-    normalizeAuthUrl(identity.oidcDiscoveryUrl),
+    normalizeOidcDiscoveryUrl(identity.oidcDiscoveryUrl),
     identity.clientId.trim(),
   ].join('\n');
   return createHash('sha256').update(material, 'utf8').digest('hex');
@@ -226,8 +240,8 @@ export function tokensMatchIdentity(
 ): boolean {
   try {
     return (
-      normalizeAuthUrl(tokens.oidcDiscoveryUrl) ===
-        normalizeAuthUrl(identity.oidcDiscoveryUrl) &&
+      normalizeOidcDiscoveryUrl(tokens.oidcDiscoveryUrl) ===
+        normalizeOidcDiscoveryUrl(identity.oidcDiscoveryUrl) &&
       tokens.clientId.trim() === identity.clientId.trim()
     );
   } catch {
