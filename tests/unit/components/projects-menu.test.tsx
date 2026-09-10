@@ -66,7 +66,9 @@ const sampleProjects: Project[] = [
     },
 ];
 
-const FRAME_WAIT_TIMEOUT_MS = 10_000;
+// Keep below vitest `testTimeout` (10s) so frame-wait failures print the last
+// frame instead of a generic "Test timed out" with no diagnostic.
+const FRAME_WAIT_TIMEOUT_MS = 5_000;
 
 /**
  * Wait until the Ink frame satisfies `predicate`.
@@ -98,9 +100,12 @@ async function flushInkInput(): Promise<void> {
 /**
  * Send a keypress to an Ink component under test.
  *
- * Yields before writing: Ink attaches its stdin handler after the first render
- * commit, and a write that lands before that is silently dropped — which shows
- * up as a rare, machine-speed-dependent failure on CI rather than locally.
+ * Yields before writing: Ink (re)attaches each `useInput` listener in a passive
+ * effect one `setImmediate` after the commit that mounted or changed it. A key
+ * written between the commit becoming visible and that effect is either buffered
+ * with no reader (and overwritten by the next write) or consumed by the outgoing
+ * view's stale handler. In ProjectsMenu this opens on every list↔detail
+ * transition and after every arrow key, not just the first render.
  */
 async function press(stdin: { write: (input: string) => void }, input: string): Promise<void> {
     await flushInkInput();
