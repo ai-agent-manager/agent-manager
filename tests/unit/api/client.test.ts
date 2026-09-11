@@ -178,6 +178,7 @@ describe('apiRequest', () => {
     expect(getValidBearerToken).toHaveBeenCalledWith(
       authSession.discoveryBaseUrl,
       authSession.auth,
+      { requestUrl: 'https://api.example.com/projects' },
     );
     expect(mockFetch).toHaveBeenCalledWith(
       'https://api.example.com/projects',
@@ -188,6 +189,25 @@ describe('apiRequest', () => {
           'Content-Type': 'application/json',
         }),
       }),
+    );
+  });
+
+  it('forwards interactiveMode from the session so the env-token allowlist applies', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true }),
+    });
+
+    await apiRequest('https://api.example.com', '/projects', {
+      ...authSession,
+      interactiveMode: true,
+    });
+
+    expect(getValidBearerToken).toHaveBeenCalledWith(
+      authSession.discoveryBaseUrl,
+      authSession.auth,
+      { requestUrl: 'https://api.example.com/projects', interactiveMode: true },
     );
   });
 
@@ -263,12 +283,13 @@ describe('apiRequest', () => {
       1,
       authSession.discoveryBaseUrl,
       authSession.auth,
+      { requestUrl: 'https://api.example.com/projects' },
     );
     expect(getValidBearerToken).toHaveBeenNthCalledWith(
       2,
       authSession.discoveryBaseUrl,
       authSession.auth,
-      { forceRefresh: true },
+      { requestUrl: 'https://api.example.com/projects', forceRefresh: true },
     );
     expect(mockFetch).toHaveBeenNthCalledWith(
       2,
