@@ -3,7 +3,13 @@ import React from "react";
 import { render } from "ink";
 import { parseCli, BANNER } from "./cli.js";
 import { App } from "./app.js";
-import { resolveSource, resolvePersistedSource, type BundleSource, type StartupSource } from "./bundle/source.js";
+import {
+    resolveSource,
+    resolvePersistedSource,
+    resolveHeadlessTelemetrySource,
+    type BundleSource,
+    type StartupSource,
+} from "./bundle/source.js";
 import { type RepoSkillSource, type SkillSource } from "./bundle/skill-source.js";
 import { addSource, classifyStoredSource } from "./bundle/cache.js";
 import { startConsoleSpinner } from "./lib/console-spinner.js";
@@ -29,13 +35,10 @@ if (configPath) {
     }
 
     try {
-        // resolveSource expands GitHub shorthand and probes git remotes;
-        // resolveSkillSource alone would treat owner/repo as a missing path.
-        const resolved = await resolveSource(sourceInput);
-        const source =
-            resolved.type === 'repo'
-                ? skillSourceToBundleSource(resolved)
-                : resolved;
+        // Telemetry must not hard-require a discovery document for plain HTTP /
+        // ZIP inputs — that soft-404 lives in runHeadless. Git remotes still go
+        // through resolveSource (shorthand + probe).
+        const source = await resolveHeadlessTelemetrySource(sourceInput);
         trackTelemetryEvent({
             action: "agentman_started",
             properties: { forceUpdate, ...getBundleSourceTelemetryProperties(source) },

@@ -21,9 +21,15 @@ const mockGitDiscovery: DiscoveryDocument = {
   ],
 };
 
-vi.mock('../../../src/discovery/index.js', () => ({
-  fetchDiscoveryDocument: vi.fn(async () => mockDiscovery),
-}));
+vi.mock('../../../src/discovery/index.js', async () => {
+  const actual = await vi.importActual<typeof import('../../../src/discovery/index.js')>(
+    '../../../src/discovery/index.js',
+  );
+  return {
+    ...actual,
+    fetchDiscoveryDocument: vi.fn(async () => mockDiscovery),
+  };
+});
 
 vi.mock('../../../src/discovery/git-probe.js', async () => {
   const actual = await vi.importActual<typeof import('../../../src/discovery/git-probe.js')>(
@@ -42,9 +48,13 @@ vi.mock('../../../src/bundle/cache.js', async () => {
   return { ...actual, readConfig: vi.fn(async () => configState.value) };
 });
 
-const { fetchDiscoveryDocument } = await import('../../../src/discovery/index.js');
+const { fetchDiscoveryDocument, DiscoveryError } = await import('../../../src/discovery/index.js');
 const { probeGitDiscovery } = await import('../../../src/discovery/git-probe.js');
-const { resolveSource, resolvePersistedSource } = await import('../../../src/bundle/source.js');
+const {
+  resolveSource,
+  resolvePersistedSource,
+  resolveHeadlessTelemetrySource,
+} = await import('../../../src/bundle/source.js');
 
 describe('resolveSource', () => {
   let tempDir: string;
@@ -307,5 +317,103 @@ describe('resolvePersistedSource', () => {
     };
 
     await expect(resolvePersistedSource()).rejects.toThrow('None of the configured sources');
+  });
+});
+
+describe('resolveHeadlessTelemetrySource', () => {
+  let tempDir: string;
+
+  beforeEach(async () => {
+    tempDir = path.join(os.tmpdir(), `headless-telemetry-${Date.now()}`);
+    await mkdir(tempDir, { recursive: true });
+    vi.mocked(probeGitDiscovery).mockReset();
+    vi.mocked(probeGitDiscovery).mockResolvedValue(null);
+    vi.mocked(fetchDiscoveryDocument).mockReset();
+    vi.mocked(fetchDiscoveryDocument).mockResolvedValue(mockDiscovery);
+  });
+
+  afterEach(async () => {
+    await rm(tempDir, { recursive: true, force: true });
+    vi.clearAllMocks();
+  });
+
+  it('classifies a plain HTTP catalogue without fetching discovery', async () => {
+    const notFound = new DiscoveryError(
+      'Discovery document not found',
+      'https://cdn.example.com',
+      undefined,
+      404,
+    );
+    vi.mocked(fetchDiscoveryDocument).mockRejectedValue(notFound);
+
+    await expect(resolveSource('https://cdn.example.com')).rejects.toThrow(
+      /Discovery document not found/,
+    );
+
+    vi.mocked(fetchDiscoveryDocument).mockClear();
+    vi.mocked(probeGitDiscovery).mockClear();
+
+    const result = await resolveHeadlessTelemetrySource('https://cdn.example.com');
+
+    expect(result).toEqual({ type: 'url', baseUrl: 'https://cdn.example.com' });
+    expect(fetchDiscoveryDocument).not.toHaveBeenCalled();
+    expect(probeGitDiscovery).not.toHaveBeenCalled();
+  });
+
+  it('classifies a direct artefact ZIP without fetching discovery', async () => {
+    vi.mocked(fetchDiscoveryDocument).mockRejectedValue(
+      new DiscoveryError(
+        'Discovery document not found',
+        'https://cdn.example.com/skill-1.0.0.zip',
+        undefined,
+        404,
+      ),
+    );
+
+    const result = await resolveHeadlessTelemetrySource(
+      'https://cdn.example.com/skill-1.0.0.zip',
+    );
+
+    expect(result).toEqual({
+      type: 'url',
+      baseUrl: 'https://cdn.example.com/skill-1.0.0.zip',
+    });
+    expect(fetchDiscoveryDocument).not.toHaveBeenCalled();
+    expect(probeGitDiscovery).not.toHaveBeenCalled();
+  });
+
+  it('classifies a local directory without probing git or discovery', async () => {
+    const result = await resolveHeadlessTelemetrySource(tempDir);
+
+    expect(result).toEqual({ type: 'directory', dirPath: tempDir });
+    expect(fetchDiscoveryDocument).not.toHaveBeenCalled();
+    expect(probeGitDiscovery).not.toHaveBeenCalled();
+  });
+
+  it('probes git remotes via resolveSource for GitHub URLs', async () => {
+    const result = await resolveHeadlessTelemetrySource(
+      'https://github.com/example-org/example-repo',
+    );
+
+    expect(result).toEqual({
+      type: 'url',
+      baseUrl: 'https://github.com/example-org/example-repo',
+    });
+    expect(probeGitDiscovery).toHaveBeenCalledOnce();
+    expect(fetchDiscoveryDocument).not.toHaveBeenCalled();
+  });
+
+  it('probes git remotes via resolveSource for owner/repo shorthand', async () => {
+    vi.mocked(probeGitDiscovery).mockResolvedValueOnce(mockGitDiscovery);
+
+    const result = await resolveHeadlessTelemetrySource('govuk-one-login/agent-skills');
+
+    expect(result).toEqual({
+      type: 'discovery',
+      baseUrl: 'https://github.com/govuk-one-login/agent-skills',
+      discovery: mockGitDiscovery,
+    });
+    expect(probeGitDiscovery).toHaveBeenCalledOnce();
+    expect(fetchDiscoveryDocument).not.toHaveBeenCalled();
   });
 });

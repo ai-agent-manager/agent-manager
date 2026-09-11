@@ -113,3 +113,34 @@ export async function resolvePersistedSource(): Promise<ResolvedPersistedSource 
 
   throw new Error(`None of the configured sources could be resolved:\n${failures.join('\n')}`);
 }
+
+/**
+ * Resolve a source for headless-entry telemetry without imposing TUI discovery
+ * semantics on legacy HTTP / ZIP inputs.
+ *
+ * Git remotes (including `owner/repo` shorthand) use {@link resolveSource} so
+ * the probe and shorthand expansion match the install path. Everything else
+ * uses {@link resolveSkillSource} only — a missing discovery document must not
+ * abort before `runHeadless`'s soft-404 fallback runs.
+ */
+export async function resolveHeadlessTelemetrySource(input: string): Promise<BundleSource> {
+  if (parseGitRemoteInput(input)) {
+    const startup = await resolveSource(input);
+    if (startup.type === 'repo') {
+      return { type: 'url', baseUrl: startup.repoUrl };
+    }
+    return startup;
+  }
+
+  const skill = await resolveSkillSource(input);
+  if (skill.type === 'bundle' && skill.dirPath) {
+    return { type: 'directory', dirPath: skill.dirPath };
+  }
+  if (skill.type === 'bundle') {
+    return { type: 'url', baseUrl: skill.baseUrl ?? '' };
+  }
+  if (skill.type === 'repo') {
+    return { type: 'url', baseUrl: skill.repoUrl };
+  }
+  return { type: 'url', baseUrl: skill.artefactUrl };
+}
