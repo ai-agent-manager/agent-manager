@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { parseRepoUrl } from '../bundle/repo-downloader.js';
 import {
   GITHUB_HOSTS_DEFAULT,
   isGithubRepoUrl,
@@ -15,15 +16,20 @@ import {
 } from './fetcher.js';
 import type { DiscoveryDocument } from './types.js';
 
-const defaultExecFile = promisify(execFile);
+const execFileAsync = promisify(execFile);
 
 const CLONE_TIMEOUT_MS = 60_000;
 
 export type GitExecFile = (
   file: string,
   args: readonly string[],
-  options?: { timeout?: number },
+  options?: { timeout?: number; env?: NodeJS.ProcessEnv },
 ) => Promise<{ stdout: string; stderr: string }>;
+
+export type GitProbeFetch = (
+  input: string,
+  init?: { headers?: Record<string, string> },
+) => Promise<Response>;
 
 export interface GitRemoteRef {
   /** URL passed to `git clone`. */
@@ -44,8 +50,15 @@ export interface GitRemoteRef {
 export interface ProbeGitDiscoveryOptions {
   /** Override `git` execution (tests). */
   execFile?: GitExecFile;
-  /** Override temp directory root (tests). */
+  /** Override temp directory root for clone probes (tests). */
   tempRoot?: string;
+  /**
+   * GitHub token for authenticated Contents API probes (and private repos).
+   * Defaults to `process.env.GITHUB_TOKEN`. Never placed in git URLs or argv.
+   */
+  token?: string;
+  /** Override `fetch` (tests). */
+  fetch?: GitProbeFetch;
 }
 
 /**
@@ -190,33 +203,146 @@ export function gitRemoteToRepoSource(
 }
 
 /**
- * Shallow-clone a git remote and look for `.agents/discovery.json`.
+ * GitHub Contents API URL for `.agents/discovery.json`.
+ *
+ * github.com → `https://api.github.com/repos/…/contents/…`
+ * GHES → `https://{host}/api/v3/repos/…/contents/…`
+ *
+ * When the ref is not pinned, `ref` is omitted so GitHub uses the repo default branch.
+ */
+export function buildGithubDiscoveryContentsUrl(remote: GitRemoteRef): string {
+  const parsed = new URL(remote.identity);
+  const { owner, repo } = parseRepoUrl(remote.identity);
+  const host = parsed.hostname.toLowerCase();
+  const apiBase =
+    host === 'github.com' || host === 'www.github.com'
+      ? 'https://api.github.com'
+      : `${parsed.origin}/api/v3`;
+  const contentPath = GIT_DISCOVERY_PATH.split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+  const url = new URL(`${apiBase}/repos/${owner}/${repo}/contents/${contentPath}`);
+  if (remote.refPinned && remote.ref) {
+    url.searchParams.set('ref', remote.ref);
+  }
+  return url.toString();
+}
+
+async function defaultExecFile(
+  file: string,
+  args: readonly string[],
+  options?: { timeout?: number; env?: NodeJS.ProcessEnv },
+): Promise<{ stdout: string; stderr: string }> {
+  const { stdout, stderr } = await execFileAsync(file, [...args], {
+    timeout: options?.timeout,
+    env: options?.env,
+    maxBuffer: 1024 * 1024,
+  });
+  return { stdout: String(stdout), stderr: String(stderr) };
+}
+
+/**
+ * Probe a git remote for `.agents/discovery.json`.
+ *
+ * GitHub / GHES remotes use the Contents API with an optional `Authorization`
+ * header from {@link ProbeGitDiscoveryOptions.token} / `GITHUB_TOKEN` — the
+ * same credential model as archive download, never embedded in a git URL.
+ *
+ * Other hosts shallow-clone with `GIT_TERMINAL_PROMPT=0` so missing credentials
+ * fail closed instead of hanging a TTY prompt.
  *
  * Returns the validated document when present, or `null` when the file is
  * absent (caller falls back to bare skills-repo install when supported).
- *
- * Clone / auth / invalid-JSON failures throw — they are not treated as a miss.
+ * Auth / network / invalid-JSON failures throw — they are not treated as a miss.
  */
 export async function probeGitDiscovery(
   remote: GitRemoteRef,
   options: ProbeGitDiscoveryOptions = {},
+): Promise<DiscoveryDocument | null> {
+  if (remote.supportsDirectSkillInstall) {
+    return probeGithubDiscovery(remote, options);
+  }
+  return probeViaGitClone(remote, options);
+}
+
+async function probeGithubDiscovery(
+  remote: GitRemoteRef,
+  options: ProbeGitDiscoveryOptions,
+): Promise<DiscoveryDocument | null> {
+  const token = options.token ?? process.env['GITHUB_TOKEN'];
+  const fetchImpl = options.fetch ?? globalThis.fetch;
+  const url = buildGithubDiscoveryContentsUrl(remote);
+
+  const headers: Record<string, string> = {
+    'User-Agent': 'agentman',
+    Accept: 'application/vnd.github.raw',
+  };
+  if (token) {
+    headers['Authorization'] = `token ${token}`;
+  }
+
+  let response: Response;
+  try {
+    response = await fetchImpl(url, { headers });
+  } catch (err) {
+    throw new DiscoveryError(
+      `Failed to fetch ${GIT_DISCOVERY_PATH} from ${remote.identity}`,
+      remote.identity,
+      err,
+    );
+  }
+
+  // Missing file (or private repo without credentials — GitHub masks as 404).
+  if (response.status === 404) {
+    return null;
+  }
+
+  if (!response.ok) {
+    throw new DiscoveryError(
+      `Failed to fetch ${GIT_DISCOVERY_PATH} from ${remote.identity} (HTTP ${response.status})`,
+      remote.identity,
+    );
+  }
+
+  let text: string;
+  try {
+    text = await response.text();
+  } catch (err) {
+    throw new DiscoveryError(
+      `Failed to read ${GIT_DISCOVERY_PATH} from ${remote.identity}`,
+      remote.identity,
+      err,
+    );
+  }
+
+  return parseDiscoveryJson(text, remote.identity);
+}
+
+async function probeViaGitClone(
+  remote: GitRemoteRef,
+  options: ProbeGitDiscoveryOptions,
 ): Promise<DiscoveryDocument | null> {
   const runGit = options.execFile ?? defaultExecFile;
   const tempRoot = options.tempRoot ?? tmpdir();
   const tmp = await mkdtemp(path.join(tempRoot, 'agentman-git-probe-'));
 
   try {
-    const args = ['clone', '--depth', '1'];
+    const args = ['clone', '--depth', '1', '--quiet'];
     if (remote.refPinned && remote.ref) {
       args.push('--branch', remote.ref);
     }
     args.push('--', remote.cloneUrl, tmp);
 
     try {
-      await runGit('git', args, { timeout: CLONE_TIMEOUT_MS });
+      await runGit('git', args, {
+        timeout: CLONE_TIMEOUT_MS,
+        env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+      });
     } catch (err) {
+      const detail = formatGitError(err);
       throw new DiscoveryError(
-        `Failed to clone git remote for discovery probe: ${remote.cloneUrl}`,
+        `Failed to clone git remote for discovery probe: ${remote.cloneUrl}` +
+          (detail ? `\n  ${detail}` : ''),
         remote.identity,
         err,
       );
@@ -227,21 +353,44 @@ export async function probeGitDiscovery(
       return null;
     }
 
-    let body: unknown;
+    let text: string;
     try {
-      body = JSON.parse(await readFile(discoveryPath, 'utf-8'));
+      text = await readFile(discoveryPath, 'utf-8');
     } catch (err) {
       throw new DiscoveryError(
-        `Discovery document at ${GIT_DISCOVERY_PATH} in ${remote.identity} is not valid JSON`,
+        `Failed to read ${GIT_DISCOVERY_PATH} in ${remote.identity}`,
         remote.identity,
         err,
       );
     }
 
-    return parseDiscoveryDocument(body, remote.identity);
+    return parseDiscoveryJson(text, remote.identity);
   } finally {
     await rm(tmp, { recursive: true, force: true });
   }
+}
+
+function parseDiscoveryJson(text: string, identity: string): DiscoveryDocument {
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch (err) {
+    throw new DiscoveryError(
+      `Discovery document at ${GIT_DISCOVERY_PATH} in ${identity} is not valid JSON`,
+      identity,
+      err,
+    );
+  }
+  return parseDiscoveryDocument(body, identity);
+}
+
+function formatGitError(err: unknown): string {
+  if (err && typeof err === 'object') {
+    const stderr = 'stderr' in err ? String(err.stderr ?? '').trim() : '';
+    if (stderr) return stderr.split('\n')[0] ?? stderr;
+  }
+  if (err instanceof Error && err.message) return err.message;
+  return '';
 }
 
 async function fileExists(filePath: string): Promise<boolean> {
