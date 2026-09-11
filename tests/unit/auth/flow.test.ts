@@ -2,14 +2,22 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const loadTokens = vi.fn();
 const saveTokens = vi.fn();
+const deleteTokens = vi.fn();
 const isTokenExpired = vi.fn();
 const fetchOidcConfiguration = vi.fn();
 
-vi.mock('../../../src/auth/token-store.js', () => ({
-  loadTokens: (...args: unknown[]) => loadTokens(...args),
-  saveTokens: (...args: unknown[]) => saveTokens(...args),
-  isTokenExpired: (...args: unknown[]) => isTokenExpired(...args),
-}));
+vi.mock('../../../src/auth/token-store.js', async () => {
+  const actual = await vi.importActual<typeof import('../../../src/auth/token-store.js')>(
+    '../../../src/auth/token-store.js',
+  );
+  return {
+    ...actual,
+    loadTokens: (...args: unknown[]) => loadTokens(...args),
+    saveTokens: (...args: unknown[]) => saveTokens(...args),
+    deleteTokens: (...args: unknown[]) => deleteTokens(...args),
+    isTokenExpired: (...args: unknown[]) => isTokenExpired(...args),
+  };
+});
 
 vi.mock('../../../src/auth/oidc.js', () => ({
   fetchOidcConfiguration: (...args: unknown[]) => fetchOidcConfiguration(...args),
@@ -37,6 +45,11 @@ const auth = {
   oidcDiscoveryUrl: 'https://idp.example.com/.well-known/openid-configuration',
   clientId: 'agentman-cli',
 };
+const tokenIdentity = {
+  discoveryBaseUrl: baseUrl,
+  oidcDiscoveryUrl: auth.oidcDiscoveryUrl,
+  clientId: auth.clientId,
+};
 
 const oidcConfig = {
   authorization_endpoint: 'https://idp.example.com/authorize',
@@ -48,11 +61,13 @@ describe('getValidBearerToken', () => {
   beforeEach(() => {
     loadTokens.mockReset();
     saveTokens.mockReset();
+    deleteTokens.mockReset();
     isTokenExpired.mockReset();
     fetchOidcConfiguration.mockReset();
     mockFetch.mockReset();
     fetchOidcConfiguration.mockResolvedValue(oidcConfig);
     saveTokens.mockResolvedValue('filesystem');
+    deleteTokens.mockResolvedValue(undefined);
   });
 
   it('returns a cached bearer when the token is still valid', async () => {
@@ -68,7 +83,69 @@ describe('getValidBearerToken', () => {
     const token = await getValidBearerToken(baseUrl, auth);
 
     expect(token).toBe('cached-bearer');
+    expect(loadTokens).toHaveBeenCalledWith(tokenIdentity);
     expect(fetchOidcConfiguration).not.toHaveBeenCalled();
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('deletes and ignores cached tokens that do not match the current IdP', async () => {
+    loadTokens.mockResolvedValueOnce({
+      bearerToken: 'stolen-bearer',
+      refreshToken: 'refresh',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      oidcDiscoveryUrl: 'https://other-idp.example.com/.well-known/openid-configuration',
+      clientId: auth.clientId,
+    });
+
+    await expect(getValidBearerToken(baseUrl, auth)).rejects.toThrow(
+      /no valid token is available/i,
+    );
+    expect(deleteTokens).toHaveBeenCalledWith(tokenIdentity);
+    expect(isTokenExpired).not.toHaveBeenCalled();
+  });
+
+  it('does not reuse a bearer or forward a refresh token when the OIDC query differs', async () => {
+    const authTenantSecond = {
+      ...auth,
+      oidcDiscoveryUrl: 'https://idp.example.com/discovery?tenant=second',
+    };
+    loadTokens.mockResolvedValueOnce({
+      bearerToken: 'tenant-first-bearer',
+      refreshToken: 'tenant-first-refresh',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      oidcDiscoveryUrl: 'https://idp.example.com/discovery?tenant=first',
+      clientId: auth.clientId,
+    });
+
+    await expect(getValidBearerToken(baseUrl, authTenantSecond)).rejects.toThrow(
+      /no valid token is available/i,
+    );
+    expect(deleteTokens).toHaveBeenCalledWith({
+      discoveryBaseUrl: baseUrl,
+      oidcDiscoveryUrl: authTenantSecond.oidcDiscoveryUrl,
+      clientId: auth.clientId,
+    });
+    // Must not POST the prior IdP's refresh token (or any token exchange).
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('does not reuse a bearer when the OIDC pathname trailing slash differs', async () => {
+    const authWithSlash = {
+      ...auth,
+      oidcDiscoveryUrl: 'https://idp.example.com/discovery/',
+    };
+    loadTokens.mockResolvedValueOnce({
+      bearerToken: 'no-slash-bearer',
+      refreshToken: 'no-slash-refresh',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      oidcDiscoveryUrl: 'https://idp.example.com/discovery',
+      clientId: auth.clientId,
+    });
+
+    await expect(getValidBearerToken(baseUrl, authWithSlash)).rejects.toThrow(
+      /no valid token is available/i,
+    );
+    expect(deleteTokens).toHaveBeenCalled();
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
@@ -99,7 +176,7 @@ describe('getValidBearerToken', () => {
       expect.objectContaining({ method: 'POST' }),
     );
     expect(saveTokens).toHaveBeenCalledWith(
-      baseUrl,
+      tokenIdentity,
       expect.objectContaining({
         bearerToken: 'new-id',
         refreshToken: 'refresh-me',
@@ -201,7 +278,7 @@ describe('getValidBearerToken', () => {
 
     expect(token).toBe('access-only');
     expect(saveTokens).toHaveBeenCalledWith(
-      baseUrl,
+      tokenIdentity,
       expect.objectContaining({ bearerToken: 'access-only' }),
     );
   });
@@ -235,11 +312,13 @@ describe('authenticate cancellation', () => {
   beforeEach(() => {
     loadTokens.mockReset();
     saveTokens.mockReset();
+    deleteTokens.mockReset();
     isTokenExpired.mockReset();
     fetchOidcConfiguration.mockReset();
     mockFetch.mockReset();
     fetchOidcConfiguration.mockResolvedValue(oidcConfig);
     saveTokens.mockResolvedValue('filesystem');
+    deleteTokens.mockResolvedValue(undefined);
   });
 
   it('throws AuthCancelledError up front when the signal is already aborted', async () => {
