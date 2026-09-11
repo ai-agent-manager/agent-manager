@@ -4,13 +4,18 @@
 
 Agent Manager uses a **discovery document** served at a well-known path to locate skills and determine authentication requirements. Any team can publish a discovery document to their own domain.
 
-**Well-known path:** `<base_url>/.well-known/agents/discovery.json`
+**Well-known path (HTTP bases):** `<base_url>/.well-known/agents/discovery.json`
 
-When a user provides an HTTP base URL to agent-manager, it fetches the discovery document from this path. There is no fallback; the discovery document must exist.
+When a user provides an HTTP base URL, agent-manager fetches the discovery document from this path. In the interactive TUI there is no fallback — the document must exist. In headless mode (`--config`), a missing discovery document (HTTP 404) falls back to the legacy bare-bundle path so existing CI installs keep working.
 
-When a user provides a **git remote** — GitHub `owner/repo` shorthand, GitHub HTTPS, `*.git`, or `git@…` — agent-manager shallow-clones the remote and looks for `.agents/discovery.json` at the repository root. If the file is present, that document is the catalogue. If it is absent, GitHub remotes fall back to installing skills directly from the repo; other git hosts require the discovery file.
+When a user provides a **git remote** — GitHub `owner/repo` shorthand, a GitHub/GHES HTTPS URL, `*.git`, or `git@…` — agent-manager looks for `.agents/discovery.json` at the repository root:
 
-`owner/repo` expands to `https://github.com/owner/repo`. If that string already names an existing local directory, the local directory wins.
+- **GitHub / GHES** — fetches the file via the Contents API (uses `GITHUB_TOKEN` when set, same as private skill installs). Works with branch, tag, and commit pins via `/tree/<ref>`.
+- **Other git hosts** (for example Bitbucket) — shallow-clones the remote and reads the file from disk. A `git` binary is required for this path.
+
+If the file is present, that document is the catalogue. If it is absent, GitHub remotes fall back to installing skills directly from the repo; other git hosts require the discovery file.
+
+`owner/repo` expands to `https://github.com/owner/repo`. If that string already names an existing local directory, the local directory wins. When a shorthand remote is saved to Source Management, the expanded HTTPS URL is what gets stored, so a later working directory cannot reinterpret it as a local folder.
 
 ## Discovery Document Format
 
@@ -352,7 +357,7 @@ Typical pairing when using the discovery document:
 Agent Manager does not invent or hardcode API hosts. Use the discovery field for the normal published value, or set `API_BASE_URL` to override it (for example in local development).
 
 ```bash
-API_BASE_URL=https://api.example.com npx -y @ai-agent-manager/cli@latest https://example.com
+API_BASE_URL=https://api.example.com npx @ai-agent-manager/cli@latest https://example.com
 ```
 
 ### My Projects

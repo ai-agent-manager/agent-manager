@@ -41,7 +41,7 @@ Agent Manager gives you a single source of truth for your team's agent skills �
 npx @ai-agent-manager/cli@latest <source>
 ```
 
-`<source>` can be a bundle URL, a GitHub repo (`owner/repo` or a full URL), or a local directory. For HTTP bases it fetches `.well-known/agents/discovery.json`; for git remotes it probes `.agents/discovery.json` inside the repo first.
+`<source>` can be a bundle URL, a GitHub repo (`owner/repo` or a full URL), another git remote (`*.git` / `git@…`), or a local directory. HTTP bases fetch `.well-known/agents/discovery.json`; git remotes look for `.agents/discovery.json` in the repo first.
 
 ### Headless (recommended for CI)
 
@@ -51,7 +51,7 @@ Skip the menu entirely with a config file:
 npx @ai-agent-manager/cli@latest <source> --config .github/ai-skills.yml
 ```
 
-The `<source>` can be a **bundle URL**, a **GitHub repo** (`owner/repo` or full URL), or a **local directory** — agentman detects the type automatically. Published artefacts (`.zip` URLs) are supported as sources within a [discovery document](docs/discovery.md).
+The `<source>` can be a **bundle URL**, a **GitHub repo** (`owner/repo` or full URL), **another git remote**, or a **local directory** — agentman detects the type automatically. Published artefacts (`.zip` URLs) are supported as sources within a [discovery document](docs/discovery.md).
 
 **Config format:**
 
@@ -108,14 +108,15 @@ npx @ai-agent-manager/cli@latest org/my-skills-repo \
 ```
 
 An existing local directory named like `owner/repo` still wins over the GitHub shorthand — use `./owner/repo` if you need to be explicit.
-For private repositories, set `GITHUB_TOKEN` to a personal access token with repo read access:
+
+For private GitHub repositories (catalogue probe and skill install), set `GITHUB_TOKEN` to a personal access token with repo read access:
 
 ```bash
 GITHUB_TOKEN=ghp_... npx @ai-agent-manager/cli@latest https://github.com/org/my-skills-repo \
   --config .github/ai-skills.yml
 ```
 
-To pin to a specific branch or tag, use the `/tree/<ref>` GitHub URL format:
+To pin to a specific branch, tag, or commit, use the `/tree/<ref>` GitHub URL format:
 
 ```bash
 npx @ai-agent-manager/cli@latest https://github.com/org/my-skills-repo/tree/v2.0 \
@@ -129,9 +130,11 @@ npx @ai-agent-manager/cli@latest https://github.com/org/my-skills-repo/tree/v2.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   run: |
-    npx -y @ai-agent-manager/cli@latest https://github.com/org/my-skills-repo \
+    npx @ai-agent-manager/cli@latest https://github.com/org/my-skills-repo \
       --config .github/ai-skills.yml
 ```
+
+Other git hosts (Bitbucket, GitLab, …) work as discovery catalogues when you pass a `*.git` or `git@…` remote that contains `.agents/discovery.json`. Those remotes need a local `git` binary; they do not use `GITHUB_TOKEN`.
 
 #### Install from a published artefact (via discovery)
 
@@ -162,7 +165,7 @@ If your bundle server requires authentication, Agent Manager runs an interactive
 For headless/CI installs against an auth-protected discovery source, set a bearer directly and skip the browser flow:
 
 ```bash
-AGENTMAN_ACCESS_TOKEN=... npx -y @ai-agent-manager/cli@latest https://your-bundle-server.com \
+AGENTMAN_ACCESS_TOKEN=... npx @ai-agent-manager/cli@latest https://your-bundle-server.com \
   --config .github/ai-skills.yml
 ```
 
@@ -197,7 +200,7 @@ The TUI's top-level menu has these options:
 
 ### Saved sources
 
-Passing a source once saves it: `agentman <url>` resolves the source as before and also stores it, marking it the **active** source. A later bare `agentman` (no argument) resolves the active source, so you no longer need to paste the URL every time. Manage the saved list — add, remove, or pick which one is active — from **Source Management**. When a bare invocation runs, sources are tried in order (active first); a source that is unreachable is skipped so one dead source never blocks startup. Headless (`--config`) mode is unaffected: it always requires an explicit source argument and never falls back to saved sources, keeping CI runs reproducible.
+Passing a source once saves it: `agentman <url>` resolves the source as before and also stores it, marking it the **active** source. GitHub `owner/repo` shorthand is stored as the expanded `https://github.com/…` URL so a later working directory cannot flip it into a local folder. A later bare `agentman` (no argument) resolves the active source, so you no longer need to paste the URL every time. Manage the saved list — add, remove, or pick which one is active — from **Source Management**. When a bare invocation runs, sources are tried in order (active first); a source that is unreachable is skipped so one dead source never blocks startup. Headless (`--config`) mode is unaffected: it always requires an explicit source argument and never falls back to saved sources, keeping CI runs reproducible.
 
 On startup, if a newer app version or bundle is available, a bordered update panel appears above the menu. Press `U` to update the app, or `B` to pull the latest bundle immediately.
 
@@ -242,7 +245,7 @@ A `.agentman.json` file is written at the repo root tracking the pinned bundle v
 
 ## How It Works
 
-1. Agent Manager fetches a **discovery document** from `<base-url>/.well-known/agents/discovery.json` to learn about available skills and auth requirements.
+1. Agent Manager resolves your source: HTTP bases fetch `.well-known/agents/discovery.json`; git remotes look for `.agents/discovery.json` in the repo (GitHub via API, other hosts via a shallow clone).
 2. If the server requires authentication, an OAuth2/OIDC flow runs interactively (PKCE, browser-based login).
 3. Each source's bundle is downloaded and extracted under `~/.agentman/bundles/sources/<source-name>/<version>/`, so two sources publishing the same version number stay separate. A bundle fetched from a bare URL rather than a declared source still lands in the older `~/.agentman/bundles/<version>/` layout.
 4. `~/.agentman/current` symlinks to the active version of that older layout, and **Maintenance & Updates → Manage Bundle Versions** operates on it. Source-scoped bundles are not yet covered by either.
@@ -266,7 +269,7 @@ The [examples/](examples/) directory contains sample assets used for reference, 
 - `examples/story-build-readiness-agent/` -- Additional example Rovo agent manifest for authoring and testing patterns.
 - `examples/git-skill-importer/` -- End-to-end example for git skill discovery; exercised in CI.
 
-Important behavior:
+Important behaviour:
 
 - These examples are repository-local fixtures. They are not automatically used when you run Agent Manager against a remote bundle URL.
 - In normal production usage, Agent Manager pulls agents from the content root each source declares in the discovery document.
@@ -289,7 +292,7 @@ See [docs/telemetry.md](docs/telemetry.md) for the full event list and instructi
 | `AGENTMAN_CHROME_EXTENSION` | off | Expose the Chrome Extension provisioning path under **Rovo Agents**. When off, Playwright CLI automation is used directly. |
 
 ```bash
-AGENTMAN_CHROME_EXTENSION=1 npx -y @ai-agent-manager/cli@latest <base-url>
+AGENTMAN_CHROME_EXTENSION=1 npx @ai-agent-manager/cli@latest <base-url>
 ```
 
 ---
