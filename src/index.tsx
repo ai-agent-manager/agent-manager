@@ -12,6 +12,7 @@ import {
 } from "./bundle/source.js";
 import { type RepoSkillSource, type SkillSource } from "./bundle/skill-source.js";
 import { addSource, classifyStoredSource } from "./bundle/cache.js";
+import { parseGitRemoteInput } from "./discovery/git-probe.js";
 import { startConsoleSpinner } from "./lib/console-spinner.js";
 import {
     getBundleEndpointTelemetryValue,
@@ -35,16 +36,27 @@ if (configPath) {
     }
 
     try {
-        // Telemetry must not hard-require a discovery document for plain HTTP /
-        // ZIP inputs — that soft-404 lives in runHeadless. Git remotes still go
-        // through resolveSource (shorthand + probe).
-        const source = await resolveHeadlessTelemetrySource(sourceInput);
+        // Git remotes: resolve once here (probe + shorthand), use for telemetry,
+        // and pass through to runHeadless so it does not clone again.
+        // Plain HTTP / ZIP: classify without a hard discovery fetch — soft-404
+        // stays inside runHeadless.
+        let telemetrySource: BundleSource;
+        let resolvedStartup: StartupSource | undefined;
+        if (parseGitRemoteInput(sourceInput)) {
+            resolvedStartup = await resolveSource(sourceInput);
+            telemetrySource =
+                resolvedStartup.type === "repo"
+                    ? { type: "url", baseUrl: resolvedStartup.repoUrl }
+                    : resolvedStartup;
+        } else {
+            telemetrySource = await resolveHeadlessTelemetrySource(sourceInput);
+        }
         trackTelemetryEvent({
             action: "agentman_started",
-            properties: { forceUpdate, ...getBundleSourceTelemetryProperties(source) },
+            properties: { forceUpdate, ...getBundleSourceTelemetryProperties(telemetrySource) },
         });
         const { runHeadless } = await import("./headless.js");
-        await runHeadless(sourceInput, configPath, forceUpdate);
+        await runHeadless(sourceInput, configPath, forceUpdate, { resolvedStartup });
         process.exit(0);
     } catch (err) {
         trackTelemetryError("agentman_start_failed", err, telemetryForInput(sourceInput));

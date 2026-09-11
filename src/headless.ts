@@ -5,7 +5,7 @@ import { extractBundle } from './bundle/extractor.js';
 import { importLocalBundle } from './bundle/importer.js';
 import { scanBundle, type SkillInfo } from './bundle/scanner.js';
 import { setCurrentBundle } from './bundle/cache.js';
-import { resolveSource } from './bundle/source.js';
+import { resolveSource, type StartupSource } from './bundle/source.js';
 import {
   resolveSkillSource,
   isRepoSource,
@@ -95,10 +95,23 @@ export async function parseHeadlessConfig(configPath: string): Promise<HeadlessC
   };
 }
 
+export interface RunHeadlessOptions {
+  /**
+   * Startup source already resolved by the CLI entry (e.g. for telemetry).
+   * When set, skips a second {@link resolveSource} / git probe for the same input.
+   */
+  resolvedStartup?: StartupSource;
+}
+
 // TODO(#39): wire _forceUpdate into the headless acquisition path so `agentman <url> --update`
 // bypasses the cached bundle in extractBundle (src/bundle/extractor.ts:33-37).
 // See https://github.com/ai-agent-manager/agent-manager/issues/39
-export async function runHeadless(sourceInput: string, configPath: string, _forceUpdate: boolean): Promise<void> {
+export async function runHeadless(
+  sourceInput: string,
+  configPath: string,
+  _forceUpdate: boolean,
+  options: RunHeadlessOptions = {},
+): Promise<void> {
   const config = await parseHeadlessConfig(configPath);
   const repoRoot = process.cwd();
 
@@ -120,14 +133,21 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
   let skillSource: SkillSource | undefined;
   let repoSource: RepoSkillSource | undefined;
 
-  if (parseGitRemoteInput(sourceInput)) {
-    const startup = await resolveSource(sourceInput);
+  const applyStartup = async (startup: StartupSource): Promise<void> => {
     if (startup.type === 'discovery') {
       discovery = startup.discovery;
       discoveryBaseUrl = startup.baseUrl;
     } else if (startup.type === 'repo') {
       repoSource = startup;
+    } else if (startup.type === 'directory') {
+      skillSource = await resolveSkillSource(startup.dirPath);
     }
+  };
+
+  if (options.resolvedStartup) {
+    await applyStartup(options.resolvedStartup);
+  } else if (parseGitRemoteInput(sourceInput)) {
+    await applyStartup(await resolveSource(sourceInput));
   } else {
     skillSource = await resolveSkillSource(sourceInput);
     if (isBundleSource(skillSource) && skillSource.baseUrl && !skillSource.dirPath) {

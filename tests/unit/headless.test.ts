@@ -247,6 +247,52 @@ describe('runHeadless', () => {
     );
   });
 
+  it('does not re-probe when a resolved startup source is provided', async () => {
+    const { fetchDiscoveryDocument } = await import('../../src/discovery/index.js');
+    const { probeGitDiscovery } = await import('../../src/discovery/git-probe.js');
+    const { downloadRepoArchive } = await import('../../src/bundle/repo-downloader.js');
+    const { scanRepoForSkills } = await import('../../src/bundle/repo-scanner.js');
+    const repoSource = {
+      type: 'repo' as const,
+      repoUrl: 'https://github.com/example-org/example-repo',
+      defaultBranch: 'main',
+      ref: 'main',
+      installLayout: 'namespaced' as const,
+    };
+    const repoSkill = {
+      dirName: 'my-skill',
+      dirPath: '/tmp/example-repo/skills/my-skill',
+      skillMdPath: '/tmp/example-repo/skills/my-skill/SKILL.md',
+      meta: null,
+    };
+
+    vi.mocked(probeGitDiscovery).mockClear();
+    vi.mocked(downloadRepoArchive).mockResolvedValueOnce({
+      extractDir: '/tmp/example-repo',
+      isNew: true,
+    });
+    vi.mocked(scanRepoForSkills).mockResolvedValueOnce({
+      skills: [repoSkill],
+      skillsDir: '/tmp/example-repo/skills',
+    });
+
+    const configPath = path.join(tmpDir, 'ai-skills.yml');
+    await writeFile(configPath, 'tools: claude-code\nscope: repo\nskills:\n  - my-skill\n');
+
+    await expect(
+      runHeadless('https://github.com/example-org/example-repo', configPath, false, {
+        resolvedStartup: repoSource,
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(probeGitDiscovery).not.toHaveBeenCalled();
+    expect(fetchDiscoveryDocument).not.toHaveBeenCalled();
+    expect(downloadRepoArchive).toHaveBeenCalledWith(
+      repoSource,
+      expect.objectContaining({ forceUpdate: false }),
+    );
+  });
+
   it('installs from a GitHub repository when the discovery probe misses', async () => {
     const { fetchDiscoveryDocument } = await import('../../src/discovery/index.js');
     const { probeGitDiscovery } = await import('../../src/discovery/git-probe.js');
