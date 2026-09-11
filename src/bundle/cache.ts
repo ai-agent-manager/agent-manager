@@ -14,7 +14,9 @@ import { scanBundle } from "./scanner.js";
 import { getPlatform } from "../lib/platform.js";
 import { writeFileAtomic } from "../lib/fs.js";
 import { withLock } from "../lib/file-lock.js";
-import { isGithubRepoUrl, type SkillSourcePin } from "./skill-source.js";
+import { existsSync, statSync } from "node:fs";
+import { parseGitRemoteInput, isGithubRepoShorthand } from "../discovery/git-probe.js";
+import { type SkillSourcePin } from "./skill-source.js";
 
 const CONFIG_SCHEMA_VERSION = 2;
 
@@ -33,11 +35,29 @@ export interface StoredSource {
 /**
  * Classify a raw source string for persistence. Directory sources are resolved
  * to an absolute path so they keep working when a later invocation starts from
- * a different working directory. URLs are stored verbatim.
+ * a different working directory. Git remotes (including `owner/repo` shorthand)
+ * are stored as their canonical identity URL so a later cwd cannot reinterpret
+ * shorthand as a local directory, and so shorthand dedupes with the full URL.
+ * Other URLs are stored verbatim.
  */
 export function classifyStoredSource(input: string): StoredSource {
-    if (isGithubRepoUrl(input)) {
-        return { kind: "repo", value: input };
+    // An existing local directory wins over GitHub `owner/repo` shorthand.
+    if (isGithubRepoShorthand(input)) {
+        try {
+            const resolved = path.resolve(input);
+            if (existsSync(resolved) && statSync(resolved).isDirectory()) {
+                return { kind: "directory", value: resolved };
+            }
+        } catch {
+            // Fall through to git remote classification.
+        }
+    }
+
+    // Git remotes are stored as repo sources; resolveSource re-probes for a
+    // discovery document on every resolve so adding/removing the file flips mode.
+    const gitRemote = parseGitRemoteInput(input);
+    if (gitRemote) {
+        return { kind: "repo", value: gitRemote.identity };
     }
     return /^https?:\/\//i.test(input)
         ? { kind: "discovery", value: input }

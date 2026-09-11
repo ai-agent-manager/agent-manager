@@ -6,12 +6,40 @@ import type { DiscoveryDocument } from '../../../src/discovery/types.js';
 
 const mockDiscovery: DiscoveryDocument = {
   version: '1',
-  skills: [{ name: 'test', type: 'http', url: 'https://example.com/bundle' }],
+  sources: [{ name: 'test', type: 'http', url: 'https://example.com/bundle' }],
 };
 
-vi.mock('../../../src/discovery/index.js', () => ({
-  fetchDiscoveryDocument: vi.fn(async () => mockDiscovery),
-}));
+const mockGitDiscovery: DiscoveryDocument = {
+  version: '1',
+  sources: [
+    {
+      name: 'agent-skills',
+      type: 'git',
+      url: 'https://github.com/example-org/agent-skills.git',
+      status: 'official',
+    },
+  ],
+};
+
+vi.mock('../../../src/discovery/index.js', async () => {
+  const actual = await vi.importActual<typeof import('../../../src/discovery/index.js')>(
+    '../../../src/discovery/index.js',
+  );
+  return {
+    ...actual,
+    fetchDiscoveryDocument: vi.fn(async () => mockDiscovery),
+  };
+});
+
+vi.mock('../../../src/discovery/git-probe.js', async () => {
+  const actual = await vi.importActual<typeof import('../../../src/discovery/git-probe.js')>(
+    '../../../src/discovery/git-probe.js',
+  );
+  return {
+    ...actual,
+    probeGitDiscovery: vi.fn(async () => null),
+  };
+});
 
 const configState = { value: { installations: {} } as import('../../../src/bundle/cache.js').AgentmanConfig };
 
@@ -20,8 +48,13 @@ vi.mock('../../../src/bundle/cache.js', async () => {
   return { ...actual, readConfig: vi.fn(async () => configState.value) };
 });
 
-const { fetchDiscoveryDocument } = await import('../../../src/discovery/index.js');
-const { resolveSource, resolvePersistedSource } = await import('../../../src/bundle/source.js');
+const { fetchDiscoveryDocument, DiscoveryError } = await import('../../../src/discovery/index.js');
+const { probeGitDiscovery } = await import('../../../src/discovery/git-probe.js');
+const {
+  resolveSource,
+  resolvePersistedSource,
+  resolveHeadlessTelemetrySource,
+} = await import('../../../src/bundle/source.js');
 
 describe('resolveSource', () => {
   let tempDir: string;
@@ -29,6 +62,9 @@ describe('resolveSource', () => {
   beforeEach(async () => {
     tempDir = path.join(os.tmpdir(), `source-test-${Date.now()}`);
     await mkdir(tempDir, { recursive: true });
+    vi.mocked(probeGitDiscovery).mockReset();
+    vi.mocked(probeGitDiscovery).mockResolvedValue(null);
+    vi.mocked(fetchDiscoveryDocument).mockClear();
   });
 
   afterEach(async () => {
@@ -36,7 +72,21 @@ describe('resolveSource', () => {
     vi.clearAllMocks();
   });
 
-  it('returns a repo source for a GitHub URL without requesting discovery', async () => {
+  it('returns discovery when a git remote contains a discovery document', async () => {
+    vi.mocked(probeGitDiscovery).mockResolvedValueOnce(mockGitDiscovery);
+
+    const result = await resolveSource('https://github.com/govuk-one-login/agent-skills');
+
+    expect(result).toEqual({
+      type: 'discovery',
+      baseUrl: 'https://github.com/govuk-one-login/agent-skills',
+      discovery: mockGitDiscovery,
+    });
+    expect(probeGitDiscovery).toHaveBeenCalledOnce();
+    expect(fetchDiscoveryDocument).not.toHaveBeenCalled();
+  });
+
+  it('falls back to a repo source when a GitHub remote has no discovery document', async () => {
     const result = await resolveSource('https://github.com/example-org/example-repo');
 
     expect(result).toEqual({
@@ -46,7 +96,71 @@ describe('resolveSource', () => {
       ref: 'main',
       installLayout: 'namespaced',
     });
+    expect(probeGitDiscovery).toHaveBeenCalledOnce();
     expect(fetchDiscoveryDocument).not.toHaveBeenCalled();
+  });
+
+  it('expands owner/repo shorthand through the same probe path', async () => {
+    vi.mocked(probeGitDiscovery).mockResolvedValueOnce(mockGitDiscovery);
+
+    const result = await resolveSource('govuk-one-login/agent-skills');
+
+    expect(result).toEqual({
+      type: 'discovery',
+      baseUrl: 'https://github.com/govuk-one-login/agent-skills',
+      discovery: mockGitDiscovery,
+    });
+    expect(probeGitDiscovery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identity: 'https://github.com/govuk-one-login/agent-skills',
+        cloneUrl: 'https://github.com/govuk-one-login/agent-skills.git',
+      }),
+    );
+    expect(fetchDiscoveryDocument).not.toHaveBeenCalled();
+  });
+
+  it('prefers an existing local directory over owner/repo GitHub shorthand', async () => {
+    // Resolve relative to cwd by chdir into tempDir for this assertion.
+    const previous = process.cwd();
+    process.chdir(tempDir);
+    try {
+      await mkdir(path.join('team', 'skills'), { recursive: true });
+      const result = await resolveSource('team/skills');
+      expect(result).toEqual({
+        type: 'directory',
+        dirPath: path.resolve('team/skills'),
+      });
+      expect(probeGitDiscovery).not.toHaveBeenCalled();
+      expect(fetchDiscoveryDocument).not.toHaveBeenCalled();
+    } finally {
+      process.chdir(previous);
+    }
+  });
+
+  it('probes a pinned git ref and keeps it on the repo fallback', async () => {
+    const result = await resolveSource('https://github.com/example-org/example-repo/tree/v2.0');
+
+    expect(probeGitDiscovery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identity: 'https://github.com/example-org/example-repo',
+        ref: 'v2.0',
+        refPinned: true,
+      }),
+    );
+    expect(result).toEqual({
+      type: 'repo',
+      repoUrl: 'https://github.com/example-org/example-repo',
+      defaultBranch: 'main',
+      ref: 'v2.0',
+      installLayout: 'namespaced',
+    });
+  });
+
+  it('rejects a non-GitHub git remote that has no discovery document', async () => {
+    await expect(
+      resolveSource('https://gitlab.example.com/org/catalogue.git'),
+    ).rejects.toThrow(/Direct skill install.*only supported for GitHub/);
+    expect(probeGitDiscovery).toHaveBeenCalledOnce();
   });
 
   it('returns discovery source for https URL', async () => {
@@ -115,6 +229,8 @@ describe('resolvePersistedSource', () => {
     tempDir = path.join(os.tmpdir(), `persisted-test-${Date.now()}`);
     await mkdir(tempDir, { recursive: true });
     configState.value = { installations: {} };
+    vi.mocked(probeGitDiscovery).mockReset();
+    vi.mocked(probeGitDiscovery).mockResolvedValue(null);
   });
 
   afterEach(async () => {
@@ -137,7 +253,7 @@ describe('resolvePersistedSource', () => {
     expect(resolved?.stored).toEqual({ kind: 'directory', value: tempDir });
   });
 
-  it('resolves a persisted GitHub URL without requesting discovery', async () => {
+  it('re-probes a persisted GitHub URL and returns repo when discovery is absent', async () => {
     const stored = {
       kind: 'discovery' as const,
       value: 'https://github.com/example-org/example-repo',
@@ -152,7 +268,29 @@ describe('resolvePersistedSource', () => {
 
     expect(resolved?.source.type).toBe('repo');
     expect(resolved?.stored).toEqual(stored);
+    expect(probeGitDiscovery).toHaveBeenCalledOnce();
     expect(fetchDiscoveryDocument).not.toHaveBeenCalled();
+  });
+
+  it('re-probes a persisted GitHub URL and returns discovery when the document appears', async () => {
+    vi.mocked(probeGitDiscovery).mockResolvedValueOnce(mockGitDiscovery);
+    const stored = {
+      kind: 'repo' as const,
+      value: 'https://github.com/govuk-one-login/agent-skills',
+    };
+    configState.value = {
+      installations: {},
+      sources: [stored],
+      activeSource: stored,
+    };
+
+    const resolved = await resolvePersistedSource();
+
+    expect(resolved?.source).toEqual({
+      type: 'discovery',
+      baseUrl: 'https://github.com/govuk-one-login/agent-skills',
+      discovery: mockGitDiscovery,
+    });
   });
 
   it('skips a source that fails to resolve and tries the next (per-source isolation)', async () => {
@@ -179,5 +317,103 @@ describe('resolvePersistedSource', () => {
     };
 
     await expect(resolvePersistedSource()).rejects.toThrow('None of the configured sources');
+  });
+});
+
+describe('resolveHeadlessTelemetrySource', () => {
+  let tempDir: string;
+
+  beforeEach(async () => {
+    tempDir = path.join(os.tmpdir(), `headless-telemetry-${Date.now()}`);
+    await mkdir(tempDir, { recursive: true });
+    vi.mocked(probeGitDiscovery).mockReset();
+    vi.mocked(probeGitDiscovery).mockResolvedValue(null);
+    vi.mocked(fetchDiscoveryDocument).mockReset();
+    vi.mocked(fetchDiscoveryDocument).mockResolvedValue(mockDiscovery);
+  });
+
+  afterEach(async () => {
+    await rm(tempDir, { recursive: true, force: true });
+    vi.clearAllMocks();
+  });
+
+  it('classifies a plain HTTP catalogue without fetching discovery', async () => {
+    const notFound = new DiscoveryError(
+      'Discovery document not found',
+      'https://cdn.example.com',
+      undefined,
+      404,
+    );
+    vi.mocked(fetchDiscoveryDocument).mockRejectedValue(notFound);
+
+    await expect(resolveSource('https://cdn.example.com')).rejects.toThrow(
+      /Discovery document not found/,
+    );
+
+    vi.mocked(fetchDiscoveryDocument).mockClear();
+    vi.mocked(probeGitDiscovery).mockClear();
+
+    const result = await resolveHeadlessTelemetrySource('https://cdn.example.com');
+
+    expect(result).toEqual({ type: 'url', baseUrl: 'https://cdn.example.com' });
+    expect(fetchDiscoveryDocument).not.toHaveBeenCalled();
+    expect(probeGitDiscovery).not.toHaveBeenCalled();
+  });
+
+  it('classifies a direct artefact ZIP without fetching discovery', async () => {
+    vi.mocked(fetchDiscoveryDocument).mockRejectedValue(
+      new DiscoveryError(
+        'Discovery document not found',
+        'https://cdn.example.com/skill-1.0.0.zip',
+        undefined,
+        404,
+      ),
+    );
+
+    const result = await resolveHeadlessTelemetrySource(
+      'https://cdn.example.com/skill-1.0.0.zip',
+    );
+
+    expect(result).toEqual({
+      type: 'url',
+      baseUrl: 'https://cdn.example.com/skill-1.0.0.zip',
+    });
+    expect(fetchDiscoveryDocument).not.toHaveBeenCalled();
+    expect(probeGitDiscovery).not.toHaveBeenCalled();
+  });
+
+  it('classifies a local directory without probing git or discovery', async () => {
+    const result = await resolveHeadlessTelemetrySource(tempDir);
+
+    expect(result).toEqual({ type: 'directory', dirPath: tempDir });
+    expect(fetchDiscoveryDocument).not.toHaveBeenCalled();
+    expect(probeGitDiscovery).not.toHaveBeenCalled();
+  });
+
+  it('probes git remotes via resolveSource for GitHub URLs', async () => {
+    const result = await resolveHeadlessTelemetrySource(
+      'https://github.com/example-org/example-repo',
+    );
+
+    expect(result).toEqual({
+      type: 'url',
+      baseUrl: 'https://github.com/example-org/example-repo',
+    });
+    expect(probeGitDiscovery).toHaveBeenCalledOnce();
+    expect(fetchDiscoveryDocument).not.toHaveBeenCalled();
+  });
+
+  it('probes git remotes via resolveSource for owner/repo shorthand', async () => {
+    vi.mocked(probeGitDiscovery).mockResolvedValueOnce(mockGitDiscovery);
+
+    const result = await resolveHeadlessTelemetrySource('govuk-one-login/agent-skills');
+
+    expect(result).toEqual({
+      type: 'discovery',
+      baseUrl: 'https://github.com/govuk-one-login/agent-skills',
+      discovery: mockGitDiscovery,
+    });
+    expect(probeGitDiscovery).toHaveBeenCalledOnce();
+    expect(fetchDiscoveryDocument).not.toHaveBeenCalled();
   });
 });
