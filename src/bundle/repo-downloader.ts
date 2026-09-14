@@ -2,6 +2,7 @@ import { mkdir, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import extractZip from 'extract-zip';
 import { getRepoCacheDir, getTempDir } from '../config/paths.js';
+import { extractZipFast } from '../lib/powershell-extract.js';
 import { trackTelemetryError, trackTelemetryEvent } from '../telemetry.js';
 import type { RepoSkillSource } from './skill-source.js';
 
@@ -104,7 +105,13 @@ export async function downloadRepoArchive(
 
     // Extract to temp dir
     await mkdir(tempExtractDir, { recursive: true });
-    await extractZip(zipPath, { dir: tempExtractDir });
+    try {
+      // Use fast extraction (PowerShell on Windows, streaming on Mac/Linux)
+      await extractZipFast(zipPath, tempExtractDir);
+    } catch (fastExtractErr) {
+      // Fall back to extract-zip if fast extraction fails
+      await extractZip(zipPath, { dir: tempExtractDir });
+    }
 
     // Strip GitHub's top-level wrapper directory (<repo>-<ref>/ or <repo>-<sha>/)
     const entries = await readdir(tempExtractDir, { withFileTypes: true });

@@ -1,4 +1,5 @@
 import path from 'node:path';
+import os from 'node:os';
 import { getHomeDir } from '../lib/platform.js';
 
 /** Root directory for agentman data */
@@ -33,7 +34,11 @@ export function getConfigLockPath(): string {
 
 /** Temp directory for downloads */
 export function getTempDir(): string {
-  return path.join(getAgentmanDir(), 'tmp');
+  // Use system temp directory on Windows to avoid cross-drive issues
+  // On Mac/Linux, ~/.agentman/tmp is fine
+  return process.platform === 'win32'
+    ? path.join(os.tmpdir(), 'agentman')
+    : path.join(getAgentmanDir(), 'tmp');
 }
 
 /** Directory containing cached repository downloads */
