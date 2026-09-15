@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import path from 'node:path';
-import os from 'node:os';
 import { getHomeDir } from '../../../src/lib/platform.js';
 import {
   getAgentmanDir,
@@ -66,15 +65,11 @@ describe('getConfigLockPath', () => {
 });
 
 describe('getTempDir', () => {
-  it('returns a tmp path in the appropriate location', () => {
+  it('returns a tmp path under agentman dir', () => {
     const tmp = getTempDir();
-    if (process.platform === 'win32') {
-      // On Windows, use system temp directory for better performance
-      expect(tmp).toBe(path.join(os.tmpdir(), 'agentman'));
-    } else {
-      // On Mac/Linux, use ~/.agentman/tmp
-      expect(tmp).toBe(path.join(home, '.agentman', 'tmp'));
-    }
+    // Always use ~/.agentman/tmp to avoid cross-drive rename issues
+    // (system temp on Windows can be on a different drive than the cache)
+    expect(tmp).toBe(path.join(home, '.agentman', 'tmp'));
   });
 });
 
