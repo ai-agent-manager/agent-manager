@@ -76,7 +76,13 @@ export async function extractBundle(zipPath: string, options: ExtractBundleOptio
   await mkdir(tempExtractDir, { recursive: true });
 
   try {
-    await extractZipFast(zipPath, tempExtractDir);
+    try {
+      // Use fast extraction (PowerShell on Windows, streaming on Mac/Linux)
+      await extractZipFast(zipPath, tempExtractDir);
+    } catch {
+      // Fall back to extract-zip if fast extraction fails
+      await extractZip(zipPath, { dir: tempExtractDir });
+    }
 
     // Read manifest
     const manifestRaw = await readFile(`${tempExtractDir}/manifest.json`, 'utf-8');

@@ -9,7 +9,6 @@
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdir } from 'node:fs/promises';
-import path from 'node:path';
 import { extractZipStreaming } from './fast-extract.js';
 
 const execAsync = promisify(exec);
@@ -27,15 +26,14 @@ export async function extractZipFast(zipPath: string, targetDir: string): Promis
     // On Windows, use PowerShell's native extraction
     // This is trusted by Windows Defender and scans much faster
     try {
-      // Suppress progress output with -ProgressAction SilentlyContinue (PowerShell 7+)
-      // For older PowerShell, use $ProgressPreference
+      // Suppress progress output with $ProgressPreference
       const psCommand = `$ProgressPreference = 'SilentlyContinue'; Expand-Archive -Path '${zipPath}' -DestinationPath '${targetDir}' -Force`;
       await execAsync(`powershell.exe -NoProfile -Command "${psCommand}"`, {
         maxBuffer: 50 * 1024 * 1024, // 50 MB buffer
         timeout: 300000, // 5 minute timeout for very large archives
       });
       return;
-    } catch (psError) {
+    } catch {
       // If PowerShell fails, fall back to streaming
       return extractZipStreaming(zipPath, targetDir);
     }

@@ -5,11 +5,18 @@
 
 /**
  * Enhance an error with Windows-specific guidance if applicable.
- * Returns the original error unchanged on non-Windows platforms.
+ * Returns the original error unchanged on non-Windows platforms or for special error types.
  */
 export function enhanceWindowsError(error: unknown, operation: string): Error {
+  // Don't wrap errors on non-Windows platforms
   if (process.platform !== 'win32') {
     return error instanceof Error ? error : new Error(String(error));
+  }
+
+  // Don't wrap special error types that need to preserve their type
+  if (error instanceof Error && error.constructor !== Error) {
+    // If it's a custom error type (like IntegrityError), preserve it
+    return error;
   }
 
   const message = error instanceof Error ? error.message : String(error);
@@ -39,6 +46,9 @@ appear to be on different drives. Try:
 Windows executable not found during ${operation}. This may indicate:
   1. A required tool is not installed or not in PATH
   2. The command name needs a .exe extension on Windows`;
+  } else {
+    // No Windows-specific enhancement needed, return original error
+    return error instanceof Error ? error : new Error(String(error));
   }
 
   const enhancedError = new Error(enhancedMessage);

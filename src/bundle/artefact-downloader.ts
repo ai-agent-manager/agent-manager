@@ -415,7 +415,7 @@ export async function downloadArtefact(
     try {
       // Use fast extraction (PowerShell on Windows, streaming on Mac/Linux)
       await extractZipFast(zipPath, tempExtractDir);
-    } catch (fastExtractErr) {
+    } catch {
       // Fall back to extract-zip if fast extraction fails
       await extractZip(zipPath, { dir: tempExtractDir });
     }
