@@ -163,6 +163,19 @@ describe('resolveSource', () => {
     expect(probeGitDiscovery).toHaveBeenCalledOnce();
   });
 
+  it('probes nested-group non-GitHub remotes with the full repository path', async () => {
+    await expect(
+      resolveSource('https://gitlab.example.com/group/subgroup/catalogue.git'),
+    ).rejects.toThrow(/Direct skill install.*only supported for GitHub/);
+    expect(probeGitDiscovery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cloneUrl: 'https://gitlab.example.com/group/subgroup/catalogue.git',
+        identity: 'https://gitlab.example.com/group/subgroup/catalogue',
+        supportsDirectSkillInstall: false,
+      }),
+    );
+  });
+
   it('returns discovery source for https URL', async () => {
     const result = await resolveSource('https://example.com');
     expect(result.type).toBe('discovery');

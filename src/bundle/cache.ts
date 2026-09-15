@@ -35,9 +35,12 @@ export interface StoredSource {
 /**
  * Classify a raw source string for persistence. Directory sources are resolved
  * to an absolute path so they keep working when a later invocation starts from
- * a different working directory. Git remotes (including `owner/repo` shorthand)
- * are stored as their canonical identity URL so a later cwd cannot reinterpret
- * shorthand as a local directory, and so shorthand dedupes with the full URL.
+ * a different working directory. Git remotes are stored in a form that still
+ * parses as a git remote on reload:
+ * - GitHub / GHES → canonical HTTPS identity, with `/tree/<ref>` when pinned
+ *   (so shorthand dedupes with the full URL and cwd cannot flip it to a local dir)
+ * - Other hosts → clone URL (keeps `.git` / full path so reload does not become
+ *   an HTTP discovery base)
  * Other URLs are stored verbatim.
  */
 export function classifyStoredSource(input: string): StoredSource {
@@ -57,11 +60,31 @@ export function classifyStoredSource(input: string): StoredSource {
     // discovery document on every resolve so adding/removing the file flips mode.
     const gitRemote = parseGitRemoteInput(input);
     if (gitRemote) {
-        return { kind: "repo", value: gitRemote.identity };
+        return { kind: "repo", value: persistedGitRemoteValue(gitRemote) };
     }
     return /^https?:\/\//i.test(input)
         ? { kind: "discovery", value: input }
         : { kind: "directory", value: path.resolve(input) };
+}
+
+/**
+ * Value written to the source list for a parsed git remote.
+ * Must round-trip through {@link parseGitRemoteInput} / {@link resolveSource}.
+ */
+export function persistedGitRemoteValue(remote: {
+    identity: string;
+    cloneUrl: string;
+    ref?: string;
+    refPinned: boolean;
+    supportsDirectSkillInstall: boolean;
+}): string {
+    if (remote.supportsDirectSkillInstall) {
+        if (remote.refPinned && remote.ref) {
+            return `${remote.identity}/tree/${remote.ref}`;
+        }
+        return remote.identity;
+    }
+    return remote.cloneUrl;
 }
 
 function sameStoredSource(a: StoredSource, b: StoredSource): boolean {

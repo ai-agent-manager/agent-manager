@@ -15,7 +15,7 @@ When a user provides a **git remote** — GitHub `owner/repo` shorthand, a GitHu
 
 If the file is present, that document is the catalogue. If it is absent, GitHub remotes fall back to installing skills directly from the repo; other git hosts require the discovery file.
 
-`owner/repo` expands to `https://github.com/owner/repo`. If that string already names an existing local directory, the local directory wins. When a shorthand remote is saved to Source Management, the expanded HTTPS URL is what gets stored, so a later working directory cannot reinterpret it as a local folder.
+`owner/repo` expands to `https://github.com/owner/repo`. If that string already names an existing local directory, the local directory wins. When a remote is saved to Source Management: GitHub shorthand becomes the expanded HTTPS URL (with `/tree/<ref>` kept when pinned); other git hosts keep their clone URL (including `.git`) so reload still treats them as remotes.
 
 ## Discovery Document Format
 

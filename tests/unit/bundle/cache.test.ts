@@ -78,7 +78,7 @@ describe('stored sources', () => {
     });
     expect(classifyStoredSource('https://gitlab.example.com/org/catalogue.git')).toEqual({
       kind: 'repo',
-      value: 'https://gitlab.example.com/org/catalogue',
+      value: 'https://gitlab.example.com/org/catalogue.git',
     });
     expect(classifyStoredSource('my-org/my-repo')).toEqual({
       kind: 'repo',
@@ -91,6 +91,22 @@ describe('stored sources', () => {
     expect(classifyStoredSource('example-org/example-repo')).toEqual(
       classifyStoredSource('https://github.com/example-org/example-repo'),
     );
+  });
+
+  it('persists an explicit /tree/<ref> pin on GitHub sources', () => {
+    expect(classifyStoredSource('https://github.com/example-org/example-repo/tree/v2.0')).toEqual({
+      kind: 'repo',
+      value: 'https://github.com/example-org/example-repo/tree/v2.0',
+    });
+  });
+
+  it('persists non-GitHub remotes as clone URLs so reload still treats them as git', () => {
+    expect(
+      classifyStoredSource('https://gitlab.example.com/group/subgroup/catalogue.git'),
+    ).toEqual({
+      kind: 'repo',
+      value: 'https://gitlab.example.com/group/subgroup/catalogue.git',
+    });
   });
 
   it('classifies an existing local owner/repo path as a directory, not GitHub shorthand', async () => {

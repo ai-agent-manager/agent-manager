@@ -165,22 +165,40 @@ export function parseGitRemoteInput(
     return null;
   }
 
-  if (segments.length < 2) {
+  // GitHub / GHES: owner/repo layout, optional /tree/<ref>.
+  if (isGithub) {
+    if (segments.length < 2) {
+      return null;
+    }
+
+    const [org, repoSegment, treeSegment, refFromPath] = segments;
+    const repo = repoSegment.replace(/\.git$/i, '');
+    const refPinned = treeSegment === 'tree' && Boolean(refFromPath);
+    const identity = `${parsed.origin}/${org}/${repo}`;
+    const cloneUrl = `${parsed.origin}/${org}/${repo}.git`;
+
+    return {
+      cloneUrl,
+      identity,
+      ...(refPinned ? { ref: refFromPath } : {}),
+      refPinned,
+      supportsDirectSkillInstall: true,
+    };
+  }
+
+  // Other HTTPS *.git remotes: keep the full path (nested groups, etc.).
+  const pathWithoutGit = parsed.pathname.replace(/\/+$/, '').replace(/\.git$/i, '');
+  const pathSegments = pathWithoutGit.split('/').filter(Boolean);
+  if (pathSegments.length < 1) {
     return null;
   }
 
-  const [org, repoSegment, treeSegment, refFromPath] = segments;
-  const repo = repoSegment.replace(/\.git$/i, '');
-  const refPinned = treeSegment === 'tree' && Boolean(refFromPath);
-  const identity = `${parsed.origin}/${org}/${repo}`;
-  const cloneUrl = `${parsed.origin}/${org}/${repo}.git`;
-
+  const identity = `${parsed.origin}${pathWithoutGit}`;
   return {
-    cloneUrl,
+    cloneUrl: `${identity}.git`,
     identity,
-    ...(refPinned ? { ref: refFromPath } : {}),
-    refPinned,
-    supportsDirectSkillInstall: isGithub,
+    refPinned: false,
+    supportsDirectSkillInstall: false,
   };
 }
 

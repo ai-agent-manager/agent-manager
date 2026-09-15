@@ -85,6 +85,17 @@ describe('parseGitRemoteInput', () => {
     });
   });
 
+  it('preserves nested group paths for non-GitHub HTTPS remotes', () => {
+    expect(
+      parseGitRemoteInput('https://gitlab.example.com/group/subgroup/catalogue.git'),
+    ).toEqual({
+      cloneUrl: 'https://gitlab.example.com/group/subgroup/catalogue.git',
+      identity: 'https://gitlab.example.com/group/subgroup/catalogue',
+      refPinned: false,
+      supportsDirectSkillInstall: false,
+    });
+  });
+
   it('recognises SCP-style git@ remotes', () => {
     expect(parseGitRemoteInput('git@github.com:org/repo.git')).toEqual({
       cloneUrl: 'git@github.com:org/repo.git',
