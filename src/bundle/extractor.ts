@@ -1,8 +1,10 @@
-import { mkdir, readFile, rm, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, rename, writeFile, cp } from 'node:fs/promises';
 import extractZip from 'extract-zip';
 import path from 'node:path';
 import { getBundlesDir, getBundleVersionDir, getTempDir } from '../config/paths.js';
 import { assertSafeCacheSegment } from '../lib/path-segment.js';
+import { enhanceWindowsError } from '../lib/windows-errors.js';
+import { extractZipFast } from '../lib/powershell-extract.js';
 import { canonicaliseContentRoot } from './downloader.js';
 import { parseManifest, type BundleManifest } from './manifest.js';
 
@@ -74,7 +76,13 @@ export async function extractBundle(zipPath: string, options: ExtractBundleOptio
   await mkdir(tempExtractDir, { recursive: true });
 
   try {
-    await extractZip(zipPath, { dir: tempExtractDir });
+    try {
+      // Use fast extraction (PowerShell on Windows, streaming on Mac/Linux)
+      await extractZipFast(zipPath, tempExtractDir);
+    } catch {
+      // Fall back to extract-zip if fast extraction fails
+      await extractZip(zipPath, { dir: tempExtractDir });
+    }
 
     // Read manifest
     const manifestRaw = await readFile(`${tempExtractDir}/manifest.json`, 'utf-8');
@@ -151,7 +159,7 @@ export async function extractBundle(zipPath: string, options: ExtractBundleOptio
     await mkdir(path.dirname(targetDir), { recursive: true });
     // Use rename-like approach: extract directly to target
     await rm(targetDir, { recursive: true, force: true });
-    await rename(tempExtractDir, targetDir);
+    await safeRename(tempExtractDir, targetDir);
 
     // Detection only, and deliberately after the version is published: losing
     // this file costs an error message, never the reuse guarantee above.
@@ -163,7 +171,7 @@ export async function extractBundle(zipPath: string, options: ExtractBundleOptio
   } catch (error) {
     // Clean up on failure
     await rm(tempExtractDir, { recursive: true, force: true }).catch(() => {});
-    throw error;
+    throw enhanceWindowsError(error, "bundle extraction");
   }
 }
 
@@ -236,5 +244,47 @@ async function dirExists(dirPath: string): Promise<boolean> {
     return s.isDirectory();
   } catch {
     return false;
+  }
+}
+
+/**
+ * Cross-platform rename that handles Windows-specific issues.
+ * On Windows, rename() can fail when:
+ * - Moving across different drives (EXDEV)
+ * - File is locked by another process (EPERM/EACCES)
+ * Falls back to copy + delete in these cases.
+ *
+ * The copy fallback uses atomic publication: it copies to a staging directory
+ * on the target filesystem first, then renames into place. This prevents
+ * partial copies from being left in the cache with valid provenance markers.
+ */
+async function safeRename(source: string, target: string): Promise<void> {
+  try {
+    await rename(source, target);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    // EXDEV: cross-device link (different drives on Windows)
+    // EPERM/EACCES: permission issues (file locked, antivirus, etc.)
+    if (code === 'EXDEV' || code === 'EPERM' || code === 'EACCES') {
+      console.warn(`[agentman] Rename failed (${code}), falling back to copy...`);
+
+      // Copy to a staging directory adjacent to the target, then rename atomically.
+      // This prevents partial copies from being exposed with valid provenance.
+      const stagingDir = `${target}.staging-${process.pid}-${Date.now()}`;
+
+      try {
+        await cp(source, stagingDir, { recursive: true });
+        // Only expose the copy after it completes successfully
+        await rename(stagingDir, target);
+        // Clean up source only after successful publication
+        await rm(source, { recursive: true, force: true });
+      } catch (copyError) {
+        // Clean up staging on any failure
+        await rm(stagingDir, { recursive: true, force: true }).catch(() => {});
+        throw copyError;
+      }
+    } else {
+      throw error;
+    }
   }
 }

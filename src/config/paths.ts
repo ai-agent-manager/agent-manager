@@ -33,6 +33,10 @@ export function getConfigLockPath(): string {
 
 /** Temp directory for downloads */
 export function getTempDir(): string {
+  // Keep temp under ~/.agentman/tmp to avoid cross-drive rename issues.
+  // Using system temp on Windows can place it on a different drive than
+  // the cache directories, causing EXDEV errors when rename() is called
+  // to publish downloaded content (bundles, repos, artefacts).
   return path.join(getAgentmanDir(), 'tmp');
 }
 
