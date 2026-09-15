@@ -253,6 +253,10 @@ async function dirExists(dirPath: string): Promise<boolean> {
  * - Moving across different drives (EXDEV)
  * - File is locked by another process (EPERM/EACCES)
  * Falls back to copy + delete in these cases.
+ *
+ * The copy fallback uses atomic publication: it copies to a staging directory
+ * on the target filesystem first, then renames into place. This prevents
+ * partial copies from being left in the cache with valid provenance markers.
  */
 async function safeRename(source: string, target: string): Promise<void> {
   try {
@@ -263,8 +267,22 @@ async function safeRename(source: string, target: string): Promise<void> {
     // EPERM/EACCES: permission issues (file locked, antivirus, etc.)
     if (code === 'EXDEV' || code === 'EPERM' || code === 'EACCES') {
       console.warn(`[agentman] Rename failed (${code}), falling back to copy...`);
-      await cp(source, target, { recursive: true });
-      await rm(source, { recursive: true, force: true });
+
+      // Copy to a staging directory adjacent to the target, then rename atomically.
+      // This prevents partial copies from being exposed with valid provenance.
+      const stagingDir = `${target}.staging-${process.pid}-${Date.now()}`;
+
+      try {
+        await cp(source, stagingDir, { recursive: true });
+        // Only expose the copy after it completes successfully
+        await rename(stagingDir, target);
+        // Clean up source only after successful publication
+        await rm(source, { recursive: true, force: true });
+      } catch (copyError) {
+        // Clean up staging on any failure
+        await rm(stagingDir, { recursive: true, force: true }).catch(() => {});
+        throw copyError;
+      }
     } else {
       throw error;
     }

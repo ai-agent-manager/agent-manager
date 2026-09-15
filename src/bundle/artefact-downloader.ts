@@ -4,6 +4,7 @@ import path from 'node:path';
 import extractZip from 'extract-zip';
 import yauzl from 'yauzl';
 import { getArtefactCacheDir, getTempDir } from '../config/paths.js';
+import { assertSafeCacheSegment } from '../lib/path-segment.js';
 import { extractZipFast } from '../lib/powershell-extract.js';
 import { trackTelemetryError, trackTelemetryEvent } from '../telemetry.js';
 import { IntegrityError, verifyBundleHash } from './downloader.js';
@@ -436,6 +437,10 @@ export async function downloadArtefact(
       versionFromUrl ??
       (await readEmbeddedManifestVersion(tempExtractDir)) ??
       `sha-${actualSha256.slice(0, 12)}`;
+
+    // Validate path segments to prevent path traversal
+    assertSafeCacheSegment(name, 'Artefact name');
+    assertSafeCacheSegment(version, 'Artefact version');
 
     const cacheDir = getArtefactCacheDir(name, version);
 

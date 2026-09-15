@@ -1,5 +1,4 @@
 import path from 'node:path';
-import os from 'node:os';
 import { getHomeDir } from '../lib/platform.js';
 
 /** Root directory for agentman data */
@@ -34,11 +33,11 @@ export function getConfigLockPath(): string {
 
 /** Temp directory for downloads */
 export function getTempDir(): string {
-  // Use system temp directory on Windows to avoid cross-drive issues
-  // On Mac/Linux, ~/.agentman/tmp is fine
-  return process.platform === 'win32'
-    ? path.join(os.tmpdir(), 'agentman')
-    : path.join(getAgentmanDir(), 'tmp');
+  // Keep temp under ~/.agentman/tmp to avoid cross-drive rename issues.
+  // Using system temp on Windows can place it on a different drive than
+  // the cache directories, causing EXDEV errors when rename() is called
+  // to publish downloaded content (bundles, repos, artefacts).
+  return path.join(getAgentmanDir(), 'tmp');
 }
 
 /** Directory containing cached repository downloads */

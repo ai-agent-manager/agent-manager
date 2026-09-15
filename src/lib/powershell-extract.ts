@@ -6,12 +6,12 @@
  * Falls back to streaming extraction on non-Windows platforms.
  */
 
-import { exec } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdir } from 'node:fs/promises';
 import { extractZipStreaming } from './fast-extract.js';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 /**
  * Extract ZIP using the fastest method for the current platform.
@@ -26,11 +26,26 @@ export async function extractZipFast(zipPath: string, targetDir: string): Promis
     // On Windows, use PowerShell's native extraction
     // This is trusted by Windows Defender and scans much faster
     try {
-      // Suppress progress output with $ProgressPreference
-      const psCommand = `$ProgressPreference = 'SilentlyContinue'; Expand-Archive -Path '${zipPath}' -DestinationPath '${targetDir}' -Force`;
-      await execAsync(`powershell.exe -NoProfile -Command "${psCommand}"`, {
+      // Use -EncodedCommand to prevent command injection.
+      // Paths are passed via environment variables, which PowerShell reads
+      // as literal strings without any script interpretation.
+      const psScript = `
+        $ProgressPreference = 'SilentlyContinue'
+        Expand-Archive -LiteralPath $env:AGENTMAN_ZIP_PATH -DestinationPath $env:AGENTMAN_TARGET_DIR -Force
+      `.trim();
+
+      await execFileAsync('powershell.exe', [
+        '-NoProfile',
+        '-EncodedCommand',
+        Buffer.from(psScript, 'utf16le').toString('base64')
+      ], {
         maxBuffer: 50 * 1024 * 1024, // 50 MB buffer
         timeout: 300000, // 5 minute timeout for very large archives
+        env: {
+          ...process.env,
+          AGENTMAN_ZIP_PATH: zipPath,
+          AGENTMAN_TARGET_DIR: targetDir
+        }
       });
       return;
     } catch {
