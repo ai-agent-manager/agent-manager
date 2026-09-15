@@ -20,10 +20,16 @@ import type { ArtefactSkillSource, SkillSourcePin } from '../../../src/bundle/sk
 
 // ── Hoisted mocks (must be before vi.mock calls) ──────────────────────────────
 
-const { trackTelemetryEvent, trackTelemetryError, mockExtractZip } = vi.hoisted(() => ({
+const { trackTelemetryEvent, trackTelemetryError, mockExtractZip, mockExtractZipFast } = vi.hoisted(() => ({
   trackTelemetryEvent: vi.fn(),
   trackTelemetryError: vi.fn(),
   mockExtractZip: vi.fn(),
+  mockExtractZipFast: vi.fn(),
+}));
+
+// Mock extractZipFast to delegate to extract-zip mock
+vi.mock('../../../src/lib/powershell-extract.js', () => ({
+  extractZipFast: mockExtractZipFast,
 }));
 
 vi.mock('../../../src/telemetry.js', async () => {
@@ -300,6 +306,13 @@ describe('downloadArtefact', () => {
     mockExtractZip.mockImplementation(async (_zipPath: string, { dir }: { dir: string }) => {
       await writeFile(path.join(dir, 'SKILL.md'), '# skill');
     });
+
+    // Make extractZipFast delegate to extract-zip mock
+    mockExtractZipFast.mockReset();
+    mockExtractZipFast.mockImplementation(async (zipPath: string, targetDir: string) => {
+      await mockExtractZip(zipPath, { dir: targetDir });
+    });
+
     trackTelemetryEvent.mockReset();
     trackTelemetryError.mockReset();
     vi.stubGlobal('fetch', vi.fn());
