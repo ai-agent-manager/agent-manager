@@ -103,7 +103,13 @@ export async function extractZipStreaming(zipPath: string, targetDir: string): P
       });
 
       zipfile.on('end', () => {
-        resolve();
+        // The 'end' event fires when all entries have been READ from the zip,
+        // but file writes may still be pending. Only resolve if all entries
+        // have been PROCESSED (written to disk).
+        if (processedCount >= entryCount) {
+          resolve();
+        }
+        // Otherwise, the last writeStream.on('finish') will call resolve()
       });
 
       zipfile.on('error', (zipErr) => {
