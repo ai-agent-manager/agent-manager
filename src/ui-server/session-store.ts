@@ -4,14 +4,14 @@ import { loadSession, resolveStartupSource, runStartupChecks, type Session } fro
 import { buildSessionCatalogue, buildRepositoryCatalogue, effectiveBundleVersion } from '../operations/catalogue.js';
 import { checkOperationCancelled } from '../operations/cancellation.js';
 import { withMutation } from '../lib/mutation.js';
-import { deleteTokens, type TokenStoreIdentity } from '../auth/token-store.js';
+import { deleteTokens, loadTokens, isTokenExpired, tokensMatchIdentity, type TokenStoreIdentity } from '../auth/token-store.js';
 import { withAuthCoordinator } from '../auth/coordinator.js';
 import type { SkillCandidate } from '../discovery/catalogue.js';
 import type { InstallScope } from '../config/scopes.js';
 import { catalogueDto, safeText, safeUrl, sourceDto } from './dto.js';
 import { ConflictError, HttpError, serialiseError } from './errors.js';
 import { JobRegistry } from './jobs.js';
-import type { SessionDto } from './api-types.js';
+import type { AuthDto, SessionDto } from './api-types.js';
 
 export class SessionStore {
   private session?: Session;
@@ -21,6 +21,8 @@ export class SessionStore {
   };
   private gate = Promise.resolve();
   private signingOut = false;
+  private selectedInput?: string;
+  private authSource?: Extract<NonNullable<Session['source']>, { type: 'discovery' }>;
   private identities = new Map<string, TokenStoreIdentity>();
   constructor(private jobs: JobRegistry, private cwd: string, private changed: (dto: SessionDto) => void) {}
   snapshot(): SessionDto { return structuredClone(this.dto); }
@@ -36,7 +38,7 @@ export class SessionStore {
   }
   assertRevision(revision: number): Session {
     if (revision !== this.dto.sessionRevision || this.dto.state !== 'ready' || !this.session) {
-      throw new ConflictError('The catalogue changed. Refresh and select the skill again.', 'STALE_SESSION');
+      throw new ConflictError('The catalogue changed. Refresh and select again.', 'STALE_SESSION');
     }
     return this.session;
   }
@@ -57,16 +59,18 @@ export class SessionStore {
         this.dto.source = undefined; this.dto.stored = undefined; this.dto.bundle = undefined;
         this.dto.bundleVersion = undefined; this.dto.warnings = []; this.dto.error = undefined;
         this.dto.startupNotices = [];
-        this.session = undefined; this.publish();
+        this.session = undefined; this.selectedInput = undefined; this.authSource = undefined; this.publish();
       }
     }));
   }
-  async load(input?: string, forceUpdate = false): Promise<string> {
+  async load(input?: string, forceUpdate = false, kind: 'session-load' | 'auth-login' = 'session-load'): Promise<string> {
     return this.exclusive(() => {
       this.assertAuthAvailable();
+      input = input ?? this.selectedInput;
+      this.selectedInput = input;
       const revision = this.dto.sessionRevision + 1;
       const oldJobId = this.dto.loadJobId;
-      const id = this.jobs.start('session-load', async (ctx) => {
+      const id = this.jobs.start(kind, async (ctx) => {
         try {
           ctx.phase('resolving');
           const startup = await resolveStartupSource(input ? this.normaliseInput(input) : undefined, { persist: false }).catch((error: unknown) => {
@@ -76,6 +80,10 @@ export class SessionStore {
           if (revision !== this.dto.sessionRevision) throw new ConflictError('Session load was superseded.', 'STALE_SESSION');
           if (startup.directInstallSource) throw new ConflictError('Add this Git repository through a discovery catalogue to browse it in the web UI.', 'DIRECT_SOURCE_UNSUPPORTED');
           const source = startup.source;
+          this.authSource = source?.type === 'discovery' ? source : undefined;
+          this.dto.source = source ? { type: source.type, value: safeUrl(source.type === 'directory' ? source.dirPath : source.baseUrl) } : undefined;
+          this.dto.auth = { required: source?.type === 'discovery' && source.discovery.auth?.required === true, authenticated: false };
+          this.publish();
           if (source?.type === 'discovery' && source.discovery.auth?.required) {
             const auth = source.discovery.auth;
             if (auth.oidcDiscoveryUrl && auth.clientId) {
@@ -104,31 +112,21 @@ export class SessionStore {
               if (source?.type === 'url' || source?.type === 'discovery') await updateConfig((config) => { config.baseUrl = source.baseUrl; });
               if (source && source.type !== 'discovery' && loaded.manifest) await setCurrentBundle(loaded.manifest.version);
             }
-            this.session = loaded;
-            this.dto = {
-              state: 'ready', sessionRevision: revision, loadJobId: id,
-              source: source ? { type: source.type, value: safeUrl(source.type === 'directory' ? source.dirPath : source.baseUrl) } : undefined,
-              stored: loaded.stored ? sourceDto(loaded.stored) : undefined,
-              bundle: loaded.manifest ? { version: loaded.manifest.version, published: loaded.manifest.published } : undefined,
-              bundleVersion: effectiveBundleVersion(loaded),
-              auth: { required: loaded.auth.required, authenticated: loaded.auth.authenticated, backend: loaded.auth.backend },
-              membership: { state: loaded.membership.state, error: loaded.membership.error ? safeText(loaded.membership.error) : undefined },
-              catalogue: catalogueDto(buildSessionCatalogue(loaded)), warnings: loaded.warnings.map(safeText),
-              startupNotices: checks.notices.map(({ kind, message, actionLabel }) => ({ kind, message: safeText(message), actionLabel })),
-            };
-            this.publish();
+            this.publishLoaded(loaded, revision, id, checks.notices.map(({ kind, message, actionLabel }) => ({ kind, message: safeText(message), actionLabel })));
           }));
           return { sessionRevision: revision };
         } catch (error) {
           await this.exclusive(() => {
             if (revision !== this.dto.sessionRevision) return;
-            this.dto.state = 'error'; this.dto.error = serialiseError(error).body.error;
+            const failure = serialiseError(error).body.error;
+            const cancelled = ctx.signal.aborted || failure.code === 'CANCELLED';
+            this.dto.state = cancelled ? 'idle' : 'error'; this.dto.error = cancelled ? undefined : failure;
             this.dto.catalogue = []; this.dto.membership = { state: 'not-required' }; this.publish();
           });
           throw error;
         }
       });
-      this.session = undefined;
+      this.session = undefined; this.authSource = undefined;
       this.dto = { ...this.dto, state: 'loading', sessionRevision: revision, loadJobId: id,
         catalogue: [], warnings: [], startupNotices: [], error: undefined,
         auth: { required: false, authenticated: false }, membership: { state: 'loading' } };
@@ -139,6 +137,52 @@ export class SessionStore {
       }
       return id;
     });
+  }
+  private publishLoaded(loaded: Session, revision: number, jobId?: string, notices: SessionDto['startupNotices'] = []): void {
+    const source = loaded.source;
+    this.session = loaded;
+    this.dto = {
+      state: 'ready', sessionRevision: revision, loadJobId: jobId,
+      source: source ? { type: source.type, value: safeUrl(source.type === 'directory' ? source.dirPath : source.baseUrl) } : undefined,
+      stored: loaded.stored ? sourceDto(loaded.stored) : undefined,
+      bundle: loaded.manifest ? { version: loaded.manifest.version, published: loaded.manifest.published } : undefined,
+      bundleVersion: effectiveBundleVersion(loaded),
+      auth: { required: loaded.auth.required, authenticated: loaded.auth.authenticated, backend: loaded.auth.backend },
+      membership: { state: loaded.membership.state, error: loaded.membership.error ? safeText(loaded.membership.error) : undefined },
+      catalogue: catalogueDto(buildSessionCatalogue(loaded)), warnings: loaded.warnings.map(safeText), startupNotices: notices,
+    };
+    this.publish();
+  }
+  /** A completed switch cannot overwrite a newer source/load accepted while it committed. */
+  async publishBundle(revision: number, bundle: Pick<Session, 'manifest' | 'bundleDir' | 'bundleContents' | 'warnings'>): Promise<boolean> {
+    return this.exclusive(() => {
+      if (revision !== this.dto.sessionRevision) return false;
+      const session = this.assertRevision(revision);
+      this.publishLoaded({ ...session, ...bundle }, revision + 1);
+      return true;
+    });
+  }
+  usesBundle(bundleDir: string): boolean {
+    const paths = [this.session?.bundleDir, ...(this.session?.discoverySkills ?? []).map((skill) => skill.dirPath)].filter((value): value is string => !!value);
+    return paths.some((value) => { const relative = path.relative(bundleDir, value); return relative === '' || relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative); });
+  }
+  async authStatus(): Promise<AuthDto> {
+    const source = this.authSource;
+    const auth = source?.discovery.auth;
+    const revision = this.dto.sessionRevision;
+    if (!source || !auth?.required || !auth.oidcDiscoveryUrl || !auth.clientId) return { required: !!auth?.required, authenticated: false };
+    const identity = { discoveryBaseUrl: source.baseUrl, oidcDiscoveryUrl: auth.oidcDiscoveryUrl, clientId: auth.clientId };
+    // Status reads must not queue behind a callback waiting for the user.
+    const tokens = await loadTokens(identity);
+    if (revision !== this.dto.sessionRevision || this.signingOut) return { required: this.dto.auth.required, authenticated: false };
+    return { required: true, authenticated: !!tokens && tokensMatchIdentity(tokens, identity) && !isTokenExpired(tokens),
+      backend: this.dto.auth.backend, discoveryBaseUrl: safeUrl(source.baseUrl) };
+  }
+  async login(): Promise<string> {
+    this.assertAuthAvailable();
+    if (this.dto.state === 'loading') throw new ConflictError('The source is still loading. Wait for it to finish, then retry.', 'STALE_SESSION');
+    if (!this.authSource?.discovery.auth?.required) throw new ConflictError('Select a source that requires sign-in first.', 'AUTH_NOT_REQUIRED');
+    return this.load(this.selectedInput, false, 'auth-login');
   }
   async candidate(revision: number, skillId: string, installKey: string, scope: InstallScope, repoRoot?: string): Promise<SkillCandidate> {
     const session = this.assertRevision(revision);
@@ -153,11 +197,11 @@ export class SessionStore {
     await this.exclusive(() => {
       this.assertAuthAvailable(); this.signingOut = true;
       this.dto.sessionRevision++; this.dto.state = 'idle'; this.dto.catalogue = [];
-      this.dto.auth.authenticated = false; this.session = undefined; this.publish();
+      this.dto.auth.authenticated = false; this.dto.auth.backend = undefined; this.dto.membership = { state: 'not-required' }; this.dto.error = undefined; this.dto.warnings = []; this.dto.startupNotices = []; this.session = undefined; this.publish();
     });
     try {
       // Drain non-abortable work too: it may be doing a silent token refresh.
-      await this.jobs.cancelAndWait((job) => ['session-load', 'install-update'].includes(job.kind));
+      await this.jobs.cancelAndWait((job) => ['session-load', 'auth-login', 'install-update', 'bundle-download'].includes(job.kind));
       await withAuthCoordinator(async () => {
         for (const identity of this.identities.values()) await deleteTokens(identity);
       });

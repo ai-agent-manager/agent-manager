@@ -1,9 +1,11 @@
-import { readdir, rm } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { bundleSourceKey } from '../bundle/skill-source.js';
+import { readdir, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { assertBundleUnreferenced } from '../bundle/references.js';
 import type { BundleIdentity } from '../bundle/version-identity.js';
 import { OperationConflictError } from '../lib/mutation.js';
-import { listPinnedBundles, readBundleIdentity, resolvePinnedBundle } from '../bundle/version-identity.js';
+import { assertBundleVersion, assertCachePath, listPinnedBundles, readBundleIdentity, resolvePinnedBundle } from '../bundle/version-identity.js';
 import { withMutation } from '../lib/mutation.js';
 import { checkOperationCancelled, withOperationCancellation } from './cancellation.js';
 import { downloadBundle, fetchIndex } from '../bundle/downloader.js';
@@ -13,7 +15,7 @@ import { scanBundle } from '../bundle/scanner.js';
 import type { BundleSource } from '../bundle/source.js';
 import { getBundlesDir, getBundleVersionDir } from '../config/paths.js';
 import { getSkillTools } from '../config/tools.js';
-import { getValidBearerToken, type AuthSession } from '../auth/index.js';
+import { authenticate, getValidBearerToken, type AuthSession } from '../auth/index.js';
 import { getBundleSourceTelemetryProperties, trackTelemetryError } from '../telemetry.js';
 import { listInstalled } from './manage.js';
 import type { SessionEvents } from './session.js';
@@ -25,35 +27,40 @@ export interface VersionAvailability {
   isCurrent: boolean;
 }
 
-async function resolveBearer(session?: AuthSession, signal?: AbortSignal) {
+async function resolveBearer(session?: AuthSession, events: SessionEvents = {}) {
   if (!session) return undefined;
-  return getValidBearerToken(session.discoveryBaseUrl, session.auth, ...(signal ? [{ signal }] : []));
+  const run = () => events.onAuthPrompt
+    ? authenticate(session.discoveryBaseUrl, session.auth, events.onAuthPrompt, { signal: events.signal }).then((result) => result.bearerToken)
+    : getValidBearerToken(session.discoveryBaseUrl, session.auth, ...(events.signal ? [{ signal: events.signal }] : []));
+  return events.runAuth ? events.runAuth(run) : run();
 }
 
 export async function listRemoteVersions(source: BundleSource, auth?: AuthSession, events: SessionEvents = {}) {
   return withOperationCancellation(events.signal, async () => {
     if (source.type !== 'url') throw new Error('Remote bundle versions require a bundle URL source.');
-    const bearer = await resolveBearer(auth, events.signal);
+    const bearer = await resolveBearer(auth, events);
     checkOperationCancelled(events.signal);
-    const index = await fetchIndex(source.baseUrl, bearer);
+    const index = await fetchIndex(source.baseUrl, bearer, ...(events.signal ? [{ signal: events.signal }] : []));
     return index.agents;
   });
 }
 
 /** Download only; selecting the current bundle remains a separate operation. */
 export async function downloadBundleVersion(
-  source: BundleSource, version: string, auth?: AuthSession, events: SessionEvents = {},
+  source: BundleSource, version: string, auth?: AuthSession, events: SessionEvents & { sourceName?: string; beforeCommit?: () => void | Promise<void> } = {},
 ) {
   return withOperationCancellation(events.signal, async () => {
     if (source.type !== 'url') throw new Error('Bundle downloads require a bundle URL source.');
-    const bearer = await resolveBearer(auth, events.signal);
+    const bearer = await resolveBearer(auth, events);
     checkOperationCancelled(events.signal);
     events.onProgress?.(`Downloading bundle ${version}...`);
-    const { zipPath } = await downloadBundle(source.baseUrl, version, bearer);
+    const sourceKey = events.sourceName ? bundleSourceKey(events.sourceName) : undefined;
+    const { zipPath } = await downloadBundle(source.baseUrl, version, bearer, ...(sourceKey ? [sourceKey] : []));
     checkOperationCancelled(events.signal);
     try {
       events.onProgress?.('Extracting bundle...');
-      return await extractBundle(zipPath, { contentRoot: source.baseUrl });
+      return await extractBundle(zipPath, { ...(sourceKey ? { sourceKey } : {}), contentRoot: source.baseUrl,
+        expectedVersion: version, beforeCommit: events.beforeCommit });
     } catch (error) {
       checkOperationCancelled(events.signal);
       trackTelemetryError('bundle_extract_failed', error, {
@@ -66,29 +73,41 @@ export async function downloadBundleVersion(
 
 export interface ManagedBundle extends CachedBundle {
   bundleId?: string;
+  removalId?: string;
   contentRoot?: string;
+  directory?: string;
+  cacheKind?: 'flat' | 'named';
+  sourceName?: string;
   unsupportedReason?: string;
 }
 
-/** Inventory includes named-source caches; only verified entries receive IDs. */
+/** Selection requires provenance. Removal needs only a confined cache identity. */
 export async function listBundles(): Promise<ManagedBundle[]> {
-  const entries = await listCachedBundles();
+  const entries: ManagedBundle[] = await listCachedBundles();
   const sources = path.join(getBundlesDir(), 'sources');
   for (const source of await readdir(sources, { withFileTypes: true }).catch(() => [])) {
     if (!source.isDirectory()) continue;
     const sourceDir = path.join(sources, source.name);
     for (const version of await readdir(sourceDir, { withFileTypes: true })) {
       if (!version.isDirectory()) continue;
-      entries.push({ version: version.name, published: '', bundleDir: path.join(sourceDir, version.name), isCurrent: false });
+      entries.push({ version: version.name, published: '', bundleDir: path.join(sourceDir, version.name), isCurrent: false, sourceName: source.name });
     }
   }
   const result: ManagedBundle[] = [];
   for (const entry of entries) {
+    const cacheKind = path.dirname(entry.bundleDir) === getBundlesDir() ? 'flat' : 'named';
     try {
       const identity = await readBundleIdentity(entry.bundleDir);
-      result.push({ ...entry, ...identity });
+      result.push({ ...entry, ...identity, removalId: identity.bundleId, cacheKind });
     } catch (error) {
-      result.push({ ...entry, unsupportedReason: error instanceof Error ? error.message : String(error) });
+      let removalId: string | undefined;
+      try {
+        assertBundleVersion(path.basename(entry.bundleDir));
+        await assertCachePath(entry.bundleDir);
+        const info = await stat(entry.bundleDir);
+        removalId = createHash('sha256').update(JSON.stringify(['remove', entry.bundleDir, info.dev, info.ino, info.birthtimeMs])).digest('hex');
+      } catch { /* Unsafe paths remain visible but cannot authorize deletion. */ }
+      result.push({ ...entry, version: path.basename(entry.bundleDir), removalId, cacheKind, unsupportedReason: error instanceof Error ? error.message : String(error) });
     }
   }
   return result;
@@ -100,18 +119,21 @@ async function resolveBundleId(bundleId: string): Promise<BundleIdentity> {
   return readBundleIdentity(entry.bundleDir);
 }
 
-export async function removeBundle(bundleId: string): Promise<void> {
+export async function removeBundle(bundleId: string, beforeRemove?: (entry: ManagedBundle) => void): Promise<void> {
   return withMutation(async () => {
-    const entry = await resolveBundleId(bundleId);
+    const entry = (await listBundles()).find((bundle) => bundle.removalId === bundleId);
+    if (!entry) throw new OperationConflictError('Bundle selection is stale or unsupported.');
+    await assertCachePath(entry.bundleDir);
+    beforeRemove?.(entry);
     if (entry.bundleDir === getBundleVersionDir(await getCurrentBundleVersion() ?? '')) {
       throw new OperationConflictError('Cannot remove the currently active bundle.');
     }
-    await assertBundleUnreferenced(entry.version, entry.bundleDir);
+    await assertBundleUnreferenced(path.basename(entry.bundleDir), entry.bundleDir);
     await rm(entry.bundleDir, { recursive: true, force: true });
   });
 }
 
-export async function selectBundle(bundleId: string, options: { syncInstalled: boolean; repoRoot?: string }): Promise<{ failures: string[] }> {
+export async function selectBundle(bundleId: string, options: { syncInstalled: boolean; repoRoot?: string; scope?: 'all' | 'system' }): Promise<{ failures: string[] }> {
   return withMutation(async () => {
     const entry = await resolveBundleId(bundleId);
     if (entry.bundleDir !== getBundleVersionDir(entry.version)) {
@@ -121,8 +143,8 @@ export async function selectBundle(bundleId: string, options: { syncInstalled: b
   });
 }
 
-export async function listSkillVersionInstances(repoRoot?: string) {
-  const records = await listInstalled('all', { repoRoot });
+export async function listSkillVersionInstances(repoRoot?: string, scope: 'all' | 'system' = 'all') {
+  const records = await listInstalled(scope, { repoRoot });
   return records.map((record) => ({
     ...record,
     skillName: record.installKey,
@@ -152,7 +174,7 @@ export async function listVersionsContainingSkill(
 
 /** Legacy TUI wrapper; HTTP callers select a verified bundle ID. */
 export async function switchBundleVersion(options: {
-  version: string; syncInstalled: boolean; repoRoot?: string;
+  version: string; syncInstalled: boolean; repoRoot?: string; scope?: 'all' | 'system';
 }): Promise<{ failures: string[] }> {
   return withMutation(async () => {
     const selected = await readBundleIdentity(getBundleVersionDir(options.version));
@@ -164,7 +186,7 @@ export async function switchBundleVersion(options: {
     await setCurrentBundle(options.version);
     const failures: string[] = [];
     if (options.syncInstalled) {
-      for (const record of await listInstalled('all', { repoRoot: options.repoRoot })) {
+      for (const record of await listInstalled(options.scope ?? 'all', { repoRoot: options.repoRoot })) {
         // A global flat-bundle choice does not select versions for other sources.
         if (record.sourcePin?.sourceType !== 'bundle' || record.sourcePin.bundleSourceName) continue;
         const compatible = await resolvePinnedBundle(record.sourcePin, options.version).catch(() => undefined);

@@ -31,7 +31,7 @@ export interface CatalogueEntryDto {
   projectNames?: string[];
   candidates: CandidateDto[];
 }
-export interface AuthDto { required: boolean; authenticated: boolean; backend?: 'keychain' | 'filesystem' }
+export interface AuthDto { required: boolean; authenticated: boolean; backend?: 'keychain' | 'filesystem'; discoveryBaseUrl?: string }
 export interface SessionDto {
   state: 'idle' | 'loading' | 'ready' | 'error';
   sessionRevision: number;
@@ -59,7 +59,7 @@ export interface InstallResultDto {
 }
 export type JobState = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 export type JobPhase = 'queued' | 'resolving' | 'auth' | 'download' | 'commit' | 'complete';
-export type JobResult = { result: InstallResultDto } | { sessionRevision: number } | Record<string, never>;
+export type JobResult = { failures: string[]; superseded?: boolean } | { success: true } | { result: InstallResultDto } | { sessionRevision: number } | Record<string, never>;
 export interface JobDto {
   id: string; kind: string; state: JobState; phase: JobPhase; canCancel: boolean;
   progress: string; authorizeUrl?: string; result?: JobResult; error?: ErrorDto;
@@ -79,3 +79,14 @@ export interface SettingsDto {
   telemetryDisabled: boolean;
   envOverrides: { startupUpdateChecksDisabled: boolean; telemetryDisabled: boolean };
 }
+
+export interface BundleSourceDto { type: 'url' | 'directory'; value: string; name?: string }
+export interface BundleDto {
+  bundleId?: string; removalId?: string; canRemove?: boolean; removalReason?: string; version: string; published: string;
+  source?: BundleSourceDto; cacheKind?: 'flat' | 'named'; isCurrent: boolean;
+  canSelect: boolean; reason?: string; hasSkill?: boolean;
+}
+export interface BundlesDto { cached: BundleDto[]; current: string | null; canBrowseRemote: boolean; reason?: string }
+export interface RemoteBundleDto { bundleId: string; version: string; published: string; source: BundleSourceDto }
+export interface RemoteBundlesDto { bundles: RemoteBundleDto[]; sessionRevision: number }
+export interface SkillVersionsDto { bundles: BundleDto[]; supported: boolean; reason?: string }

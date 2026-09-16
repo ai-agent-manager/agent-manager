@@ -101,3 +101,9 @@ it('does not sync named bundles or unrelated local sources when selecting a glob
   expect(result.failures).toEqual([expect.stringContaining('cursor/local-skill: skipped')]);
   expect(result.failures.join()).not.toContain('download');
 });
+
+it('forwards a read deadline to the remote index request', async () => {
+  const controller = new AbortController();
+  await listRemoteVersions(source, undefined, { signal: controller.signal });
+  expect(fetchIndex).toHaveBeenCalledWith(source.baseUrl, undefined, { signal: controller.signal });
+});

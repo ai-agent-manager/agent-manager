@@ -18,6 +18,7 @@ import { catalogueRoutes } from './routes/catalogue.js';
 import { installRoutes } from './routes/installs.js';
 import { sourceRoutes } from './routes/sources.js';
 import { settingsRoutes } from './routes/settings.js';
+import { versionRoutes } from './routes/versions.js';
 import { jobRoutes } from './routes/jobs.js';
 
 export interface UiServerOptions {
@@ -88,6 +89,7 @@ export async function startUiServer(options: UiServerOptions = {}) {
   contextRoutes(router, cwd, repoRoot); sessionRoutes(router, sessions); catalogueRoutes(router, sessions, repoRoot);
   installRoutes(router, sessions, jobs, repoRoot); sourceRoutes(router, sessions); settingsRoutes(router);
   jobRoutes(router, jobs, events);
+  versionRoutes(router, sessions, jobs, repoRoot);
   router.route('POST', '/api/shutdown', async ({ req, res, query: params }) => {
     query(params, []); object(await readJsonBody(req), []);
     sendJson(res, 200, {});
