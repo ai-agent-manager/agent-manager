@@ -287,4 +287,15 @@ describe('extractBundle — source-scoped cache', () => {
     expect(JSON.parse(await readFile(path.join(result.bundleDir, '.source.json'), 'utf8')).trackedReferences).toBe(false);
   });
 
+  it('rejects a mismatched manifest before publishing any selected version', async () => {
+    await expect(extractBundle('/tmp/ignored.zip', { sourceKey: 'official', contentRoot: 'https://a.example.com/agents', expectedVersion: '2.0.0' })).rejects.toThrow('does not match the selected version');
+    await expect(readFile(path.join(versionDir('official', '1.0.0'), 'manifest.json'))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+  it('checks the adapter commit guard before reusing or publishing a downloaded cache', async () => {
+    const guard = vi.fn(() => { throw new Error('Superseded session'); });
+    await expect(extractBundle('/tmp/ignored.zip', { sourceKey: 'official', contentRoot: 'https://a.example.com/agents', beforeCommit: guard })).rejects.toThrow('Superseded session');
+    expect(guard).toHaveBeenCalledOnce();
+    await expect(readFile(path.join(versionDir('official', '1.0.0'), 'manifest.json'))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
 });

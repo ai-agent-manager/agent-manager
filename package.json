@@ -28,6 +28,7 @@
     "test": "vitest run",
     "test:web-ui": "npm test --prefix web-ui",
     "test:browser:smoke": "node --import tsx tests/browser/ui-smoke.ts",
+    "test:browser:auth": "node --import tsx tests/browser/ui-auth-smoke.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "typecheck": "node scripts/check-ui-imports.mjs && tsc --noEmit",

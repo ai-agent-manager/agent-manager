@@ -160,10 +160,10 @@ export async function verifyBundleHash(zipPath: string, expectedHash: string): P
 /**
  * Fetch a source's index.json to discover available bundle versions.
  */
-export async function fetchIndex(contentRoot: string, bearerToken?: string): Promise<AgentsIndex> {
+export async function fetchIndex(contentRoot: string, bearerToken?: string, options: { signal?: AbortSignal } = {}): Promise<AgentsIndex> {
     const url = buildIndexUrl(contentRoot);
 
-    const response = await fetch(url, authFetchOpts(bearerToken));
+    const response = await fetch(url, options.signal ? { ...authFetchOpts(bearerToken), signal: options.signal } : authFetchOpts(bearerToken));
     if (!response.ok) {
         throw new Error(`Failed to fetch index: ${response.status} ${response.statusText} from ${url}`);
     }

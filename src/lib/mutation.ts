@@ -28,7 +28,11 @@ const owned = new Set<Lease>();
  */
 export async function withMutation<T>(run: () => Promise<T>, options: {
   timeoutMs?: number; onWait?: () => void;
+  /** Bound all queue waits (including this process); never interrupt a commit. */
+  waitTimeoutMs?: number; signal?: AbortSignal;
 } = {}): Promise<T> {
+  options.signal?.throwIfAborted();
+  const started = Date.now();
   const lockDir = path.join(getAgentmanDir(), 'mutation.lock');
   const parent = context.getStore();
   if (parent?.active && path.dirname(parent.path) === lockDir) {
@@ -65,6 +69,10 @@ export async function withMutation<T>(run: () => Promise<T>, options: {
     let externalWaitMs = 0;
     let lastCheck = Date.now();
     for (;;) {
+      options.signal?.throwIfAborted();
+      if (options.waitTimeoutMs !== undefined && Date.now() - started >= options.waitTimeoutMs) {
+        throw new OperationConflictError('Another operation is still running. Retry when it finishes.');
+      }
       await assertLease(lease);
       const blocker = (await readOwners(lockDir)).find((peer) => peer.file !== file && (
         !peer.owner?.ticket || peer.owner.ticket < owner.ticket ||
@@ -83,6 +91,7 @@ export async function withMutation<T>(run: () => Promise<T>, options: {
       }
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
+    options.signal?.throwIfAborted();
     const result = await context.run(lease, run);
     await assertLease(lease);
     return result;

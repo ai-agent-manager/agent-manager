@@ -1,3 +1,5 @@
+import { withMutation } from '../lib/mutation.js';
+import { ConflictError } from './errors.js';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { HttpError, serialiseError, ValidationError } from './errors.js';
 
@@ -32,4 +34,20 @@ export function sendError(res: ServerResponse, error: unknown): void {
   if (res.headersSent) { res.destroy(); return; }
   const { status, body } = serialiseError(error);
   sendJson(res, status, body);
+}
+
+/** A disconnected or timed-out waiter must never mutate later. Once acquired,
+ * finish the short local commit and leave its response socket open until done. */
+export async function requestMutation<T>(res: ServerResponse, run: () => Promise<T>, waitTimeoutMs = 5_000): Promise<T> {
+  const controller = new AbortController();
+  const closed = () => controller.abort(new ConflictError('Request disconnected before the operation could start.'));
+  res.on('close', closed);
+  if (res.destroyed) closed();
+  try {
+    return await withMutation(async () => {
+      controller.signal.throwIfAborted();
+      res.setTimeout(0);
+      return run();
+    }, { signal: controller.signal, waitTimeoutMs });
+  } finally { res.off('close', closed); }
 }

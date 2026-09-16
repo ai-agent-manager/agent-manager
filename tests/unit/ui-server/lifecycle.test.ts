@@ -157,3 +157,28 @@ it('gives a bad startup source an actionable error and settles membership loadin
   expect(session.error!.message).not.toContain(cwd);
   expect(session.membership.state).toBe('not-required');
 });
+
+it('sign-out prevents an update in download from entering a later interactive auth phase', async () => {
+  const actual = await vi.importActual<typeof import('../../../src/operations/install.js')>('../../../src/operations/install.js');
+  vi.mocked(installResolvedSkills).mockImplementation(actual.installResolvedSkills);
+  const session: SessionDto = await (await api('/api/session')).json();
+  const first = await (await api('/api/installs', { sessionRevision: session.sessionRevision, skillId: 'test-skill', installKey: 'test-skill', scope: 'system', toolIds: ['claude-code'] })).json();
+  await vi.waitFor(async () => expect((await (await api(`/api/jobs/${first.jobId}`)).json()).state).toBe('succeeded'));
+  const entered = barrier(), release = barrier();
+  vi.mocked(updateInstalled).mockImplementation(async (_key, _scope, _tool, getToken) => {
+    entered.release(); await release.promise;
+    await getToken!('https://skills.example.com/agents');
+    return { installed: [], errors: [] };
+  });
+  const update = await (await api('/api/installs/test-skill/update', { scope: 'system', toolId: 'claude-code' })).json();
+  await entered.promise;
+  const logout = api('/api/auth/logout', {});
+  try {
+    await vi.waitFor(async () => expect((await (await api('/api/session')).json()).state).toBe('idle'));
+    release.release();
+    expect((await logout).status).toBe(200);
+    const job = await (await api(`/api/jobs/${update.jobId}`)).json();
+    expect(job).toMatchObject({ state: 'failed', error: { code: 'AUTH_BUSY' } });
+    expect(job.authorizeUrl).toBeUndefined();
+  } finally { release.release(); await logout; }
+});

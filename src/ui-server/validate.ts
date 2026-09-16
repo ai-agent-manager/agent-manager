@@ -64,3 +64,9 @@ export async function assertRepoRoot(value: unknown, defaultRoot: string | null)
     return canonical;
   } catch { throw new ValidationError('Select an existing git repository root, not a subdirectory.'); }
 }
+
+export function bundleId(value: unknown): string {
+  const id = string(value, 'bundleId', 64);
+  if (!/^[a-f0-9]{64}$/.test(id)) throw new ValidationError('Invalid bundleId.');
+  return id;
+}

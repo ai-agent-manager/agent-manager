@@ -3,7 +3,7 @@ import type { JobDto } from '@api-types';
 import type { ApiClient } from '../api/client.js';
 import { ErrorMessage } from './Feedback.js';
 
-const labels: Record<string, string> = { 'session-load': 'Load catalogue', install: 'Install skill', 'install-update': 'Update skill' };
+const labels: Record<string, string> = { 'session-load': 'Load catalogue', install: 'Install skill', 'install-update': 'Update skill', 'auth-login': 'Sign in', 'bundle-download': 'Download bundle', 'bundle-select': 'Select bundle', 'skill-version-select': 'Change skill version' };
 function safeAuthorizeUrl(value?: string): string | undefined {
   if (!value) return;
   try { const url = new URL(value); if ((url.protocol === 'https:' || url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) && !url.username && !url.password) return url.href; } catch { /* Invalid prompt is not a clickable link. */ }
@@ -30,6 +30,8 @@ export function JobPanel({ client, jobs, selectedId, onDismiss }: { client: ApiC
       return <section className="job" key={job.id} aria-label={labels[job.kind] ?? job.kind}>
         <div className="row spread"><strong>{labels[job.kind] ?? job.kind}</strong><span className={`badge ${job.state}`}>{job.state}</span></div>
         <p role="status">{job.error?.message ?? (terminal ? job.state === 'succeeded' ? 'Finished.' : 'Operation stopped.' : job.progress || 'Waiting to start…')}</p>
+        {job.result && 'superseded' in job.result && job.result.superseded && <p className="notice" role="status">The switch applied, but a newer catalogue load superseded its selection. Installed skills may keep the switched version; review Skill versions before syncing again.</p>}
+        {job.result && 'failures' in job.result && job.result.failures.length > 0 && <div className="notice"><strong>Bundle selected with sync failures</strong>{job.result.failures.map((failure, index) => <ErrorMessage key={index} message={failure} />)}</div>}
         {result && <div>{result.installed.map((item, index) => <p key={`${item.name}-${index}`}>Installed <strong>{item.name}</strong> <span className="muted">({item.method})</span></p>)}{result.errors.map((item, index) => <ErrorMessage key={`${item.name}-${index}`} message={`${item.name}: ${item.error}`} />)}</div>}
         {url && <div className="notice"><strong>Sign in to continue</strong><p>Open the sign-in page, complete authorization, then return to this tab.</p><a className="button primary" href={url} target="_blank" rel="noopener noreferrer">Open sign-in page ↗</a></div>}
         <div className="row">

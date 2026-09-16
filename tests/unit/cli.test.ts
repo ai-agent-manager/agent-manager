@@ -31,3 +31,13 @@ it('explicit help takes priority over UI dispatch and incompatible flags', () =>
     expect(log).toHaveBeenCalledWith(expect.stringContaining('Usage'));
   } finally { exit.mockRestore(); log.mockRestore(); }
 });
+
+it('explicit version exits before UI dispatch', () => {
+  const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+  const exit = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('version exit'); });
+  try {
+    expect(() => parseCli(['ui', '--version'])).toThrow('version exit');
+    expect(exit).toHaveBeenCalledWith(0);
+    expect(log).toHaveBeenCalledWith(APP_VERSION);
+  } finally { exit.mockRestore(); log.mockRestore(); }
+});
