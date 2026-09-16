@@ -1,3 +1,4 @@
+import path from 'node:path';
 /**
  * Multi-source skill model for agentman.
  *
@@ -124,6 +125,8 @@ export interface SkillSourcePin {
   bundleVersion?: string;
   /** Content root this bundle was fetched from. */
   bundleBaseUrl?: string;
+  /** Local directory origin for newly recorded bundle installs. */
+  bundleDirectory?: string;
   /**
    * Logical source name from the discovery document — the install identity for
    * a declared source, deliberately independent of where its content is hosted.
@@ -392,6 +395,7 @@ export function buildSourcePin(
           bundleAddressing: 'content-root' as const,
         }
       : {}),
+    ...(source.dirPath ? { bundleDirectory: path.resolve(source.dirPath) } : {}),
     ...(source.sourceName ? { bundleSourceName: source.sourceName } : {}),
   };
 }

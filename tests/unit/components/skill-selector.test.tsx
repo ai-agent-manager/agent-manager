@@ -595,4 +595,18 @@ describe("SkillSelector", () => {
       });
     });
   });
+  it('shows mutation contention and remains navigable instead of rejecting the input handler', async () => {
+    mockProvisioner.install.mockRejectedValueOnce(new Error('Another agentman operation is running'));
+    const view = render(<SkillSelector {...defaultProps} />);
+    try {
+      await vi.waitFor(() => expect(view.lastFrame()).toContain('Web Skill'));
+      await flushInkInput();
+      view.stdin.write('\r');
+      await vi.waitFor(() => expect(view.lastFrame()).toContain('Another agentman operation is running'));
+      expect(view.lastFrame()).toContain('Press Esc to go back');
+      view.stdin.write('\u001b');
+      await vi.waitFor(() => expect(defaultProps.onBack).toHaveBeenCalled());
+    } finally { view.unmount(); }
+  });
+
 });

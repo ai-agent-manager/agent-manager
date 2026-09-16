@@ -68,7 +68,7 @@ async function pinOf(): Promise<Record<string, unknown>> {
 describe('updateInstalled — full round trip', () => {
   beforeEach(async () => {
     tmpDir = await mkdtemp(path.join(os.tmpdir(), 'agentman-update-rt-'));
-    bundleDir = path.join(tmpDir, 'bundle');
+    bundleDir = path.join(tmpDir, '.agentman', 'bundles', '1.1.0');
     await mkdir(path.join(bundleDir, 'react-skill'), { recursive: true });
     await writeFile(path.join(bundleDir, 'react-skill', 'SKILL.md'), '# skill\n', 'utf-8');
     vi.clearAllMocks();

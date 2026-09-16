@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
@@ -240,7 +241,7 @@ export async function downloadBundle(
         // targetVersion comes from a remote index.json, so it reaches this
         // path.join before anything has verified the download.
         assertSafeCacheSegment(targetVersion, "Bundle version");
-        const zipPath = path.join(tempDir, `${targetVersion}${sourceKey ? `-${sourceKey}` : ""}.zip`);
+        const zipPath = path.join(tempDir, `${targetVersion}-${randomUUID()}${sourceKey ? `-${sourceKey}` : ""}.zip`);
         const response = await fetch(url, authFetchOpts(bearerToken));
         if (!response.ok) {
             throw new Error(`Failed to download bundle: ${response.status} ${response.statusText} from ${url}`);

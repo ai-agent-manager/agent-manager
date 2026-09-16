@@ -59,6 +59,9 @@ export interface ResolvedSources {
  * @param onProgress   Optional callback for progress updates.
  */
 export interface ResolveDiscoveryOptions {
+  /** Abort authentication and stop before starting further source acquisitions. */
+  signal?: AbortSignal;
+  onWarning?: (warning: string) => void;
   /** SHA-256 pin for artefact sources — overrides sidecar lookup when set. */
   artefactSha256?: string;
   /**
@@ -71,9 +74,10 @@ export interface ResolveDiscoveryOptions {
 async function resolveDownloadBearer(
   accessToken: string | undefined,
   authSession: AuthSession | undefined,
+  signal?: AbortSignal,
 ): Promise<string | undefined> {
   if (authSession) {
-    return getValidBearerToken(authSession.discoveryBaseUrl, authSession.auth);
+    return getValidBearerToken(authSession.discoveryBaseUrl, authSession.auth, ...(signal ? [{ signal }] : []));
   }
   return accessToken;
 }
@@ -104,6 +108,7 @@ export async function resolveDiscoverySkills(
   let hasRovoBundle = false;
 
   for (const source of discovery.sources) {
+    options?.signal?.throwIfAborted();
     const sourceMeta = {
       sourceName: source.name,
       sourceType: source.type,
@@ -116,7 +121,8 @@ export async function resolveDiscoverySkills(
           // source.url is the content root: the client appends index.json and
           // <version>/… to it and inserts no path of its own.
           const sourceKey = bundleSourceKey(source.name);
-          const bearer = await resolveDownloadBearer(accessToken, authSession);
+          const bearer = await resolveDownloadBearer(accessToken, authSession, options?.signal);
+          options?.signal?.throwIfAborted();
           const { zipPath, version } = await downloadBundle(source.url, undefined, bearer, sourceKey);
           const result = await extractBundle(zipPath, { sourceKey, contentRoot: source.url });
           // Deliberately no setCurrentBundle here: the `current` symlink points
@@ -126,7 +132,8 @@ export async function resolveDiscoverySkills(
           // source-scoped paths belongs with the cache work in #50.
           bundleVersion = version;
 
-          const contents = await scanBundle(result.bundleDir, result.manifest.agents);
+          const contents = await scanBundle(result.bundleDir, result.manifest.agents,
+            ...(options?.onWarning ? [{ onWarning: options.onWarning }] : []));
           const httpSource: BundleSkillSource = {
             type: 'bundle',
             baseUrl: source.url,
@@ -171,7 +178,8 @@ export async function resolveDiscoverySkills(
             installLayout: 'namespaced',
             sha256: artefactSha256,
           };
-          const bearer = await resolveDownloadBearer(accessToken, authSession);
+          const bearer = await resolveDownloadBearer(accessToken, authSession, options?.signal);
+          options?.signal?.throwIfAborted();
           const download = await downloadArtefact(artefactSource, {
             bearerToken: bearer,
           });
@@ -187,12 +195,14 @@ export async function resolveDiscoverySkills(
         }
       }
     } catch (err) {
+      options?.signal?.throwIfAborted();
       const message = err instanceof Error ? err.message : String(err);
       const isIntegrity = err instanceof IntegrityError;
       errors.push({ source, error: message, isIntegrity });
     }
   }
 
+  options?.signal?.throwIfAborted();
   return {
     skills: allSkills,
     rovoAgents: allRovoAgents,

@@ -37,5 +37,6 @@ export function isAuthorised(req: IncomingMessage, expectedToken: string): boole
 
   const a = Buffer.from(token, 'utf-8');
   const b = Buffer.from(expectedToken, 'utf-8');
+  if (a.length !== b.length) return false;
   return timingSafeEqual(a, b);
 }

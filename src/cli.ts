@@ -20,11 +20,12 @@ ${chalk.cyan(`╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═══
 ${chalk.dim("  Your AI agent skills, sorted.")}
 `;
 
-export function parseCli() {
+export function parseCli(argv = process.argv.slice(2)) {
     const cli = meow(
         `
   ${chalk.bold("Usage")}
     $ agentman <source>
+    $ agentman ui [source] [--port 19877] [--no-open]
 
   ${chalk.bold("Arguments")}
     source      Source to install skills from. Accepted formats:
@@ -40,6 +41,11 @@ export function parseCli() {
     --version   Show version
     --help      Show this help
 
+  ${chalk.bold("Web UI")}
+    ui          Launch the local web UI in your browser
+    --port      Listen on this port (0 selects an available port)
+    --no-open   Print the URL without opening a browser
+
   ${chalk.bold("Examples")}
     $ agentman https://skills.example.com
     $ agentman https://skills.example.com --update
@@ -53,6 +59,7 @@ export function parseCli() {
 `,
         {
             importMeta: import.meta,
+            argv,
             flags: {
                 update: {
                     type: "boolean",
@@ -62,14 +69,28 @@ export function parseCli() {
                     type: "string",
                     shortFlag: "c",
                 },
+                port: { type: "number", default: 19877 },
+                open: { type: "boolean", default: true },
             },
         },
     );
 
-    const source = cli.input[0];
+    if (argv.includes('--help')) cli.showHelp(0);
+
+    const command = cli.input[0] === 'ui' ? 'ui' : 'tui';
+    const source = cli.input[command === 'ui' ? 1 : 0];
+    const portExplicit = argv.some((arg) => arg === '--port' || arg.startsWith('--port='));
+    if (command === 'ui' && cli.flags.config !== undefined) throw new Error('ui cannot be combined with --config. Use agentman <source> --config <file> for headless installation.');
+    if (command === 'ui' && cli.input.length > 2) throw new Error('ui accepts at most one source.');
+    if (!Number.isInteger(cli.flags.port) || cli.flags.port < 0 || cli.flags.port > 65535) throw new Error('--port must be an integer between 0 and 65535.');
+    if (command !== 'ui' && (portExplicit || argv.includes('--no-open') || argv.includes('--open'))) throw new Error('--port and --no-open require the ui command.');
 
     return {
+        command,
         source,
+        port: cli.flags.port,
+        portExplicit,
+        open: cli.flags.open,
         forceUpdate: cli.flags.update,
         configPath: cli.flags.config,
         showHelp: () => cli.showHelp(),

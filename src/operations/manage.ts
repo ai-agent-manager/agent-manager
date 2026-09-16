@@ -1,3 +1,4 @@
+import { withMutation, OperationConflictError } from '../lib/mutation.js';
 import { readConfig, getRecordVersion } from '../bundle/cache.js';
 import { readRepoConfig } from '../bundle/repo-config.js';
 import { findRepoRoot } from '../lib/repo.js';
@@ -9,6 +10,11 @@ import { installFromRepo, installFromArtefact, installFromBundle } from './insta
 
 /** Supplies a bearer token for a pinned content URL when one is available. */
 export type AccessTokenProvider = (contentUrl: string) => Promise<string | undefined>;
+
+/** Explicit repository context for callers that do not run inside the target repo. */
+export interface ManageOptions {
+  repoRoot?: string;
+}
 
 export interface InstalledSkillRecord {
   /** Config key, e.g. "github.com/org/repo/my-skill" or "my-skill" */
@@ -36,7 +42,7 @@ export class AmbiguousIdentifierError extends Error {
       .join('\n');
     super(
       `Ambiguous identifier '${id}'. Matches:\n${summary}\n` +
-        `  Use the fully qualified key to disambiguate.`,
+      `  Use the fully qualified key to disambiguate.`,
     );
     this.matches = matches;
   }
@@ -54,6 +60,7 @@ export class SkillNotFoundError extends Error {
  */
 export async function listInstalled(
   scopeFilter?: InstallScope | 'all',
+  opts?: ManageOptions,
 ): Promise<InstalledSkillRecord[]> {
   const records: InstalledSkillRecord[] = [];
 
@@ -70,7 +77,7 @@ export async function listInstalled(
   }
 
   if (includeRepo) {
-    const repoRoot = await findRepoRoot();
+    const repoRoot = opts?.repoRoot ?? await findRepoRoot();
     if (repoRoot) {
       const repoConfig = await readRepoConfig(repoRoot);
       if (repoConfig) {
@@ -134,8 +141,9 @@ export async function resolveIdentifier(
   id: string,
   scopeHint?: InstallScope,
   toolId?: string,
+  opts?: ManageOptions,
 ): Promise<InstalledSkillRecord> {
-  const candidates = await listInstalled(scopeHint ?? 'all');
+  const candidates = await listInstalled(scopeHint ?? 'all', opts);
   const all = toolId ? candidates.filter((r) => r.toolId === toolId) : candidates;
 
   const exact = all.filter((r) => r.installKey === id);
@@ -157,14 +165,20 @@ export async function updateInstalled(
   scopeHint?: InstallScope,
   toolIdHint?: string,
   getAccessToken?: AccessTokenProvider,
+  opts?: ManageOptions,
 ): Promise<InstallResult> {
-  const record = await resolveIdentifier(id, scopeHint, toolIdHint);
+  const record = await resolveIdentifier(id, scopeHint, toolIdHint, opts);
   const { sourcePin, toolId, scope, repoRoot } = record;
+  const snapshot = JSON.stringify(record);
+  const beforeInstall = async () => {
+    const current = await resolveIdentifier(record.installKey, scope, toolId, { repoRoot });
+    if (JSON.stringify(current) !== snapshot) throw new OperationConflictError('The installation changed while its update was being prepared. Reload and retry.');
+  };
 
   if (!sourcePin) {
     throw new Error(
       `Cannot update '${id}': no source pin recorded. ` +
-        `Re-install the skill with the current version of agentman.`,
+      `Re-install the skill with the current version of agentman.`,
     );
   }
 
@@ -177,6 +191,7 @@ export async function updateInstalled(
       toolId,
       repoRoot,
       forceUpdate: true,
+      beforeInstall,
     });
     return opResult.result;
   }
@@ -191,6 +206,7 @@ export async function updateInstalled(
       toolId,
       repoRoot,
       forceUpdate: true,
+      beforeInstall,
       bearerToken: await getAccessToken?.(sourcePin.artefactUrl),
     });
     return opResult.result;
@@ -223,6 +239,7 @@ export async function updateInstalled(
       toolId,
       repoRoot,
       forceUpdate: true,
+      beforeInstall,
     });
     return opResult.result;
   }
@@ -237,10 +254,13 @@ export async function removeInstalled(
   id: string,
   scopeHint?: InstallScope,
   toolIdHint?: string,
+  opts?: ManageOptions,
 ): Promise<UninstallResult> {
-  const record = await resolveIdentifier(id, scopeHint, toolIdHint);
-  const { installKey, toolId, scope, repoRoot } = record;
+  return withMutation(async () => {
+    const record = await resolveIdentifier(id, scopeHint, toolIdHint, opts);
+    const { installKey, toolId, scope, repoRoot } = record;
 
-  const provisioner = createSkillProvisioner(toolId, scope, repoRoot);
-  return provisioner.uninstall([installKey]);
+    const provisioner = createSkillProvisioner(toolId, scope, repoRoot);
+    return provisioner.uninstall([installKey]);
+  });
 }
