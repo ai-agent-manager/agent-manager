@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import { withMutation } from '../lib/mutation.js';
 import { mkdir, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import extractZip from 'extract-zip';
@@ -83,7 +85,7 @@ export async function downloadRepoArchive(
   const tempDir = getTempDir();
   await mkdir(tempDir, { recursive: true });
   const zipPath = path.join(tempDir, `${owner}-${repo}-${ref}.zip`);
-  const tempExtractDir = path.join(tempDir, `extract-${owner}-${repo}-${ref}-${Date.now()}`);
+  const tempExtractDir = path.join(tempDir, `extract-${owner}-${repo}-${ref}-${randomUUID()}`);
 
   try {
     // Download archive
@@ -117,9 +119,11 @@ export async function downloadRepoArchive(
     const innerDir = path.join(tempExtractDir, dirs[0].name);
 
     // Move to permanent cache location (remove stale cache first if force-updating)
-    await rm(cacheDir, { recursive: true, force: true });
-    await mkdir(path.dirname(cacheDir), { recursive: true });
-    await rename(innerDir, cacheDir);
+    await withMutation(async () => {
+      await rm(cacheDir, { recursive: true, force: true });
+      await mkdir(path.dirname(cacheDir), { recursive: true });
+      await rename(innerDir, cacheDir);
+    });
 
     trackTelemetryEvent({
       action: 'repo_download_succeeded',

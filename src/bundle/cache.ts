@@ -1,4 +1,11 @@
-import { readdir, readFile, readlink, rm, symlink, unlink, mkdir, rename, lstat } from "node:fs/promises";
+import { randomUUID } from 'node:crypto';
+import { createLink } from '../lib/symlink.js';
+import { assertSafeCacheSegment } from '../lib/path-segment.js';
+import { OperationConflictError } from '../lib/mutation.js';
+import { assertBundleVersion, assertCachePath, resolvePinnedBundle } from './version-identity.js';
+import { assertBundleUnreferenced } from './references.js';
+import { withMutation } from '../lib/mutation.js';
+import { readdir, readFile, readlink, rm, symlink, mkdir, rename } from "node:fs/promises";
 import path from "node:path";
 import {
     getAgentmanDir,
@@ -186,22 +193,6 @@ export async function listCachedBundles(): Promise<CachedBundle[]> {
  * Replace a symlink (or directory) at `linkPath` with a new one pointing to `targetPath`.
  * Uses junctions on Windows to avoid requiring admin/Developer Mode.
  */
-async function replaceSymlink(linkPath: string, targetPath: string): Promise<void> {
-    try {
-        const s = await lstat(linkPath);
-        if (s.isDirectory()) {
-            await rm(linkPath, { recursive: true, force: true });
-        } else {
-            await unlink(linkPath);
-        }
-    } catch {
-        // Path doesn't exist — nothing to remove
-    }
-
-    const symlinkType = getPlatform() === "windows" ? "junction" : "dir";
-    await symlink(targetPath, linkPath, symlinkType);
-}
-
 async function resolveInstalledSkillPath(
     toolId: string,
     scope: 'system' | 'repo',
@@ -228,17 +219,27 @@ async function resolveInstalledSkillPath(
  * Existing installed skills are NOT modified.
  */
 export async function setCurrentBundle(version: string): Promise<void> {
-    const targetDir = getBundleVersionDir(version);
-    const linkPath = getCurrentBundleLink();
-
-    try {
-        await unlink(linkPath);
-    } catch {
-        // Link doesn't exist yet
-    }
-
-    const symlinkType = getPlatform() === "windows" ? "junction" : "dir";
-    await symlink(targetDir, linkPath, symlinkType);
+    return withMutation(async () => {
+        assertBundleVersion(version);
+        const targetDir = getBundleVersionDir(version);
+        await assertCachePath(targetDir);
+        const linkPath = getCurrentBundleLink();
+        const staged = `${linkPath}.stage-${randomUUID()}`;
+        const backup = `${linkPath}.backup-${randomUUID()}`;
+        let backedUp = false;
+        try {
+            await symlink(targetDir, staged, getPlatform() === "windows" ? "junction" : "dir");
+            try { await rename(linkPath, backup); backedUp = true; }
+            catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+            await rename(staged, linkPath);
+        } catch (error) {
+            if (backedUp) await rename(backup, linkPath);
+            throw error;
+        } finally {
+            await rm(staged, { force: true });
+        }
+        await rm(backup, { force: true });
+    });
 }
 
 /**
@@ -255,96 +256,60 @@ export async function updateSkillVersion(
     skillName: string,
     newVersion: string,
     options?: { scope?: 'system' | 'repo'; repoRoot?: string },
-): Promise<{ success: boolean; error?: string }> {
-    const scope = options?.scope ?? 'system';
-    const repoRoot = options?.repoRoot;
-    const newBundleDir = getBundleVersionDir(newVersion);
-
-    // Verify the skill exists in the target version
+): Promise<{ success: boolean; error?: string; code?: string; statusCode?: number }> {
     try {
-        const bundleContents = await scanBundle(newBundleDir);
-        const skillExists = bundleContents.skills.some((s) => s.dirName === skillName);
-
-        if (!skillExists) {
-            return { success: false, error: `Skill '${skillName}' does not exist in version ${newVersion}` };
-        }
-    } catch {
-        return { success: false, error: `Cannot access bundle version ${newVersion}` };
-    }
-
-    if (scope === 'repo') {
-        if (!repoRoot) {
-            return { success: false, error: 'repoRoot is required for repo-scoped skill updates' };
-        }
-
-        const repoConfig = await readRepoConfig(repoRoot);
-        if (!repoConfig?.installations[toolId]?.[skillName]) {
-            return { success: false, error: `Skill '${skillName}' is not installed at repo scope for ${toolId}` };
-        }
-
-        const skillPathResult = await resolveInstalledSkillPath(toolId, 'repo', repoRoot, skillName);
-        if (!skillPathResult.ok) {
-            return { success: false, error: skillPathResult.error };
-        }
-        const skillPath = skillPathResult.skillPath;
-        const newTargetPath = path.join(newBundleDir, skillName);
-
-        try {
-            await replaceSymlink(skillPath, newTargetPath);
-
-            // Update only the specific skill's bundleVersion — not the top-level one
-            await updateRepoConfig(repoRoot, (cfg) => {
-                if (!cfg.installations[toolId]) cfg.installations[toolId] = {};
-                cfg.installations[toolId][skillName] = {
-                    ...cfg.installations[toolId][skillName],
-                    bundleVersion: newVersion,
-                    method: "symlink",
-                };
-            });
-
-            return { success: true };
-        } catch (error) {
-            return {
-                success: false,
-                error: error instanceof Error ? error.message : String(error),
-            };
-        }
-    }
-
-    // System scope
-    const config = await readConfig();
-
-    if (!config.installations[toolId]?.[skillName]) {
-        return { success: false, error: `Skill '${skillName}' is not installed for ${toolId}` };
-    }
-
-    const skillPathResult = await resolveInstalledSkillPath(toolId, 'system', undefined, skillName);
-    if (!skillPathResult.ok) {
-        return { success: false, error: skillPathResult.error };
-    }
-    const skillPath = skillPathResult.skillPath;
-    const newTargetPath = path.join(newBundleDir, skillName);
-
-    try {
-        await replaceSymlink(skillPath, newTargetPath);
-
-        await updateConfig((cfg) => {
-            if (!cfg.installations[toolId]) {
-                cfg.installations[toolId] = {};
+        return await withMutation(async () => {
+            assertBundleVersion(newVersion);
+            const scope = options?.scope ?? 'system';
+            const repoRoot = options?.repoRoot;
+            if (scope === 'repo' && !repoRoot) throw new OperationConflictError('repoRoot is required for repo-scoped skill updates');
+            const config = scope === 'repo' ? await readRepoConfig(repoRoot!) : await readConfig();
+            const record = config?.installations[toolId]?.[skillName];
+            if (!record) throw new OperationConflictError(`Skill '${skillName}' is not installed for ${toolId} at ${scope} scope`);
+            const bareName = skillName.split('/').at(-1)!;
+            const linkName = record.linkName ?? bareName;
+            assertSafeCacheSegment(bareName, 'Skill directory');
+            assertSafeCacheSegment(linkName, 'Installed link name');
+            const skillPathResult = await resolveInstalledSkillPath(toolId, scope, repoRoot, linkName);
+            if (!skillPathResult.ok) throw new OperationConflictError(skillPathResult.error);
+            // Both ends must be attested, not just the destination label.
+            await resolvePinnedBundle(record.sourcePin, getRecordVersion(record));
+            const candidate = await resolvePinnedBundle(record.sourcePin, newVersion);
+            const contents = await scanBundle(candidate.bundleDir);
+            const skill = contents.skills.find((item) => item.dirName === bareName);
+            if (!skill) throw new OperationConflictError(`Skill '${bareName}' does not exist in version ${newVersion}`);
+            await assertCachePath(skill.dirPath);
+            const skillPath = skillPathResult.skillPath;
+            const staged = `${skillPath}.stage-${randomUUID()}`;
+            const backup = `${skillPath}.backup-${randomUUID()}`;
+            let backedUp = false;
+            let published = false;
+            try {
+                const link = await createLink(skill.dirPath, staged);
+                try { await rename(skillPath, backup); backedUp = true; }
+                catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+                await rename(staged, skillPath);
+                published = true;
+                const updated = { ...record, bundleVersion: newVersion,
+                    sourcePin: { ...record.sourcePin!, bundleVersion: newVersion }, method: link.method };
+                if (scope === 'repo') {
+                    await updateRepoConfig(repoRoot!, (cfg) => { cfg.installations[toolId][skillName] = updated; });
+                } else {
+                    await updateConfig((cfg) => { cfg.installations[toolId][skillName] = updated; });
+                }
+            } catch (error) {
+                if (published) await rm(skillPath, { recursive: true, force: true });
+                if (backedUp) await rename(backup, skillPath);
+                throw error;
+            } finally {
+                await rm(staged, { recursive: true, force: true });
             }
-            cfg.installations[toolId][skillName] = {
-                ...cfg.installations[toolId][skillName],
-                bundleVersion: newVersion,
-                method: "symlink",
-            };
+            await rm(backup, { recursive: true, force: true });
+            return { success: true };
         });
-
-        return { success: true };
     } catch (error) {
-        return {
-            success: false,
-            error: error instanceof Error ? error.message : String(error),
-        };
+        return { success: false, error: error instanceof Error ? error.message : String(error),
+            ...(error instanceof OperationConflictError ? { code: error.code, statusCode: error.statusCode } : {}) };
     }
 }
 
@@ -364,12 +329,17 @@ export async function getCurrentBundleVersion(): Promise<string | null> {
  * Remove a cached bundle version (cannot remove the current one).
  */
 export async function removeCachedBundle(version: string): Promise<void> {
-    const current = await getCurrentBundleVersion();
-    if (current === version) {
-        throw new Error("Cannot remove the currently active bundle. Switch to another version first.");
-    }
-    const dir = getBundleVersionDir(version);
-    await rm(dir, { recursive: true, force: true });
+    return withMutation(async () => {
+        assertBundleVersion(version);
+        const current = await getCurrentBundleVersion();
+        if (current === version) {
+            throw new OperationConflictError("Cannot remove the currently active bundle. Switch to another version first.");
+        }
+        const dir = getBundleVersionDir(version);
+        await assertCachePath(dir);
+        await assertBundleUnreferenced(version, dir);
+        await rm(dir, { recursive: true, force: true });
+    });
 }
 
 /**
@@ -428,9 +398,11 @@ function migrateConfig(config: AgentmanConfig): AgentmanConfig {
  * or a concurrent reader never observes a partially-written file.
  */
 export async function writeConfig(config: AgentmanConfig): Promise<void> {
-    await mkdir(getAgentmanDir(), { recursive: true });
-    const stamped: AgentmanConfig = { ...config, schemaVersion: CONFIG_SCHEMA_VERSION };
-    await writeFileAtomic(getConfigPath(), JSON.stringify(stamped, null, 2));
+    return withMutation(async () => {
+        await mkdir(getAgentmanDir(), { recursive: true });
+        const stamped: AgentmanConfig = { ...config, schemaVersion: CONFIG_SCHEMA_VERSION };
+        await writeFileAtomic(getConfigPath(), JSON.stringify(stamped, null, 2));
+    });
 }
 
 /**
@@ -443,11 +415,13 @@ export async function writeConfig(config: AgentmanConfig): Promise<void> {
 export async function updateConfig(
     mutate: (config: AgentmanConfig) => AgentmanConfig | void,
 ): Promise<AgentmanConfig> {
-    return withLock(getConfigLockPath(), async () => {
-        const config = await readConfig();
-        const result = mutate(config) ?? config;
-        await writeConfig(result);
-        return result;
+    return withMutation(async () => {
+        return withLock(getConfigLockPath(), async () => {
+            const config = await readConfig();
+            const result = mutate(config) ?? config;
+            await writeConfig(result);
+            return result;
+        });
     });
 }
 

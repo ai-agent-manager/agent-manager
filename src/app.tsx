@@ -1,3 +1,4 @@
+import { toCatalogueSkills, loadRepositoryBundle } from "./operations/catalogue.js";
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { Box, Text } from "ink";
 import SelectInput from "ink-select-input";
@@ -25,11 +26,8 @@ import { StatusMessage } from "./components/StatusMessage.js";
 import { ToolSelector } from "./components/ToolSelector.js";
 import { VersionManager } from "./components/VersionManager.js";
 import { getCurrentBundleVersion, readConfig, setCurrentBundle, updateConfig } from "./bundle/cache.js";
-import { downloadBundle } from "./bundle/downloader.js";
-import { extractBundle } from "./bundle/extractor.js";
-import { importLocalBundle } from "./bundle/importer.js";
+import { acquireBundle, acquireDiscoverySkills, describeMembershipError } from "./operations/session.js";
 import type { BundleManifest } from "./bundle/manifest.js";
-import { readRepoConfig } from "./bundle/repo-config.js";
 import { scanBundle, type BundleContents, type RovoAgentInfo } from "./bundle/scanner.js";
 import type { BundleSource } from "./bundle/source.js";
 import { getBundleVersionDir } from "./config/paths.js";
@@ -38,17 +36,12 @@ import type { StartupUpdateNotice } from "./lib/startup-update-checks.js";
 import { checkForStartupUpdates, shouldRunStartupUpdateChecks } from "./lib/startup-update-checks.js";
 import { getBundleSourceTelemetryProperties, setTelemetryDisabledByConfig, trackTelemetryError, trackTelemetryEvent, type TelemetryValue } from "./telemetry.js";
 import { featureFlags } from "./lib/feature-flags.js";
-import { resolveDiscoverySkills, type ResolvedSkill } from "./discovery/index.js";
+import { type ResolvedSkill } from "./discovery/index.js";
 import {
-    buildPinForDirectorySource,
-    buildSourcePin,
-    type BundleSkillSource,
     type RepoSkillSource,
 } from "./bundle/skill-source.js";
 import {
     canAccessMyProjects,
-    isApiAuthFailure,
-    isApiTransientFailure,
     isProjectsExclusiveSource,
     listProjects,
     resolveApiBaseUrl,
@@ -60,7 +53,7 @@ import {
     scopeCatalogueAssets,
     scopeSkills,
 } from "./catalogue-scope/index.js";
-import { authenticate, openInBrowser, createDiscoveryAccessTokenProvider, type AuthSession } from "./auth/index.js";
+import { openInBrowser, createDiscoveryAccessTokenProvider, type AuthSession } from "./auth/index.js";
 
 export type Screen =
     | "loading"
@@ -89,96 +82,6 @@ interface AppProps {
     directInstallSource?: RepoSkillSource;
     forceUpdate: boolean;
     sourceError?: string;
-}
-
-async function acquireBundle(
-    source: BundleSource,
-    setLoadingMessage: (message: string) => void,
-): Promise<{ manifest: BundleManifest; bundleDir: string; isNew: boolean; warning?: string }> {
-    if (source.type === "url") {
-        setLoadingMessage("Downloading agent bundle...");
-        const { zipPath } = await downloadBundle(source.baseUrl);
-
-        setLoadingMessage("Extracting bundle...");
-        try {
-            return await extractBundle(zipPath);
-        } catch (error) {
-            trackTelemetryError("bundle_extract_failed", error, getBundleSourceTelemetryProperties(source));
-            throw error;
-        }
-    }
-
-    if (source.type === "directory") {
-        setLoadingMessage("Importing local bundle...");
-        try {
-            return await importLocalBundle(source.dirPath);
-        } catch (error) {
-            trackTelemetryError("bundle_import_failed", error, getBundleSourceTelemetryProperties(source));
-            throw error;
-        }
-    }
-
-    // type === "discovery" is handled separately via resolveDiscoverySkills
-    throw new Error("Discovery sources are resolved via the discovery flow, not acquireBundle");
-}
-
-/**
- * Resolve skills from a discovery document, handling authentication if required.
- */
-async function acquireDiscoverySkills(
-    source: Extract<BundleSource, { type: 'discovery' }>,
-    setLoadingMessage: (message: string) => void,
-    onAuthPrompt: (authorizeUrl: string) => void,
-): Promise<{
-    skills: ResolvedSkill[];
-    rovoAgents: RovoAgentInfo[];
-    warnings: string[];
-    bundleVersion?: string;
-    manifest?: BundleManifest;
-    bundleDir?: string;
-    authSession?: AuthSession;
-}> {
-    const warnings: string[] = [];
-    let authSession: AuthSession | undefined;
-
-    // Handle authentication if required
-    if (source.discovery.auth?.required) {
-        setLoadingMessage("Authenticating...");
-        const authResult = await authenticate(
-            source.baseUrl,
-            source.discovery.auth,
-            onAuthPrompt,
-        );
-        authSession = {
-            discoveryBaseUrl: source.baseUrl,
-            auth: source.discovery.auth,
-        };
-        if (!authResult.fromCache && authResult.backend === 'filesystem') {
-            warnings.push("Tokens stored at ~/.agentman/auth/ (OS keychain unavailable, using filesystem with restricted permissions)");
-        }
-    }
-
-    setLoadingMessage("Resolving skills from discovery document...");
-    const result = await resolveDiscoverySkills(
-        source.discovery,
-        undefined,
-        setLoadingMessage,
-        authSession ? { authSession } : undefined,
-    );
-
-    for (const { source, error } of result.errors) {
-        warnings.push(`Failed to resolve source '${source.name}': ${error}`);
-    }
-
-    return {
-        skills: result.skills,
-        rovoAgents: result.rovoAgents,
-        warnings,
-        bundleVersion: result.bundleVersion,
-        manifest: result.manifest,
-        bundleDir: result.bundleDir,
-        authSession,
-    };
 }
 
 export function App({ source, directInstallSource, forceUpdate, sourceError }: AppProps) {
@@ -253,19 +156,7 @@ export function App({ source, directInstallSource, forceUpdate, sourceError }: A
             } catch (error) {
                 if (!cancelled) {
                     setMembershipProjects([]);
-                    const detail =
-                        error instanceof Error ? error.message : String(error);
-                    let warning: string;
-                    if (isApiAuthFailure(error)) {
-                        warning =
-                            `Authentication failed while loading project memberships. Sign in again and retry.\n${detail}`;
-                    } else if (isApiTransientFailure(error)) {
-                        warning =
-                            `Temporarily unable to load project memberships for exclusive catalogue filtering. The catalogue is empty until this succeeds.\n${detail}`;
-                    } else {
-                        warning =
-                            `Could not load project memberships for exclusive catalogue filtering:\n${detail}`;
-                    }
+                    const warning = describeMembershipError(error);
                     setWarning(warning);
                 }
             }
@@ -352,7 +243,7 @@ export function App({ source, directInstallSource, forceUpdate, sourceError }: A
 
     const handleAuthOpen = useCallback(() => {
         if (authorizeUrl) {
-            openInBrowser(authorizeUrl);
+            return openInBrowser(authorizeUrl);
         }
     }, [authorizeUrl]);
 
@@ -533,33 +424,21 @@ export function App({ source, directInstallSource, forceUpdate, sourceError }: A
         setRepoBundleVersion(null);
 
         if (scope === "repo" && selectedRepoRoot) {
-            let repoConfig;
             try {
-                repoConfig = await readRepoConfig(selectedRepoRoot);
-            } catch (readError) {
-                trackTelemetryError("repo_config_read_failed", readError, bundleTelemetryProps);
-                setError(readError instanceof Error ? readError.message : String(readError));
+                const pinned = await loadRepositoryBundle({
+                    source, manifest: manifest ?? undefined,
+                    discoverySkills: discoverySkills ?? undefined,
+                    bundleContents: bundleContents ?? undefined,
+                }, selectedRepoRoot);
+                if (pinned) {
+                    setRepoBundleContents(pinned.contents);
+                    setRepoBundleVersion(pinned.version);
+                }
+            } catch (loadError) {
+                trackTelemetryError("repo_pinned_bundle_load_failed", loadError, bundleTelemetryProps);
+                setError(loadError instanceof Error ? loadError.message : String(loadError));
                 setScreen("main-menu");
                 return;
-            }
-
-            if (repoConfig?.bundleVersion && repoConfig.bundleVersion !== manifest?.version) {
-                const pinnedDir = getBundleVersionDir(repoConfig.bundleVersion);
-
-                try {
-                    const { readFile } = await import("node:fs/promises");
-                    const { parseManifest } = await import("./bundle/manifest.js");
-                    const pinnedManifestRaw = await readFile(`${pinnedDir}/manifest.json`, "utf-8");
-                    const pinnedManifest = parseManifest(pinnedManifestRaw);
-                    const contents = await scanBundle(pinnedDir, pinnedManifest.agents);
-                    setRepoBundleContents(contents);
-                    setRepoBundleVersion(repoConfig.bundleVersion);
-                } catch (loadError) {
-                    trackTelemetryError("repo_pinned_bundle_load_failed", loadError, {
-                        ...bundleTelemetryProps,
-                        version: repoConfig.bundleVersion,
-                    });
-                }
             }
         }
 
@@ -594,25 +473,11 @@ export function App({ source, directInstallSource, forceUpdate, sourceError }: A
     const effectiveVersion =
         installScope === "repo" && repoBundleVersion ? repoBundleVersion : (manifest?.version ?? discoveryBundleVersion ?? "unknown");
 
-    // Discovery skills carry real source metadata; legacy bundle/directory
-    // skills get a synthesised bundle source so the skill-first flow still works.
-    // The same bundle pin the headless path records is attached here so a skill
-    // installed interactively from a directory/bundle gets an identical record
-    // (and the update path reports the accurate "local directory" reason).
-    const legacyBundlePin =
-        source?.type === "directory"
-            ? buildPinForDirectorySource(source.dirPath, effectiveVersion)
-            : source?.type === "url"
-                ? buildSourcePin({ type: "bundle", baseUrl: source.baseUrl, installLayout: "flat" } as BundleSkillSource, effectiveVersion)
-                : undefined;
-    const catalogueSkills: ResolvedSkill[] =
-        discoverySkills ??
-        (bundleContents?.skills ?? []).map((skill) => ({
-            ...skill,
-            sourcePin: skill.sourcePin ?? legacyBundlePin,
-            sourceName: "bundle",
-            sourceType: "http" as const,
-        }));
+    const catalogueSkills = toCatalogueSkills({
+        source, manifest: manifest ?? undefined, discoverySkills: discoverySkills ?? undefined,
+        discoveryBundleVersion: discoveryBundleVersion ?? undefined, bundleContents: bundleContents ?? undefined,
+    }, { scope: installScope, repoBundle: repoBundleContents && repoBundleVersion
+        ? { contents: repoBundleContents, version: repoBundleVersion } : undefined });
     const allRovoAgents = bundleContents?.rovoAgents ?? [];
 
     const catalogueScope = resolveCatalogueScope({
@@ -626,7 +491,7 @@ export function App({ source, directInstallSource, forceUpdate, sourceError }: A
         catalogueScope,
     );
     const catalogueEntries = buildScopedCatalogue(catalogueSkills, allRovoAgents, catalogueScope);
-    const bulkSyncSkills = scopeSkills(effectiveContents?.skills ?? [], catalogueScope);
+    const bulkSyncSkills = scopeSkills(catalogueSkills, catalogueScope);
 
     const hasProjectsAccess =
         source?.type === "discovery" &&

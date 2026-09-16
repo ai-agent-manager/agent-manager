@@ -12,7 +12,8 @@ export function assertSafeCacheSegment(value: string, label: string): void {
     value === '..' ||
     value.includes('/') ||
     value.includes('\\') ||
-    value.includes('\0')
+    /[<>:"|?*]/.test(value) ||
+    [...value].some((character) => character.charCodeAt(0) < 32)
   ) {
     throw new Error(`${label} must be a safe single path segment: ${value}`);
   }

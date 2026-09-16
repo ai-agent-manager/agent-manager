@@ -20,6 +20,9 @@ chrome-extension/agentman.pem
 # Pre-built .crx asset — generated at publish time via `npm run build:chrome-extension`
 assets/agentman.crx
 
+# Generated browser application (built from web-ui/)
+assets/web-ui/
+
 # ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db

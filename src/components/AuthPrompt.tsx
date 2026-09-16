@@ -5,7 +5,7 @@ interface AuthPromptProps {
   /** The authorization URL the user should visit. */
   authorizeUrl: string;
   /** Called when the user presses Enter to open the URL in the browser. */
-  onOpen: () => void;
+  onOpen: () => void | Promise<void>;
   /** When provided, Escape cancels the flow (the caller must abort the wait). */
   onCancel?: () => void;
 }
@@ -16,11 +16,16 @@ interface AuthPromptProps {
  */
 export function AuthPrompt({ authorizeUrl, onOpen, onCancel }: AuthPromptProps) {
   const [opened, setOpened] = useState(false);
+  const [openError, setOpenError] = useState<string>();
 
   useInput(useCallback((_input: string, key: { return?: boolean; escape?: boolean }) => {
     if (key.return && !opened) {
       setOpened(true);
-      onOpen();
+      setOpenError(undefined);
+      void Promise.resolve().then(onOpen).catch(() => {
+        setOpened(false);
+        setOpenError('Could not open the browser. Copy the URL above, or press Enter to retry.');
+      });
     }
     if (key.escape && onCancel) {
       onCancel();
@@ -38,6 +43,7 @@ export function AuthPrompt({ authorizeUrl, onOpen, onCancel }: AuthPromptProps) 
           <Text color="cyan" underline>{authorizeUrl}</Text>
         </Box>
       </Box>
+      {openError && <Box marginTop={1}><Text color="yellow">{openError}</Text></Box>}
       <Box marginTop={1}>
         {opened ? (
           <Text color="green">

@@ -543,7 +543,7 @@ describe("downloadBundle", () => {
 
         expect(result.version).toBe("2.0.0");
         expect(result.sha256).toBe(fakeZipHash);
-        expect(result.zipPath).toContain("2.0.0.zip");
+        expect(path.basename(result.zipPath)).toMatch(/^2\.0\.0-.+\.zip$/);
     });
 
     it("resolves the latest version from index when no version is specified", async () => {
@@ -635,8 +635,8 @@ describe("downloadBundle", () => {
         );
 
         // The zip should still be on disk (only IntegrityError triggers deletion)
-        const zipPath = path.join(tempDir, "2.0.0.zip");
-        await expect(access(zipPath)).resolves.toBeUndefined();
+        const { readdir } = await import("node:fs/promises");
+        expect((await readdir(tempDir)).some((name) => /^2\.0\.0-.+\.zip$/.test(name))).toBe(true);
     });
 
     it("throws when the bundle HTTP request fails", async () => {
