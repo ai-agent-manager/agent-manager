@@ -12,7 +12,11 @@ export function sessionRoutes(router: Router, sessions: SessionStore): void {
     const force = v.boolean(body.forceUpdate, 'forceUpdate');
     sendJson(res, 202, { jobId: await sessions.load(source, force) });
   });
-  router.route('GET', '/api/auth', ({ res, query }) => { v.query(query, []); sendJson(res, 200, sessions.snapshot().auth); });
+  router.route('GET', '/api/auth', async ({ res, query }) => { v.query(query, []); sendJson(res, 200, await sessions.authStatus()); });
+  router.route('POST', '/api/auth/login', async ({ req, res, query }) => {
+    v.query(query, []); v.object(await readJsonBody(req), []);
+    sendJson(res, 202, { jobId: await sessions.login() });
+  });
   router.route('POST', '/api/auth/logout', async ({ req, res, query }) => {
     v.query(query, []); v.object(await readJsonBody(req), []);
     await sessions.logout(); sendJson(res, 200, {});

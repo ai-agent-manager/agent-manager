@@ -1,9 +1,8 @@
 # Experimental web UI
 
-The browser interface is implemented through M4 on the experimental branch.
-TUI and headless entry points remain available. Browser version management and
-dedicated login/logout controls are M5; broader browser coverage and Electron
-remain later milestones. Publish jobs and prepublishOnly build the browser assets.
+The browser interface is implemented through M5 on the experimental branch.
+TUI and headless entry points remain available. Version management and login/logout
+are available; broader browser coverage and Electron remain later milestones. Publish jobs and prepublishOnly build the browser assets.
 
 ## Run locally
 
@@ -41,6 +40,26 @@ uses the same shutdown contract. Neither mode has an idle shutdown timer.
   to a session reset the browser's old selection.
 - Installed records include exact tool/scope/repository identities. Updates run
   as jobs. Removals require a UI confirmation, and errors remain visible.
+- Versions lists verified cached bundles and source identities. Download remote
+  versions without activating them, select a directory-source global bundle with
+  optional install synchronization, and remove unused caches (including unattested
+  legacy caches). A live catalogue or installed reference prevents deletion. HTTP
+  inputs resolve to discovery catalogues; their versions are selected
+  through Skill versions for an exact tool/scope/repository instance. Unsupported
+  sources and partial sync failures are shown explicitly. Unlike the TUI global
+  cache picker, HTTP catalogues use only per-installation selection. If a reload
+  supersedes a switch during sync, Activity reports it; completed install changes
+  remain applied. Leaving the optional sync repository blank includes only personal
+  installations.
+- Sign in starts a cancellable job and presents an explicit sign-in link. A
+  cancelled initial login returns to idle and can be retried before the source has
+  been persisted. Login and reload both advance the session revision, invalidating
+  previous browser selections.
+  Sign out invalidates the catalogue and drains token-producing work before
+  deleting credentials. Read-only auth status checks expiry without logging in.
+- Synchronous changes wait at most five seconds for the mutation lock, then return
+  a retryable conflict. Disconnected waiters are discarded; acquired commits finish
+  before their response socket closes.
 - Sources and settings read fresh persisted state. Failed setting writes restore
   the displayed value; environment-enforced options cannot be enabled in the UI.
 - Activity shows phase and cancellation availability. Sign-in opens only when
@@ -97,8 +116,21 @@ source navigation, and mobile layout. It checks filesystem/config outcomes and
 writes desktop/mobile screenshots to the system temporary directory. It does
 not authenticate a real account or modify the user's installed skills.
 
-The browser smoke is an initial check; it does not replace the planned M6
-fake-provider OAuth and broader cross-platform browser coverage.
+The browser smoke exercises global/per-skill version switching too. To test the
+repository's real Imposter OAuth provider (with the synthetic account configured
+in `mocks/oidc-server-config.yaml`):
+
+```bash
+imposter up mocks
+# In another terminal, after building the web UI and installing Chromium:
+npm run test:browser:auth
+```
+
+This checks cancellation, retry, the explicit login popup, catalogue loading,
+named-source version browsing/download, and logout. It forces filesystem token
+storage into a temporary HOME and never uses the real keychain. The callback
+port 19875 must be free. M6 will expand browser coverage and run it across platforms
+in CI, including a self-contained fake provider and packaged-consumer tests.
 
 ## Review follow-up
 

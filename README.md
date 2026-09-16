@@ -48,8 +48,8 @@ npm run preview:ui -- https://skills.example.com --port 0
 
 Open the printed URL. It contains a token for this server session; keep it private.
 The UI supports browsing and installing skills, managing installed skills, sources,
-settings, and progress with sign-in prompts. Version-management screens and
-dedicated login/logout controls are still being implemented.
+settings, cached and per-installation versions, and progress with sign-in prompts.
+Dedicated sign-in and sign-out controls are available.
 
 For development with live updates, use `npm run dev:ui -- --no-open`.
 See [the web UI guide](docs/web-ui.md) for architecture and validation commands.

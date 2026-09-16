@@ -35,15 +35,16 @@ it('launches the real UI command without a TTY and exits cleanly on SIGINT', asy
   }
 });
 
-it('ui --help exits successfully without starting the server or a browser', async () => {
-  const child = spawn(process.execPath, ['--import', 'tsx', 'src/index.tsx', 'ui', '--help'], { stdio: ['ignore', 'pipe', 'pipe'] });
+it.each(['--help', '--version'])('ui %s exits successfully without starting the server or a browser', async (flag) => {
+  const child = spawn(process.execPath, ['--import', 'tsx', 'src/index.tsx', 'ui', flag], { stdio: ['ignore', 'pipe', 'pipe'] });
   let output = '';
   child.stdout.on('data', (data) => { output += data; });
   child.stderr.on('data', (data) => { output += data; });
   const exited = new Promise<number | null>((resolve) => child.once('exit', resolve));
   try {
     await vi.waitFor(() => expect(child.exitCode).toBe(0), { timeout: 5000 });
-    expect(output).toContain('Usage');
+    if (flag === '--help') expect(output).toContain('Usage');
+    else expect(output.trim()).toMatch(/^\d+\.\d+\.\d+/);
     expect(output).not.toContain('Web UI: http');
     expect(output).not.toContain('Press Ctrl-C');
   } finally { if (child.exitCode === null) child.kill('SIGKILL'); await exited; }

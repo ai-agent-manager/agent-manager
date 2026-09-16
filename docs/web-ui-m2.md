@@ -31,7 +31,12 @@ a restrictive CSP; missing assets produce an actionable 503 response.
 | `GET, POST /api/sources` | List and add sources |
 | `POST /api/sources/activate`, `/remove` | Change stored source selection and invalidate the catalogue |
 | `GET, PATCH /api/settings` | Read/update supported settings |
-| `GET /api/auth`, `POST /api/auth/logout` | Auth status and coordinated sign-out |
+| `GET /api/auth`, `POST /api/auth/login`, `POST /api/auth/logout` | Fresh auth status, login/reload jobs and coordinated sign-out |
+| `GET /api/bundles`, `GET /api/bundles/remote` | Cache inventory (separate safe removal IDs for unattested caches) and remote source/version IDs |
+| `POST /api/bundles/download`, `POST /api/bundles/current` | Download or select a version through a revision-checked job |
+| `DELETE /api/bundles/:bundleId` | Remove only unused, non-current verified caches |
+| `GET /api/skill-versions`, `GET /api/skill-versions/:installKey/available` | Exact installed instances and compatible cached versions |
+| `PUT /api/skill-versions` | Change an exact tool/scope/repository pin through a job |
 | `GET /api/jobs/:id`, `POST /api/jobs/:id/cancel` | Observe/cancel jobs |
 | `GET /api/events` | SSE snapshots, session changes, jobs, keepalives |
 | `POST /api/shutdown` | Acknowledge, then drain and stop |
@@ -63,7 +68,7 @@ repository root is supplied.
   It covers token resolution only. A callback port occupied by another process
   becomes an actionable conflict. That process is never terminated.
 - Logout invalidates the catalogue, blocks new authentication, cancels or drains
-  in-flight load/update jobs, then deletes the token identities used by this
+  in-flight load/login/update/download jobs, then deletes the token identities used by this
   server. A late token save in those jobs cannot undo logout.
 - Each SSE connection begins with an authoritative snapshot of the session and
   retained jobs. Subscription and snapshot emission have no asynchronous gap.
@@ -88,10 +93,18 @@ and graceful shutdown during real installation. Importing the server with an
 Ink mock that throws is part of the HTTP suite. Auth tests also exercise the
 coordinator through real `authenticate` calls.
 
-Version routes and dedicated login/reload controls remain M5. Direct Git sources
+Version routes and dedicated login/logout controls were added in M5. Direct Git sources
 currently return an explicit unsupported-operation conflict; Git sources inside
 a discovery catalogue are supported. The optional direct-source preview/install
 flow remains deferred. Browser UI, development middleware/HMR, CLI signals and
 desktop integration are separate milestones. The `agentman ui` command and core
-browser application were added in M3/M4; dedicated version/auth screens remain
-outside this core milestone.
+browser application were added in M3/M4; M5 version/auth screens use the same
+DTO, job and session-revision contracts.
+
+Synchronous filesystem mutations have a five-second queue deadline, including
+contention with this server's own jobs. A disconnected waiter cannot commit later.
+Once acquired, local commits drain with the response socket kept open. Bundle
+removal revalidates both installed references and live catalogue paths under the
+mutation lock. Selection still requires verified provenance; a removal ID alone
+never authorizes selection. Bundle-switch results include `superseded: true` when
+a reload accepted during sync prevents publishing that switch's catalogue.

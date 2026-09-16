@@ -29,7 +29,10 @@ export interface ExtractResult {
  * state rather than guarding against it: it cannot be written, so it cannot rot
  * back in behind a future caller.
  */
-export type ExtractBundleOptions =
+export type ExtractBundleOptions = {
+  expectedVersion?: string;
+  beforeCommit?: () => void | Promise<void>;
+} & (
   | {
     /** Legacy global cache, keyed by manifest version alone. */
     sourceKey?: never;
@@ -40,7 +43,7 @@ export type ExtractBundleOptions =
     sourceKey: string;
     /** Content root this bundle came from, recorded as its provenance. */
     contentRoot: string;
-  };
+  });
 
 /** Directory the source-scoped cache tree occupies inside the bundles dir. */
 const SOURCES_SUBTREE = 'sources';
@@ -87,6 +90,7 @@ export async function extractBundle(zipPath: string, options: ExtractBundleOptio
     const manifestRaw = await readFile(`${tempExtractDir}/manifest.json`, 'utf-8');
     const manifest = parseManifest(manifestRaw);
     assertSafeCacheSegment(manifest.version, 'Bundle manifest version');
+    if (options.expectedVersion && manifest.version !== options.expectedVersion) throw new OperationConflictError('Downloaded manifest does not match the selected version. Refresh the remote index and retry.');
 
     if (options.sourceKey) {
       assertSafeCacheSegment(options.sourceKey, 'Bundle source key');
@@ -112,6 +116,7 @@ export async function extractBundle(zipPath: string, options: ExtractBundleOptio
       : getBundleVersionDir(manifest.version);
 
     return await withMutation(async () => {
+      await options.beforeCommit?.();
       await assertCacheDestination(targetDir);
 
       // Provenance is only meaningful for source-scoped caches; the legacy cache
@@ -123,12 +128,12 @@ export async function extractBundle(zipPath: string, options: ExtractBundleOptio
         // accumulating side by side in one cache.
         const declared = await readProvenance(path.join(sourceDir, SOURCE_MARKER));
         if (declared.kind === 'present' && declared.contentRoot !== contentRoot) {
-          throw collisionError(options.sourceKey!, declared.contentRoot, contentRoot, sourceDir);
+          throw collisionError(options.sourceKey!, declared.contentRoot, contentRoot);
         }
 
         const attested = await readProvenance(path.join(targetDir, VERSION_MARKER));
         if (attested.kind === 'present' && attested.contentRoot !== contentRoot) {
-          throw collisionError(options.sourceKey!, attested.contentRoot, contentRoot, sourceDir);
+          throw collisionError(options.sourceKey!, attested.contentRoot, contentRoot);
         }
 
         // Only this version's own provenance may authorise reuse. Absent or
@@ -201,13 +206,12 @@ function collisionError(
   sourceKey: string,
   cached: string,
   requested: string,
-  sourceDir: string,
 ): Error {
-  return new Error(
+  return new OperationConflictError(
     `Source '${sourceKey}' is already cached from a different content root. ` +
     `Cached: ${cached}. Requested: ${requested}. ` +
     `Two discovery documents are using one source name for different publishers; ` +
-    `rename one of them, or remove ${sourceDir} to start over.`,
+    `rename one of the sources, or remove its installations and unused cached versions in Versions before retrying.`,
   );
 }
 

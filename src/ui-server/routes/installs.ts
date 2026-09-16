@@ -8,7 +8,7 @@ import type { InstallScope } from '../../config/scopes.js';
 import type { InstallResult } from '../../provisioners/types.js';
 import { installedDto, installResultDto, safeText } from '../dto.js';
 import { ConflictError } from '../errors.js';
-import { readJsonBody, sendJson } from '../http.js';
+import { readJsonBody, sendJson, requestMutation } from '../http.js';
 import * as v from '../validate.js';
 import type { Router } from '../router.js';
 import type { SessionStore } from '../session-store.js';
@@ -80,7 +80,7 @@ export function installRoutes(router: Router, sessions: SessionStore, jobs: JobR
     const id = jobs.start('install-update', async (ctx) => {
       if (JSON.stringify(await resolveIdentifier(key, scope, toolId, { repoRoot })) !== JSON.stringify(captured)) throw new ConflictError('The installation changed. Refresh and retry.', 'INSTALL_CHANGED');
       ctx.phase('download');
-      const result = await updateInstalled(key, scope, toolId, (contentUrl) => ctx.auth(() => getToken(contentUrl, { onAuthPrompt: ctx.authPrompt, signal: ctx.signal })), { repoRoot });
+      const result = await updateInstalled(key, scope, toolId, (contentUrl) => ctx.auth(() => { sessions.assertAuthAvailable(); return getToken(contentUrl, { onAuthPrompt: ctx.authPrompt, signal: ctx.signal }); }), { repoRoot });
       return { result: installResultDto(result) };
     });
     sendJson(res, 202, { jobId: id });
@@ -89,7 +89,7 @@ export function installRoutes(router: Router, sessions: SessionStore, jobs: JobR
     const fields = v.query(query, ['scope', 'toolId', 'repoRoot']);
     v.object(await readJsonBody(req), []);
     const { scope, toolId, repoRoot } = await instance(fields);
-    const result = await removeInstalled(v.identifier(params.installKey, 'installKey'), scope, toolId, { repoRoot });
+    const result = await requestMutation(res, () => removeInstalled(v.identifier(params.installKey, 'installKey'), scope, toolId, { repoRoot }));
     sendJson(res, 200, { result: { removed: result.removed.map(({ name }) => ({ name })), errors: result.errors.map(({ name, error }) => ({ name, error: safeText(error) })) } });
   });
 }

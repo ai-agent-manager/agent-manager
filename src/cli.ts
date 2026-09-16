@@ -74,6 +74,7 @@ export function parseCli(argv = process.argv.slice(2)) {
     );
 
     if (argv.includes('--help')) cli.showHelp(0);
+    if (argv.includes('--version')) cli.showVersion();
 
     const command = cli.input[0] === 'ui' ? 'ui' : 'tui';
     const source = cli.input[command === 'ui' ? 1 : 0];
