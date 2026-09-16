@@ -2,11 +2,8 @@ import React, { useState, useEffect, useRef } from "react";
 import path from "node:path";
 import { Box, Text, useInput } from "ink";
 import SelectInput from "ink-select-input";
-import { readConfig, listCachedBundles, updateSkillVersion, getRecordVersion, type CachedBundle } from "../bundle/cache.js";
-import { readRepoConfig } from "../bundle/repo-config.js";
-import { scanBundle } from "../bundle/scanner.js";
-import { getBundleVersionDir } from "../config/paths.js";
-import { getSkillTools } from "../config/tools.js";
+import { listCachedBundles, updateSkillVersion, type CachedBundle } from "../bundle/cache.js";
+import { listSkillVersionInstances, listInstalledSkillVersions } from "../operations/versions.js";
 import { findRepoRoot } from "../lib/repo.js";
 import { LoadingSpinner } from "./Spinner.js";
 import { StatusMessage } from "./StatusMessage.js";
@@ -19,6 +16,8 @@ type SubScreen = "select-scope" | "skill-list" | "select-tool" | "select-version
 
 interface InstalledSkillWithTool {
     skillName: string;
+    installKey: string;
+    repoRoot?: string;
     toolId: string;
     toolName: string;
     currentVersion: string;
@@ -34,37 +33,6 @@ interface VersionAvailability {
 
 function VersionMenuItem({ label }: { isSelected?: boolean; label: string }) {
     return <Text dimColor={label.includes("not in bundle")}>{label}</Text>;
-}
-
-function buildInstalledSkills(config: Awaited<ReturnType<typeof readConfig>>): InstalledSkillWithTool[] {
-    const skills: InstalledSkillWithTool[] = [];
-    for (const [toolId, skillRecords] of Object.entries(config.installations)) {
-        const tool = getSkillTools().find((t) => t.id === toolId);
-        const toolName = tool?.name ?? toolId;
-        for (const [skillName, record] of Object.entries(skillRecords)) {
-            skills.push({ skillName, toolId, toolName, currentVersion: getRecordVersion(record), scope: "system" });
-        }
-    }
-    return skills;
-}
-
-function buildRepoInstalledSkills(repoConfig: Awaited<ReturnType<typeof readRepoConfig>>): InstalledSkillWithTool[] {
-    if (!repoConfig) return [];
-    const skills: InstalledSkillWithTool[] = [];
-    for (const [toolId, skillRecords] of Object.entries(repoConfig.installations)) {
-        const tool = getSkillTools().find((t) => t.id === toolId);
-        const toolName = tool?.name ?? toolId;
-        for (const [skillName, record] of Object.entries(skillRecords)) {
-            skills.push({
-                skillName,
-                toolId,
-                toolName,
-                currentVersion: getRecordVersion(record) || repoConfig.bundleVersion || '',
-                scope: "repo",
-            });
-        }
-    }
-    return skills;
 }
 
 export function SkillVersionManager({ onBack }: SkillVersionManagerProps) {
@@ -95,66 +63,30 @@ export function SkillVersionManager({ onBack }: SkillVersionManagerProps) {
 
     useEffect(() => {
         (async () => {
-            const [config, bundles, repoRoot] = await Promise.all([readConfig(), listCachedBundles(), findRepoRoot()]);
+            const [bundles, repoRoot] = await Promise.all([listCachedBundles(), findRepoRoot()]);
             setDetectedRepoRoot(repoRoot);
             if (repoRoot) {
                 setDetectedRepoName(path.basename(repoRoot));
             }
-            const systemSkills = buildInstalledSkills(config);
-
-            let repoSkills: InstalledSkillWithTool[] = [];
-            if (repoRoot) {
-                const repoConfig = await readRepoConfig(repoRoot);
-                repoSkills = buildRepoInstalledSkills(repoConfig);
-            }
-
-            setInstalledSkills([...systemSkills, ...repoSkills]);
+            setInstalledSkills(await listSkillVersionInstances(repoRoot ?? undefined));
             setCachedBundles(bundles);
             setLoading(false);
         })();
     }, []);
 
     const refreshSkills = async () => {
-        const config = await readConfig();
-        const systemSkills = buildInstalledSkills(config);
-
-        let repoSkills: InstalledSkillWithTool[] = [];
-        const repoRoot = await findRepoRoot();
-        if (repoRoot) {
-            const repoConfig = await readRepoConfig(repoRoot);
-            repoSkills = buildRepoInstalledSkills(repoConfig);
-        }
-
-        setInstalledSkills([...systemSkills, ...repoSkills]);
+        setInstalledSkills(await listSkillVersionInstances(detectedRepoRoot ?? undefined));
     };
 
-    const loadAvailableVersions = async (skillName: string) => {
-        const versions: VersionAvailability[] = [];
-
-        for (const bundle of cachedBundles) {
-            try {
-                const bundleDir = getBundleVersionDir(bundle.version);
-                const contents = await scanBundle(bundleDir);
-                const hasSkill = contents.skills.some((s) => s.dirName === skillName);
-
-                versions.push({
-                    version: bundle.version,
-                    hasSkill,
-                    published: bundle.published,
-                    isCurrent: bundle.isCurrent,
-                });
-            } catch {
-                versions.push({
-                    version: bundle.version,
-                    hasSkill: false,
-                    published: bundle.published,
-                    isCurrent: bundle.isCurrent,
-                });
-            }
+    const loadAvailableVersions = async (instance: InstalledSkillWithTool) => {
+        try {
+            const { versions, unsupportedReason } = await listInstalledSkillVersions(instance);
+            setVersionAvailability(versions);
+            setVersionSelectionNotice(unsupportedReason ?? null);
+        } catch (error) {
+            setVersionAvailability([]);
+            setVersionSelectionNotice(error instanceof Error ? error.message : String(error));
         }
-
-        setVersionAvailability(versions);
-        setVersionSelectionNotice(null);
     };
 
     const resetToScopeScreen = () => {
@@ -350,7 +282,7 @@ export function SkillVersionManager({ onBack }: SkillVersionManagerProps) {
                                 if (instances.length === 1) {
                                     setSelectedSkill(instances[0]);
                                     setScanning(true);
-                                    await loadAvailableVersions(instances[0].skillName);
+                                    await loadAvailableVersions(instances[0]);
                                     setScanning(false);
                                     setSubScreen("select-version");
                                 } else {
@@ -407,7 +339,7 @@ export function SkillVersionManager({ onBack }: SkillVersionManagerProps) {
                             if (instance) {
                                 setSelectedSkill(instance);
                                 setScanning(true);
-                                await loadAvailableVersions(instance.skillName);
+                                await loadAvailableVersions(instance);
                                 setScanning(false);
                                 setSubScreen("select-version");
                             }
@@ -477,7 +409,7 @@ export function SkillVersionManager({ onBack }: SkillVersionManagerProps) {
                 <SelectInput
                     items={items}
                     itemComponent={VersionMenuItem}
-                    onHighlight={() => setVersionSelectionNotice(null)}
+                    onHighlight={() => { if (versionAvailability.length) setVersionSelectionNotice(null); }}
                     onSelect={(item) => {
                         if (item.value === "__back__") {
                             setSubScreen("skill-list");

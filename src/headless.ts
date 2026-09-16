@@ -95,283 +95,290 @@ export async function parseHeadlessConfig(configPath: string): Promise<HeadlessC
 // TODO(#39): wire _forceUpdate into the headless acquisition path so `agentman <url> --update`
 // bypasses the cached bundle in extractBundle (src/bundle/extractor.ts:33-37).
 // See https://github.com/ai-agent-manager/agent-manager/issues/39
+class HeadlessExitError extends Error {}
+
 export async function runHeadless(sourceInput: string, configPath: string, _forceUpdate: boolean): Promise<void> {
-  const config = await parseHeadlessConfig(configPath);
-  const repoRoot = process.cwd();
+  try {
+    const config = await parseHeadlessConfig(configPath);
+    const repoRoot = process.cwd();
 
-  console.log(`\n[agentman] Headless install`);
-  console.log(`  Config:  ${configPath}`);
-  console.log(`  Tools:   ${config.tools.join(", ")}`);
-  console.log(`  Scope:   ${config.scope}`);
-  console.log(`  Skills:  ${config.skills.join(", ")}\n`);
-  console.log(`  Bundle version: ${config.bundleVersion ?? "latest"}\n`);
+    console.log(`\n[agentman] Headless install`);
+    console.log(`  Config:  ${configPath}`);
+    console.log(`  Tools:   ${config.tools.join(", ")}`);
+    console.log(`  Scope:   ${config.scope}`);
+    console.log(`  Skills:  ${config.skills.join(", ")}\n`);
+    console.log(`  Bundle version: ${config.bundleVersion ?? "latest"}\n`);
 
-  // Resolve the source type (repo, artefact, or bundle)
-  const skillSource = await resolveSkillSource(sourceInput);
-  let allSkills: SkillInfo[];
-  let bundleVersion: string;
-  let sourcePin: SkillSourcePin | undefined;
+    // Resolve the source type (repo, artefact, or bundle)
+    const skillSource = await resolveSkillSource(sourceInput);
+    let allSkills: SkillInfo[];
+    let bundleVersion: string;
+    let sourcePin: SkillSourcePin | undefined;
 
-  // For bundle URLs, check if there's a discovery document available
-  let discovery: DiscoveryDocument | undefined;
-  if (isBundleSource(skillSource) && skillSource.baseUrl && !skillSource.dirPath) {
-    try {
-      discovery = await fetchDiscoveryDocument(skillSource.baseUrl);
-    } catch (error) {
-      if (!(error instanceof DiscoveryError) || error.status !== 404) {
-        throw error;
-      }
-      // No discovery document exists at this origin, so treat it as a legacy bundle.
-    }
-  }
-
-  // Handle each source type
-  if (discovery) {
-    // Discovery document found for bundle URL
-    console.log("[agentman] Discovery document found");
-
-    let accessToken: string | undefined;
-    let authSession: AuthSession | undefined;
-
-    if (discovery.auth?.required) {
-      const envToken = process.env['AGENTMAN_ACCESS_TOKEN'];
-      if (envToken) {
-        accessToken = envToken;
-        console.log('[agentman] Using access token from AGENTMAN_ACCESS_TOKEN');
-      } else {
-        console.log('[agentman] Attempting cached token authentication...');
-        await authenticate(
-          skillSource.type === 'bundle' && skillSource.baseUrl ? skillSource.baseUrl : '',
-          discovery.auth,
-          (url) => {
-            console.error(`\n[agentman] ERROR: Authentication required. Visit this URL to authorise:`);
-            console.error(`  ${url}\n`);
-            console.error(`  Or set AGENTMAN_ACCESS_TOKEN environment variable.\n`);
-            process.exit(1);
-          },
-        );
-        authSession = {
-          discoveryBaseUrl: skillSource.type === 'bundle' && skillSource.baseUrl ? skillSource.baseUrl : '',
-          auth: discovery.auth,
-        };
+    // For bundle URLs, check if there's a discovery document available
+    let discovery: DiscoveryDocument | undefined;
+    if (isBundleSource(skillSource) && skillSource.baseUrl && !skillSource.dirPath) {
+      try {
+        discovery = await fetchDiscoveryDocument(skillSource.baseUrl);
+      } catch (error) {
+        if (!(error instanceof DiscoveryError) || error.status !== 404) {
+          throw error;
+        }
+        // No discovery document exists at this origin, so treat it as a legacy bundle.
       }
     }
 
-    console.log(`[agentman] Resolving ${discovery.sources.length} source(s) from discovery document...`);
-    const result = await resolveDiscoverySkills(
-      discovery,
-      accessToken,
-      (msg) => console.log(`[agentman] ${msg}`),
-      {
-        artefactSha256: config.artefactSha256,
-        ...(authSession ? { authSession } : {}),
-      },
-    );
+    // Handle each source type
+    if (discovery) {
+      // Discovery document found for bundle URL
+      console.log("[agentman] Discovery document found");
 
-    for (const { source: failedSource, error, isIntegrity } of result.errors) {
-      if (isIntegrity) {
-        console.error(`[agentman] ERROR: Integrity check failed for '${failedSource.name}': ${error}`);
-      } else {
-        console.warn(`[agentman] WARNING: Failed to resolve source '${failedSource.name}': ${error}`);
+      let accessToken: string | undefined;
+      let authSession: AuthSession | undefined;
+
+      if (discovery.auth?.required) {
+        const envToken = process.env['AGENTMAN_ACCESS_TOKEN'];
+        if (envToken) {
+          accessToken = envToken;
+          console.log('[agentman] Using access token from AGENTMAN_ACCESS_TOKEN');
+        } else {
+          console.log('[agentman] Attempting cached token authentication...');
+          await authenticate(
+            skillSource.type === 'bundle' && skillSource.baseUrl ? skillSource.baseUrl : '',
+            discovery.auth,
+            (url) => {
+              console.error(`\n[agentman] ERROR: Authentication required. Visit this URL to authorise:`);
+              console.error(`  ${url}\n`);
+              console.error(`  Or set AGENTMAN_ACCESS_TOKEN environment variable.\n`);
+              throw new HeadlessExitError();
+            },
+          );
+          authSession = {
+            discoveryBaseUrl: skillSource.type === 'bundle' && skillSource.baseUrl ? skillSource.baseUrl : '',
+            auth: discovery.auth,
+          };
+        }
       }
-    }
 
-    const hasIntegrityError = result.errors.some((e) => e.isIntegrity);
-    if (hasIntegrityError) {
-      process.exit(1);
-    }
+      console.log(`[agentman] Resolving ${discovery.sources.length} source(s) from discovery document...`);
+      const result = await resolveDiscoverySkills(
+        discovery,
+        accessToken,
+        (msg) => console.log(`[agentman] ${msg}`),
+        {
+          artefactSha256: config.artefactSha256,
+          ...(authSession ? { authSession } : {}),
+        },
+      );
 
-    allSkills = result.skills;
-    bundleVersion = result.bundleVersion ?? "discovery";
+      for (const { source: failedSource, error, isIntegrity } of result.errors) {
+        if (isIntegrity) {
+          console.error(`[agentman] ERROR: Integrity check failed for '${failedSource.name}': ${error}`);
+        } else {
+          console.warn(`[agentman] WARNING: Failed to resolve source '${failedSource.name}': ${error}`);
+        }
+      }
 
-    if (isProjectsExclusiveSource(discovery.projects)) {
-      const apiBaseUrl = resolveApiBaseUrl(discovery.api?.baseUrl);
-      if (!apiBaseUrl) {
-        console.error(
-          '\n[agentman] ERROR: projects.exclusiveSource is enabled but no API base URL is configured.\n' +
+      const hasIntegrityError = result.errors.some((e) => e.isIntegrity);
+      if (hasIntegrityError) {
+        throw new HeadlessExitError();
+      }
+
+      allSkills = result.skills;
+      bundleVersion = result.bundleVersion ?? "discovery";
+
+      if (isProjectsExclusiveSource(discovery.projects)) {
+        const apiBaseUrl = resolveApiBaseUrl(discovery.api?.baseUrl);
+        if (!apiBaseUrl) {
+          console.error(
+            '\n[agentman] ERROR: projects.exclusiveSource is enabled but no API base URL is configured.\n' +
             '  Set api.baseUrl in the discovery document or API_BASE_URL.\n',
-        );
-        process.exit(1);
-      }
+          );
+          throw new HeadlessExitError();
+        }
 
-      let apiAuth: ApiAuth | undefined;
-      if (accessToken) {
-        apiAuth = { bearerToken: accessToken };
-      } else if (authSession) {
-        apiAuth = authSession;
-      } else {
-        console.error(
-          '\n[agentman] ERROR: projects.exclusiveSource requires authentication to resolve project memberships.\n' +
+        let apiAuth: ApiAuth | undefined;
+        if (accessToken) {
+          apiAuth = { bearerToken: accessToken };
+        } else if (authSession) {
+          apiAuth = authSession;
+        } else {
+          console.error(
+            '\n[agentman] ERROR: projects.exclusiveSource requires authentication to resolve project memberships.\n' +
             '  Set AGENTMAN_ACCESS_TOKEN or complete interactive login first.\n',
-        );
-        process.exit(1);
-      }
+          );
+          throw new HeadlessExitError();
+        }
 
-      console.log('[agentman] Loading project memberships (exclusiveSource)...');
-      const membershipProjects = await listProjects(apiBaseUrl, apiAuth);
-      const catalogueScope = resolveCatalogueScope({
-        exclusiveSource: true,
-        membershipProjects,
-      });
-      const { permitted, excluded } = partitionSkillsByScope(allSkills, catalogueScope);
-      allSkills = permitted;
-      if (excluded.length > 0) {
-        console.log(
-          `[agentman] Exclusive catalogue: ${permitted.length} skill(s) permitted by project membership ` +
+        console.log('[agentman] Loading project memberships (exclusiveSource)...');
+        const membershipProjects = await listProjects(apiBaseUrl, apiAuth);
+        const catalogueScope = resolveCatalogueScope({
+          exclusiveSource: true,
+          membershipProjects,
+        });
+        const { permitted, excluded } = partitionSkillsByScope(allSkills, catalogueScope);
+        allSkills = permitted;
+        if (excluded.length > 0) {
+          console.log(
+            `[agentman] Exclusive catalogue: ${permitted.length} skill(s) permitted by project membership ` +
             `(${excluded.length} excluded)`,
-        );
+          );
+        }
       }
-    }
-  } else if (isRepoSource(skillSource)) {
-    // GitHub repository source
-    console.log(`[agentman] Downloading repository: ${skillSource.repoUrl}`);
-    const token = process.env.GITHUB_TOKEN;
-    const { extractDir } = await downloadRepoArchive(skillSource, { forceUpdate: _forceUpdate, token });
+    } else if (isRepoSource(skillSource)) {
+      // GitHub repository source
+      console.log(`[agentman] Downloading repository: ${skillSource.repoUrl}`);
+      const token = process.env.GITHUB_TOKEN;
+      const { extractDir } = await downloadRepoArchive(skillSource, { forceUpdate: _forceUpdate, token });
 
-    console.log("[agentman] Scanning for skills...");
-    const scanResult = await scanRepoForSkills(extractDir, skillSource);
+      console.log("[agentman] Scanning for skills...");
+      const scanResult = await scanRepoForSkills(extractDir, skillSource);
 
-    allSkills = scanResult.skills;
-    bundleVersion = '';
-    sourcePin = buildSourcePin(skillSource);
-  } else if (isArtefactSource(skillSource)) {
-    // Artefact (.zip) source
-    console.log(`[agentman] Downloading artefact: ${skillSource.artefactUrl}`);
-    const artefactSource = config.artefactSha256 ? { ...skillSource, sha256: config.artefactSha256 } : skillSource;
-    const download = await downloadArtefact(artefactSource, { forceUpdate: _forceUpdate });
+      allSkills = scanResult.skills;
+      bundleVersion = '';
+      sourcePin = buildSourcePin(skillSource);
+    } else if (isArtefactSource(skillSource)) {
+      // Artefact (.zip) source
+      console.log(`[agentman] Downloading artefact: ${skillSource.artefactUrl}`);
+      const artefactSource = config.artefactSha256 ? { ...skillSource, sha256: config.artefactSha256 } : skillSource;
+      const download = await downloadArtefact(artefactSource, { forceUpdate: _forceUpdate });
 
-    console.log("[agentman] Scanning for skills...");
-    const scanResult = await scanArtefactForSkills(download.extractDir, artefactSource);
+      console.log("[agentman] Scanning for skills...");
+      const scanResult = await scanArtefactForSkills(download.extractDir, artefactSource);
 
-    allSkills = scanResult.skills;
-    bundleVersion = '';
-    sourcePin = buildSourcePin({
-      ...artefactSource,
-      sha256: download.sha256 ?? artefactSource.sha256,
-      version: download.version,
-    });
-  } else if (isBundleSource(skillSource)) {
-    // Legacy bundle source (URL or directory)
-    let bundleDir: string;
+      allSkills = scanResult.skills;
+      bundleVersion = '';
+      sourcePin = buildSourcePin({
+        ...artefactSource,
+        sha256: download.sha256 ?? artefactSource.sha256,
+        version: download.version,
+      });
+    } else if (isBundleSource(skillSource)) {
+      // Legacy bundle source (URL or directory)
+      let bundleDir: string;
 
-    if (skillSource.baseUrl) {
-      // HTTP bundle URL
-      console.log("[agentman] Downloading bundle...");
-      const { zipPath } = await downloadBundle(skillSource.baseUrl, config.bundleVersion);
-      console.log("[agentman] Extracting bundle...");
-      const result = await extractBundle(zipPath);
-      bundleDir = result.bundleDir;
-      bundleVersion = result.manifest.version;
-      if (result.isNew) {
-        await setCurrentBundle(bundleVersion);
+      if (skillSource.baseUrl) {
+        // HTTP bundle URL
+        console.log("[agentman] Downloading bundle...");
+        const { zipPath } = await downloadBundle(skillSource.baseUrl, config.bundleVersion);
+        console.log("[agentman] Extracting bundle...");
+        const result = await extractBundle(zipPath, { contentRoot: skillSource.baseUrl });
+        bundleDir = result.bundleDir;
+        bundleVersion = result.manifest.version;
+        if (result.isNew) {
+          await setCurrentBundle(bundleVersion);
+        }
+        sourcePin = buildSourcePin(skillSource, bundleVersion);
+      } else {
+        // Local directory bundle
+        console.log("[agentman] Importing local bundle...");
+        const result = await importLocalBundle(skillSource.dirPath!);
+        bundleDir = result.bundleDir;
+        bundleVersion = result.manifest.version;
+        sourcePin = buildPinForDirectorySource(skillSource.dirPath!, bundleVersion);
       }
-      sourcePin = buildSourcePin(skillSource, bundleVersion);
+
+      console.log(`[agentman] Bundle version: ${bundleVersion}`);
+      const contents = await scanBundle(bundleDir);
+      allSkills = contents.skills;
     } else {
-      // Local directory bundle
-      console.log("[agentman] Importing local bundle...");
-      const result = await importLocalBundle(skillSource.dirPath!);
-      bundleDir = result.bundleDir;
-      bundleVersion = result.manifest.version;
-      sourcePin = buildPinForDirectorySource(skillSource.dirPath!, bundleVersion);
+      // This should never happen with the discriminated union
+      throw new Error(`Unknown source type: ${(skillSource as SkillSource).type}`);
     }
 
-    console.log(`[agentman] Bundle version: ${bundleVersion}`);
-    const contents = await scanBundle(bundleDir);
-    allSkills = contents.skills;
-  } else {
-    // This should never happen with the discriminated union
-    throw new Error(`Unknown source type: ${(skillSource as SkillSource).type}`);
-  }
-
-  // Key by qualified identity so same-named skills from different sources both survive.
-  // Two distinct sources collapsing onto one identity means a namespace-derivation gap;
-  // warn rather than let the Map drop one of them silently.
-  const availableSkills = new Map<string, (typeof allSkills)[number]>();
-  for (const skill of allSkills) {
-    const key = deriveSkillInstallKey(skill);
-    const previous = availableSkills.get(key);
-    if (previous && previous.dirPath !== skill.dirPath) {
-      console.warn(
-        `\n[agentman] WARNING: two sources resolved to the same identity '${key}'\n` +
+    // Key by qualified identity so same-named skills from different sources both survive.
+    // Two distinct sources collapsing onto one identity means a namespace-derivation gap;
+    // warn rather than let the Map drop one of them silently.
+    const availableSkills = new Map<string, (typeof allSkills)[number]>();
+    for (const skill of allSkills) {
+      const key = deriveSkillInstallKey(skill);
+      const previous = availableSkills.get(key);
+      if (previous && previous.dirPath !== skill.dirPath) {
+        console.warn(
+          `\n[agentman] WARNING: two sources resolved to the same identity '${key}'\n` +
           `  ${previous.dirPath}\n  ${skill.dirPath}\n` +
           `  Only the second will be installed.`,
-      );
+        );
+      }
+      availableSkills.set(key, skill);
     }
-    availableSkills.set(key, skill);
-  }
 
-  // Match requested skills (bare names from config resolved to qualified keys).
-  const toInstall = [];
-  const notFound = [];
-  const ambiguous: string[] = [];
+    // Match requested skills (bare names from config resolved to qualified keys).
+    const toInstall = [];
+    const notFound = [];
+    const ambiguous: string[] = [];
 
-  for (const skillName of config.skills) {
-    // The filter covers exact keys (flat installs) and bare names ending a qualified key.
-    // Running every request through the same path catches the case where a bare name
-    // matches both a flat key and a namespaced key — that must raise ambiguity, not
-    // silently pick the flat one.
-    const matches = [...availableSkills.keys()].filter(
-      (k) => k === skillName || k.endsWith('/' + skillName),
-    );
-    if (matches.length === 1) {
-      toInstall.push(availableSkills.get(matches[0])!);
-    } else if (matches.length > 1) {
-      console.error(
-        `\n[agentman] ERROR: '${skillName}' is ambiguous — it matches multiple sources.\n` +
+    for (const skillName of config.skills) {
+      // The filter covers exact keys (flat installs) and bare names ending a qualified key.
+      // Running every request through the same path catches the case where a bare name
+      // matches both a flat key and a namespaced key — that must raise ambiguity, not
+      // silently pick the flat one.
+      const matches = [...availableSkills.keys()].filter(
+        (k) => k === skillName || k.endsWith('/' + skillName),
+      );
+      if (matches.length === 1) {
+        toInstall.push(availableSkills.get(matches[0])!);
+      } else if (matches.length > 1) {
+        console.error(
+          `\n[agentman] ERROR: '${skillName}' is ambiguous — it matches multiple sources.\n` +
           `  Use one of these qualified names in the config file instead:\n` +
           matches.map((m) => `  - ${m}`).join('\n'),
-      );
-      ambiguous.push(skillName);
-    } else {
-      notFound.push(skillName);
-    }
-  }
-
-  if (notFound.length > 0) {
-    console.warn(`\n[agentman] WARNING: The following skills were not found:`);
-    for (const name of notFound) {
-      console.warn(`  - ${name}`);
-    }
-    console.warn(`\n  Available skills: ${[...availableSkills.keys()].join(", ")}`);
-  }
-
-  if (notFound.length > 0 || ambiguous.length > 0) {
-    console.error("\n[agentman] ERROR: Requested skill set is invalid. Nothing was installed.");
-    process.exit(1);
-  }
-
-  if (toInstall.length === 0) {
-    console.error("\n[agentman] ERROR: No valid skills to install. Exiting.");
-    process.exit(1);
-  }
-
-  // Install for each tool in sequence
-  let hasErrors = false;
-
-  for (const toolId of config.tools) {
-    console.log(`\n[agentman] Installing ${toInstall.length} skill(s) for ${toolId}...`);
-    const provisioner = createSkillProvisioner(toolId, config.scope, repoRoot);
-    const result = await provisioner.install(toInstall, bundleVersion, sourcePin);
-
-    if (result.installed.length > 0) {
-      console.log(`[agentman] Installed (${toolId}):`);
-      for (const item of result.installed) {
-        console.log(`  ✓ ${item.name} (${item.method}) → ${item.path}`);
+        );
+        ambiguous.push(skillName);
+      } else {
+        notFound.push(skillName);
       }
     }
 
-    if (result.errors.length > 0) {
-      console.error(`[agentman] Errors (${toolId}):`);
-      for (const err of result.errors) {
-        console.error(`  ✗ ${err.name}: ${err.error}`);
+    if (notFound.length > 0) {
+      console.warn(`\n[agentman] WARNING: The following skills were not found:`);
+      for (const name of notFound) {
+        console.warn(`  - ${name}`);
       }
-      hasErrors = true;
+      console.warn(`\n  Available skills: ${[...availableSkills.keys()].join(", ")}`);
     }
-  }
 
-  if (hasErrors) {
-    process.exit(1);
-  }
+    if (notFound.length > 0 || ambiguous.length > 0) {
+      console.error("\n[agentman] ERROR: Requested skill set is invalid. Nothing was installed.");
+      throw new HeadlessExitError();
+    }
 
-  console.log(`\n[agentman] Done.\n`);
+    if (toInstall.length === 0) {
+      console.error("\n[agentman] ERROR: No valid skills to install. Exiting.");
+      throw new HeadlessExitError();
+    }
+
+    // Install for each tool in sequence
+    let hasErrors = false;
+
+    for (const toolId of config.tools) {
+      console.log(`\n[agentman] Installing ${toInstall.length} skill(s) for ${toolId}...`);
+      const provisioner = createSkillProvisioner(toolId, config.scope, repoRoot);
+      const result = await provisioner.install(toInstall, bundleVersion, sourcePin);
+
+      if (result.installed.length > 0) {
+        console.log(`[agentman] Installed (${toolId}):`);
+        for (const item of result.installed) {
+          console.log(`  ✓ ${item.name} (${item.method}) → ${item.path}`);
+        }
+      }
+
+      if (result.errors.length > 0) {
+        console.error(`[agentman] Errors (${toolId}):`);
+        for (const err of result.errors) {
+          console.error(`  ✗ ${err.name}: ${err.error}`);
+        }
+        hasErrors = true;
+      }
+    }
+
+    if (hasErrors) {
+      throw new HeadlessExitError();
+    }
+
+    console.log(`\n[agentman] Done.\n`);
+  } catch (error) {
+    if (error instanceof HeadlessExitError) process.exit(1);
+    throw error;
+  }
 }

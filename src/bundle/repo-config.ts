@@ -1,3 +1,5 @@
+import { registerRepository } from './references.js';
+import { withMutation } from '../lib/mutation.js';
 import { readFile, rename } from "node:fs/promises";
 import path from "node:path";
 import type { SkillSourcePin } from "./skill-source.js";
@@ -95,7 +97,10 @@ export async function readRepoConfig(repoRoot: string): Promise<RepoAgentmanConf
  * partially-written file.
  */
 export async function writeRepoConfig(repoRoot: string, config: RepoAgentmanConfig): Promise<void> {
-    await writeFileAtomic(getRepoConfigPath(repoRoot), JSON.stringify(config, null, 2) + "\n");
+    return withMutation(async () => {
+        await registerRepository(repoRoot);
+        await writeFileAtomic(getRepoConfigPath(repoRoot), JSON.stringify(config, null, 2) + "\n");
+    });
 }
 
 /**
@@ -108,12 +113,14 @@ export async function updateRepoConfig(
     repoRoot: string,
     mutate: (config: RepoAgentmanConfig, wasCreated: boolean) => RepoAgentmanConfig | void,
 ): Promise<RepoAgentmanConfig> {
-    return withLock(getRepoConfigLockPath(repoRoot), async () => {
-        const existing = await readRepoConfig(repoRoot);
-        const config: RepoAgentmanConfig = existing ?? { installations: {} };
-        const result = mutate(config, existing === null) ?? config;
-        await writeRepoConfig(repoRoot, result);
-        return result;
+    return withMutation(async () => {
+        return withLock(getRepoConfigLockPath(repoRoot), async () => {
+            const existing = await readRepoConfig(repoRoot);
+            const config: RepoAgentmanConfig = existing ?? { installations: {} };
+            const result = mutate(config, existing === null) ?? config;
+            await writeRepoConfig(repoRoot, result);
+            return result;
+        });
     });
 }
 
@@ -148,19 +155,21 @@ export async function recordRepoInstall(
  * Remove a skill installation record from the repo config.
  */
 export async function removeRepoInstallRecord(repoRoot: string, toolId: string, skillName: string): Promise<void> {
-    // Nothing to remove from a config that doesn't exist yet — and creating
-    // one here would leave a stray .agentman.json where none existed before.
-    const existing = await readRepoConfig(repoRoot);
-    if (!existing) return;
+    return withMutation(async () => {
+        // Nothing to remove from a config that doesn't exist yet — and creating
+        // one here would leave a stray .agentman.json where none existed before.
+        const existing = await readRepoConfig(repoRoot);
+        if (!existing) return;
 
-    await updateRepoConfig(repoRoot, (config) => {
-        if (config.installations[toolId]) {
-            delete config.installations[toolId][skillName];
-            // Clean up empty tool entries
-            if (Object.keys(config.installations[toolId]).length === 0) {
-                delete config.installations[toolId];
+        await updateRepoConfig(repoRoot, (config) => {
+            if (config.installations[toolId]) {
+                delete config.installations[toolId][skillName];
+                // Clean up empty tool entries
+                if (Object.keys(config.installations[toolId]).length === 0) {
+                    delete config.installations[toolId];
+                }
             }
-        }
+        });
     });
 }
 

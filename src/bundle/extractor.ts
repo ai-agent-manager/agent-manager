@@ -1,3 +1,9 @@
+import { adoptBundle } from './adoption.js';
+import { withMutation } from '../lib/mutation.js';
+import { assertCacheDestination } from './version-identity.js';
+import { randomUUID } from 'node:crypto';
+import { OperationConflictError } from '../lib/mutation.js';
+import { assertBundleUnreferenced } from './references.js';
 import { mkdir, readFile, rm, rename, writeFile } from 'node:fs/promises';
 import extractZip from 'extract-zip';
 import path from 'node:path';
@@ -13,7 +19,8 @@ export interface ExtractResult {
 }
 
 /**
- * Either both source-scoping fields or neither.
+ * A named source requires a content root. Flat HTTP downloads may also attest
+ * their content root; unqualified extracts remain unsupported for version management.
  *
  * A key without a content root would place the bundle in the source-scoped
  * cache while skipping every provenance step — including the staged-marker
@@ -24,16 +31,16 @@ export interface ExtractResult {
  */
 export type ExtractBundleOptions =
   | {
-      /** Legacy global cache, keyed by manifest version alone. */
-      sourceKey?: never;
-      contentRoot?: never;
-    }
+    /** Legacy global cache, keyed by manifest version alone. */
+    sourceKey?: never;
+    contentRoot?: string;
+  }
   | {
-      /** Stable HTTP source key for the source-scoped cache. */
-      sourceKey: string;
-      /** Content root this bundle came from, recorded as its provenance. */
-      contentRoot: string;
-    };
+    /** Stable HTTP source key for the source-scoped cache. */
+    sourceKey: string;
+    /** Content root this bundle came from, recorded as its provenance. */
+    contentRoot: string;
+  };
 
 /** Directory the source-scoped cache tree occupies inside the bundles dir. */
 const SOURCES_SUBTREE = 'sources';
@@ -70,7 +77,7 @@ export async function extractBundle(zipPath: string, options: ExtractBundleOptio
   const contentRoot = options.contentRoot ? canonicaliseContentRoot(options.contentRoot) : undefined;
 
   // First, extract to a temp dir to read the manifest
-  const tempExtractDir = `${getTempDir()}/extract-${Date.now()}`;
+  const tempExtractDir = `${getTempDir()}/extract-${randomUUID()}`;
   await mkdir(tempExtractDir, { recursive: true });
 
   try {
@@ -104,66 +111,87 @@ export async function extractBundle(zipPath: string, options: ExtractBundleOptio
       ? path.join(sourceDir, manifest.version)
       : getBundleVersionDir(manifest.version);
 
-    // Provenance is only meaningful for source-scoped caches; the legacy cache
-    // is keyed by version alone and has no source to attribute.
-    let reusable = true;
-    if (sourceDir && contentRoot) {
-      // Reported even when the requested version differs, so two documents
-      // sharing a source name surface as an error rather than quietly
-      // accumulating side by side in one cache.
-      const declared = await readProvenance(path.join(sourceDir, SOURCE_MARKER));
-      if (declared.kind === 'present' && declared.contentRoot !== contentRoot) {
-        throw collisionError(options.sourceKey!, declared.contentRoot, contentRoot, sourceDir);
+    return await withMutation(async () => {
+      await assertCacheDestination(targetDir);
+
+      // Provenance is only meaningful for source-scoped caches; the legacy cache
+      // is keyed by version alone and has no source to attribute.
+      let reusable = true;
+      if (sourceDir && contentRoot) {
+        // Reported even when the requested version differs, so two documents
+        // sharing a source name surface as an error rather than quietly
+        // accumulating side by side in one cache.
+        const declared = await readProvenance(path.join(sourceDir, SOURCE_MARKER));
+        if (declared.kind === 'present' && declared.contentRoot !== contentRoot) {
+          throw collisionError(options.sourceKey!, declared.contentRoot, contentRoot, sourceDir);
+        }
+
+        const attested = await readProvenance(path.join(targetDir, VERSION_MARKER));
+        if (attested.kind === 'present' && attested.contentRoot !== contentRoot) {
+          throw collisionError(options.sourceKey!, attested.contentRoot, contentRoot, sourceDir);
+        }
+
+        // Only this version's own provenance may authorise reuse. Absent or
+        // unreadable means these contents cannot be attributed, so they are
+        // replaced rather than vouched for.
+        reusable = attested.kind === 'present';
       }
 
-      const attested = await readProvenance(path.join(targetDir, VERSION_MARKER));
-      if (attested.kind === 'present' && attested.contentRoot !== contentRoot) {
-        throw collisionError(options.sourceKey!, attested.contentRoot, contentRoot, sourceDir);
+      if (!sourceDir && contentRoot && await dirExists(targetDir)) {
+        const attested = await readProvenance(path.join(targetDir, VERSION_MARKER));
+        if (attested.kind === 'absent') {
+          await adoptBundle(targetDir, tempExtractDir, { contentRoot });
+        } else if (attested.kind !== 'present' || attested.contentRoot !== contentRoot) {
+          throw new OperationConflictError('Cached version belongs to a different source or has unreadable provenance.');
+        }
+      }
+      if (reusable && (await dirExists(targetDir))) {
+        // Clean up temp extraction
+        await rm(tempExtractDir, { recursive: true, force: true });
+        return { manifest, bundleDir: targetDir, isNew: false };
       }
 
-      // Only this version's own provenance may authorise reuse. Absent or
-      // unreadable means these contents cannot be attributed, so they are
-      // replaced rather than vouched for.
-      reusable = attested.kind === 'present';
-    }
+      const replacesExisting = await dirExists(targetDir);
+      // Repairing an old cache cannot retroactively register its repository users.
+      const trackedReferences = !replacesExisting;
 
-    if (reusable && (await dirExists(targetDir))) {
-      // Clean up temp extraction
-      await rm(tempExtractDir, { recursive: true, force: true });
-      return { manifest, bundleDir: targetDir, isNew: false };
-    }
+      // Written into the staging directory so the rename below publishes content
+      // and provenance together — there is no window in which the version is
+      // visible without the record of where it came from. A bundle shipping its
+      // own file by this name would have it replaced in the cache; the leading dot
+      // keeps it out of the scanner's way, which skips dotfiles and non-directories.
+      {
+        const stagedMarker = path.join(tempExtractDir, VERSION_MARKER);
+        // Cleared first: whatever the archive shipped under this name is the
+        // publisher's own file, never provenance, and a directory there would
+        // otherwise fail the write with a bare EISDIR.
+        await rm(stagedMarker, { recursive: true, force: true });
+        if (contentRoot) await writeFile(stagedMarker, `${JSON.stringify({ contentRoot, trackedReferences }, null, 2)}\n`, 'utf-8');
+      }
 
-    // Written into the staging directory so the rename below publishes content
-    // and provenance together — there is no window in which the version is
-    // visible without the record of where it came from. A bundle shipping its
-    // own file by this name would have it replaced in the cache; the leading dot
-    // keeps it out of the scanner's way, which skips dotfiles and non-directories.
-    if (sourceDir && contentRoot) {
-      const stagedMarker = path.join(tempExtractDir, VERSION_MARKER);
-      // Cleared first: whatever the archive shipped under this name is the
-      // publisher's own file, never provenance, and a directory there would
-      // otherwise fail the write with a bare EISDIR.
-      await rm(stagedMarker, { recursive: true, force: true });
-      await writeFile(stagedMarker, `${JSON.stringify({ contentRoot }, null, 2)}\n`, 'utf-8');
-    }
+      // Move to the permanent cache location
+      await mkdir(path.dirname(targetDir), { recursive: true });
+      // Use rename-like approach: extract directly to target
+      if (replacesExisting) await assertBundleUnreferenced(manifest.version);
+      await rm(targetDir, { recursive: true, force: true });
+      await rename(tempExtractDir, targetDir);
 
-    // Move to the permanent cache location
-    await mkdir(path.dirname(targetDir), { recursive: true });
-    // Use rename-like approach: extract directly to target
-    await rm(targetDir, { recursive: true, force: true });
-    await rename(tempExtractDir, targetDir);
+      // Detection only, and deliberately after the version is published: losing
+      // this file costs an error message, never the reuse guarantee above.
+      if (sourceDir && contentRoot) {
+        await writeSourceMarker(sourceDir, contentRoot);
+      }
 
-    // Detection only, and deliberately after the version is published: losing
-    // this file costs an error message, never the reuse guarantee above.
-    if (sourceDir && contentRoot) {
-      await writeSourceMarker(sourceDir, contentRoot);
-    }
-
-    return { manifest, bundleDir: targetDir, isNew: true };
+      return { manifest, bundleDir: targetDir, isNew: true };
+    });
   } catch (error) {
     // Clean up on failure
     await rm(tempExtractDir, { recursive: true, force: true }).catch(() => {});
     throw error;
+  } finally {
+    if (path.dirname(zipPath) === getTempDir() && /-[0-9a-f]{8}-[0-9a-f-]{27}/.test(path.basename(zipPath))) {
+      await rm(zipPath, { force: true }).catch(() => {});
+    }
   }
 }
 
@@ -177,9 +205,9 @@ function collisionError(
 ): Error {
   return new Error(
     `Source '${sourceKey}' is already cached from a different content root. ` +
-      `Cached: ${cached}. Requested: ${requested}. ` +
-      `Two discovery documents are using one source name for different publishers; ` +
-      `rename one of them, or remove ${sourceDir} to start over.`,
+    `Cached: ${cached}. Requested: ${requested}. ` +
+    `Two discovery documents are using one source name for different publishers; ` +
+    `rename one of them, or remove ${sourceDir} to start over.`,
   );
 }
 

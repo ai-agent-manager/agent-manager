@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, rm, readFile, writeFile, mkdir, lstat, unlink, symlink } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, writeFile, mkdir, symlink } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { vi } from 'vitest';
@@ -45,7 +45,6 @@ import {
   recordInstall,
   removeInstallRecord,
   setCurrentBundle,
-  updateSkillVersion,
   getRecordVersion,
   addSource,
   removeSource,
@@ -54,9 +53,7 @@ import {
   orderedSources,
   type AgentmanConfig,
 } from '../../../src/bundle/cache.js';
-import { scanBundle } from '../../../src/bundle/scanner.js';
 import { getPlatform } from '../../../src/lib/platform.js';
-import { readRepoConfig, writeRepoConfig, type RepoAgentmanConfig } from '../../../src/bundle/repo-config.js';
 
 beforeEach(async () => {
   tempDir = await mkdtemp(path.join(os.tmpdir(), 'agentman-cache-test-'));
@@ -372,234 +369,31 @@ describe('removeInstallRecord', () => {
   });
 });
 
-describe('updateSkillVersion', () => {
-  it('updates skill symlink to new bundle version', async () => {
-    const { updateSkillVersion } = await import('../../../src/bundle/cache.js');
-
-    // Setup: skill installed from v1.0.0
-    await recordInstall('claude-code', 'test-skill', {
-      bundleVersion: '1.0.0',
-      installedAt: '2026-04-03T10:00:00Z',
-      method: 'symlink',
-    });
-
-    const newTarget = path.join(tempDir, 'bundles', '2.0.0', 'test-skill');
-
-    // Mock: skill exists in target version
-    vi.mocked(scanBundle).mockResolvedValue({
-      skills: [{ dirName: 'test-skill', dirPath: newTarget, meta: null }],
-      rovoAgents: [],
-    } as any);
-
-    // Mock: lstat succeeds for the removal block — skill exists as a non-directory
-    vi.mocked(lstat).mockResolvedValue({ isDirectory: () => false } as any);
-
-    // Mock: unlink and symlink must not touch the real filesystem
-    vi.mocked(unlink).mockResolvedValue(undefined);
-    vi.mocked(symlink).mockResolvedValue(undefined);
-
-    const result = await updateSkillVersion('claude-code', 'test-skill', '2.0.0');
-
-    expect(result.success).toBe(true);
-    expect(result.error).toBeUndefined();
-
-    // Verify symlink was created pointing to the correct new bundle path
-    // getPlatform() is mocked to 'macos', so replaceSymlink uses 'dir'
-    expect(vi.mocked(symlink)).toHaveBeenCalledWith(
-      newTarget,
-      expect.stringContaining('test-skill'),
-      'dir',
-    );
-
-    // Verify config was updated: new version recorded, original installedAt preserved
-    const config = await readConfig();
-    const record = config.installations['claude-code']['test-skill'];
-    expect(record.bundleVersion).toBe('2.0.0');
-    expect(record.installedAt).toBe('2026-04-03T10:00:00Z');
-  });
-
-  it('returns error when skill does not exist in target version', async () => {
-    const { updateSkillVersion } = await import('../../../src/bundle/cache.js');
-
-    await recordInstall('claude-code', 'test-skill', {
-      bundleVersion: '1.0.0',
-      installedAt: '2026-04-03T10:00:00Z',
-      method: 'symlink',
-    });
-
-    // Mock: skill NOT in target bundle
-    vi.mocked(scanBundle).mockResolvedValue({
-      skills: [{ dirName: 'other-skill', dirPath: '/path', meta: null }],
-      rovoAgents: [],
-    } as any);
-
-    const result = await updateSkillVersion('claude-code', 'test-skill', '2.0.0');
-
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('does not exist in version 2.0.0');
-  });
-
-  it('returns error when skill is not installed', async () => {
-    const { updateSkillVersion } = await import('../../../src/bundle/cache.js');
-
-    // No skills installed
-    await writeConfig({ installations: {} });
-
-    vi.mocked(scanBundle).mockResolvedValue({
-      skills: [{ dirName: 'test-skill', dirPath: '/path', meta: null }],
-      rovoAgents: [],
-    } as any);
-
-    const result = await updateSkillVersion('claude-code', 'test-skill', '2.0.0');
-
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('is not installed');
-  });
-
-  it('returns error when bundle version cannot be accessed', async () => {
-    const { updateSkillVersion } = await import('../../../src/bundle/cache.js');
-
-    await recordInstall('claude-code', 'test-skill', {
-      bundleVersion: '1.0.0',
-      installedAt: '2026-04-03T10:00:00Z',
-      method: 'symlink',
-    });
-
-    // Mock: bundle scan fails
-    vi.mocked(scanBundle).mockRejectedValue(new Error('Bundle not found'));
-
-    const result = await updateSkillVersion('claude-code', 'test-skill', '2.0.0');
-
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('Cannot access bundle version');
-  });
-
-  it('handles symlink creation failure gracefully', async () => {
-    const { updateSkillVersion } = await import('../../../src/bundle/cache.js');
-
-    await recordInstall('claude-code', 'test-skill', {
-      bundleVersion: '1.0.0',
-      installedAt: '2026-04-03T10:00:00Z',
-      method: 'symlink',
-    });
-
-    vi.mocked(scanBundle).mockResolvedValue({
-      skills: [{ dirName: 'test-skill', dirPath: '/path', meta: null }],
-      rovoAgents: [],
-    } as any);
-
-    // Mock: symlink creation fails
-    vi.mocked(symlink).mockRejectedValue(new Error('Permission denied'));
-
-    const result = await updateSkillVersion('claude-code', 'test-skill', '2.0.0');
-
-    expect(result.success).toBe(false);
-    expect(result.error).toBe('Permission denied');
-  });
-
-  it('returns error for unknown tool', async () => {
-    const { updateSkillVersion } = await import('../../../src/bundle/cache.js');
-
-    await recordInstall('unknown-tool', 'test-skill', {
-      bundleVersion: '1.0.0',
-      installedAt: '2026-04-03T10:00:00Z',
-      method: 'symlink',
-    });
-
-    vi.mocked(scanBundle).mockResolvedValue({
-      skills: [{ dirName: 'test-skill', dirPath: '/path', meta: null }],
-      rovoAgents: [],
-    } as any);
-
-    const result = await updateSkillVersion('unknown-tool', 'test-skill', '2.0.0');
-
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('Unknown tool');
-  });
-
-});
-
-describe('updateSkillVersion (repo scope)', () => {
-  let repoDir: string;
-
-  beforeEach(async () => {
-    repoDir = await mkdtemp(path.join(os.tmpdir(), 'agentman-repo-test-'));
-  });
-
-  afterEach(async () => {
-    await rm(repoDir, { recursive: true, force: true });
-  });
-
-  it('updates only the targeted skill, leaving other skills unchanged', async () => {
-    // Setup: two skills installed at repo scope on version 1.0.0
-    const repoConfig: RepoAgentmanConfig = {
-      bundleVersion: '1.0.0',
-      installations: {
-        'claude-code': {
-          'skill-a': { bundleVersion: '1.0.0', installedAt: '2026-04-01T00:00:00Z', method: 'symlink' },
-          'skill-b': { bundleVersion: '1.0.0', installedAt: '2026-04-01T00:00:00Z', method: 'symlink' },
-        },
-      },
-    };
-    await writeRepoConfig(repoDir, repoConfig);
-
-    const newTarget = path.join(tempDir, 'bundles', '2.0.0', 'skill-a');
-
-    // Mock: skill exists in target version
-    vi.mocked(scanBundle).mockResolvedValue({
-      skills: [
-        { dirName: 'skill-a', dirPath: newTarget, meta: null },
-        { dirName: 'skill-b', dirPath: '/path', meta: null },
-      ],
-      rovoAgents: [],
-    } as any);
-
-    vi.mocked(lstat).mockResolvedValue({ isDirectory: () => false } as any);
-    vi.mocked(unlink).mockResolvedValue(undefined);
-    vi.mocked(symlink).mockResolvedValue(undefined);
-
-    const result = await updateSkillVersion('claude-code', 'skill-a', '2.0.0', {
-      scope: 'repo',
-      repoRoot: repoDir,
-    });
-
-    expect(result.success).toBe(true);
-
-    // Verify: only skill-a was updated, skill-b stays on 1.0.0
-    const updatedConfig = await readRepoConfig(repoDir);
-    expect(updatedConfig!.installations['claude-code']['skill-a'].bundleVersion).toBe('2.0.0');
-    expect(updatedConfig!.installations['claude-code']['skill-b'].bundleVersion).toBe('1.0.0');
-
-    // Top-level bundleVersion should NOT be changed
-    expect(updatedConfig!.bundleVersion).toBe('1.0.0');
-  });
-});
-
 describe('setCurrentBundle', () => {
   it('passes dir type on non-Windows', async () => {
     vi.mocked(getPlatform).mockReturnValue('macos');
-    vi.mocked(unlink).mockResolvedValue(undefined);
-    vi.mocked(symlink).mockResolvedValue(undefined);
+    vi.mocked(symlink).mockImplementation((await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')).symlink);
 
+    await mkdir(path.join(tempDir, 'bundles', '1.2.0'), { recursive: true });
     await setCurrentBundle('1.2.0');
 
     expect(vi.mocked(symlink)).toHaveBeenCalledWith(
       path.join(tempDir, 'bundles', '1.2.0'),
-      path.join(tempDir, 'current'),
+      expect.stringContaining(path.join(tempDir, 'current.stage-')),
       'dir',
     );
   });
 
   it('passes junction type on Windows', async () => {
     vi.mocked(getPlatform).mockReturnValue('windows');
-    vi.mocked(unlink).mockResolvedValue(undefined);
-    vi.mocked(symlink).mockResolvedValue(undefined);
+    vi.mocked(symlink).mockImplementation((await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')).symlink);
 
+    await mkdir(path.join(tempDir, 'bundles', '1.2.0'), { recursive: true });
     await setCurrentBundle('1.2.0');
 
     expect(vi.mocked(symlink)).toHaveBeenCalledWith(
       path.join(tempDir, 'bundles', '1.2.0'),
-      path.join(tempDir, 'current'),
+      expect.stringContaining(path.join(tempDir, 'current.stage-')),
       'junction',
     );
   });

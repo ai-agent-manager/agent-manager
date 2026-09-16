@@ -1,3 +1,4 @@
+import { withMutation } from '../lib/mutation.js';
 import { canonicaliseContentRoot, downloadBundle } from '../bundle/downloader.js';
 import { extractBundle } from '../bundle/extractor.js';
 import { importLocalBundle } from '../bundle/importer.js';
@@ -32,7 +33,9 @@ async function resolveInstallBearer(
   return bearerToken;
 }
 
-export interface InstallFromRepoOpts {
+interface InstallGuard { beforeInstall?: () => Promise<void> }
+
+export interface InstallFromRepoOpts extends InstallGuard {
   repoUrl: string;
   ref?: string;
   skillNames?: string[];
@@ -42,7 +45,7 @@ export interface InstallFromRepoOpts {
   forceUpdate?: boolean;
 }
 
-export interface InstallFromArtefactOpts {
+export interface InstallFromArtefactOpts extends InstallGuard {
   artefactUrl: string;
   sha256?: string;
   scope: InstallScope;
@@ -53,7 +56,7 @@ export interface InstallFromArtefactOpts {
   bearerToken?: string;
 }
 
-export interface InstallFromBundleOpts {
+export interface InstallFromBundleOpts extends InstallGuard {
   /** Content root, or a local bundle directory path. */
   bundleUrl: string;
   /**
@@ -103,7 +106,10 @@ export async function installFromRepo(opts: InstallFromRepoOpts): Promise<Instal
   const sourcePin = buildSourcePin(source);
   const repoRoot = await resolveRepoRoot(scope, opts.repoRoot);
   const provisioner = createSkillProvisioner(toolId, scope, repoRoot);
-  const result = await provisioner.install(toInstall, '', sourcePin);
+  const result = await withMutation(async () => {
+    await opts.beforeInstall?.();
+    return provisioner.install(toInstall, '', sourcePin);
+  });
 
   return { toolId, result, sourcePin, bundleVersion: '' };
 }
@@ -129,7 +135,10 @@ export async function installFromArtefact(opts: InstallFromArtefactOpts): Promis
   });
   const repoRoot = await resolveRepoRoot(scope, opts.repoRoot);
   const provisioner = createSkillProvisioner(toolId, scope, repoRoot);
-  const result = await provisioner.install(scanResult.skills, '', sourcePin);
+  const result = await withMutation(async () => {
+    await opts.beforeInstall?.();
+    return provisioner.install(scanResult.skills, '', sourcePin);
+  });
 
   return { toolId, result, sourcePin, bundleVersion: '' };
 }
@@ -154,11 +163,11 @@ export async function installFromBundle(opts: InstallFromBundleOpts): Promise<In
   // happens to sit on a git host.
   const source: Extract<SkillSource, { type: 'bundle' }> = sourceName
     ? {
-        type: 'bundle',
-        baseUrl: canonicaliseContentRoot(bundleUrl),
-        sourceName,
-        installLayout: 'namespaced',
-      }
+      type: 'bundle',
+      baseUrl: canonicaliseContentRoot(bundleUrl),
+      sourceName,
+      installLayout: 'namespaced',
+    }
     : await resolveSkillSourceStrict(bundleUrl, 'bundle');
 
   let bundleVersion: string;
@@ -170,7 +179,7 @@ export async function installFromBundle(opts: InstallFromBundleOpts): Promise<In
     const { zipPath } = await downloadBundle(source.baseUrl, requestedVersion, bearer, sourceKey);
     const extracted = await extractBundle(
       zipPath,
-      sourceKey ? { sourceKey, contentRoot: source.baseUrl } : undefined,
+      sourceKey ? { sourceKey, contentRoot: source.baseUrl } : { contentRoot: source.baseUrl },
     );
     bundleVersion = extracted.manifest.version;
     // Only the version-keyed cache backs the `current` symlink; pointing it at a
@@ -190,7 +199,10 @@ export async function installFromBundle(opts: InstallFromBundleOpts): Promise<In
   const sourcePin = buildSourcePin(source, bundleVersion);
   const repoRoot = await resolveRepoRoot(scope, opts.repoRoot);
   const provisioner = createSkillProvisioner(toolId, scope, repoRoot);
-  const result = await provisioner.install(toInstall, bundleVersion, sourcePin);
+  const result = await withMutation(async () => {
+    await opts.beforeInstall?.();
+    return provisioner.install(toInstall, bundleVersion, sourcePin);
+  });
 
   return { toolId, result, sourcePin, bundleVersion };
 }
@@ -208,10 +220,12 @@ export interface InstallResolvedSkillsOpts {
 }
 
 export async function installResolvedSkills(opts: InstallResolvedSkillsOpts): Promise<InstallResult> {
-  const { skills, toolId, scope, bundleVersion } = opts;
-  const repoRoot = await resolveRepoRoot(scope, opts.repoRoot);
-  const provisioner = createSkillProvisioner(toolId, scope, repoRoot);
-  return provisioner.install(skills, bundleVersion ?? '');
+  return withMutation(async () => {
+    const { skills, toolId, scope, bundleVersion } = opts;
+    const repoRoot = await resolveRepoRoot(scope, opts.repoRoot);
+    const provisioner = createSkillProvisioner(toolId, scope, repoRoot);
+    return provisioner.install(skills, bundleVersion ?? '');
+  });
 }
 
 /**
@@ -270,7 +284,7 @@ export async function acquireSource(
     );
     const extracted = await extractBundle(
       zipPath,
-      sourceKey ? { sourceKey, contentRoot: source.baseUrl } : undefined,
+      sourceKey ? { sourceKey, contentRoot: source.baseUrl } : { contentRoot: source.baseUrl },
     );
     const bundleVersion = extracted.manifest.version;
     if (extracted.isNew && !sourceKey) await setCurrentBundle(bundleVersion);
@@ -316,7 +330,7 @@ function selectSkills(available: Map<string, SkillInfo>, names?: string[]): Skil
   if (notFound.length > 0) {
     throw new Error(
       `Skill(s) not found: ${notFound.join(', ')}\n` +
-        `  Available: ${[...available.keys()].join(', ')}`,
+      `  Available: ${[...available.keys()].join(', ')}`,
     );
   }
 
@@ -330,7 +344,7 @@ async function resolveRepoRoot(scope: InstallScope, repoRoot?: string): Promise<
   if (!root) {
     throw new Error(
       `Repo scope requires being inside a git repository.\n` +
-        `  Run agentman from inside a git repo, or choose the local scope.`,
+      `  Run agentman from inside a git repo, or choose the local scope.`,
     );
   }
   return root;
