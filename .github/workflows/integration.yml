@@ -24,10 +24,15 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'npm'
-          cache-dependency-path: package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            web-ui/package-lock.json
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Build web UI
+        run: npm ci --prefix web-ui && npm run build:web-ui
 
       - name: Build
         run: npm run build
@@ -54,6 +59,12 @@ jobs:
           test -d "$HOME/.claude/skills/mock-bundle~react-component-generator"
           test -d "$HOME/.claude/skills/mock-bundle~api-endpoint-generator"
           echo "All expected skills installed successfully"
+
+      - name: Verify browser server catalogue against Imposter
+        env:
+          AGENTMAN_ACCESS_TOKEN: ci-integration-token
+          MOCK_BASE_URL: ${{ steps.mocks.outputs.base-url }}
+        run: node --import tsx tests/integration/mock-ui-smoke.ts "$MOCK_BASE_URL"
 
       - name: Stop mock server
         if: always()

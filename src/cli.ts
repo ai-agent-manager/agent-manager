@@ -25,7 +25,7 @@ export function parseCli(argv = process.argv.slice(2)) {
         `
   ${chalk.bold("Usage")}
     $ agentman <source>
-    $ agentman ui [source] [--port 19877] [--no-open]
+    $ agentman ui [source] [--port 19877] [--no-open] [--update]
 
   ${chalk.bold("Arguments")}
     source      Source to install skills from. Accepted formats:

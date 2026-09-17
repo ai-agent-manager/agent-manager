@@ -32,7 +32,12 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "typecheck": "node scripts/check-ui-imports.mjs && tsc --noEmit",
-    "lint": "oxlint"
+    "lint": "oxlint",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "test:e2e": "playwright test --config playwright.config.ts",
+    "test:e2e:pack": "playwright test --config playwright.config.ts packaged.spec.ts",
+    "typecheck:integration": "tsc --project tsconfig.tests.json"
   },
   "keywords": [
     "agent",
