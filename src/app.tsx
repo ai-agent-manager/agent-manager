@@ -25,16 +25,14 @@ import { StartupNoticePanel } from "./components/StartupNoticePanel.js";
 import { StatusMessage } from "./components/StatusMessage.js";
 import { ToolSelector } from "./components/ToolSelector.js";
 import { VersionManager } from "./components/VersionManager.js";
-import { getCurrentBundleVersion, readConfig, setCurrentBundle, updateConfig } from "./bundle/cache.js";
-import { acquireBundle, acquireDiscoverySkills, describeMembershipError } from "./operations/session.js";
+import { setCurrentBundle } from "./bundle/cache.js";
+import { acquireBundle, loadSession, loadSessionMembership, loadBundleVersion, runStartupChecks } from "./operations/session.js";
 import type { BundleManifest } from "./bundle/manifest.js";
 import { scanBundle, type BundleContents, type RovoAgentInfo } from "./bundle/scanner.js";
 import type { BundleSource } from "./bundle/source.js";
-import { getBundleVersionDir } from "./config/paths.js";
 import type { InstallScope } from "./config/scopes.js";
 import type { StartupUpdateNotice } from "./lib/startup-update-checks.js";
-import { checkForStartupUpdates, shouldRunStartupUpdateChecks } from "./lib/startup-update-checks.js";
-import { getBundleSourceTelemetryProperties, setTelemetryDisabledByConfig, trackTelemetryError, trackTelemetryEvent, type TelemetryValue } from "./telemetry.js";
+import { getBundleSourceTelemetryProperties, trackTelemetryError, trackTelemetryEvent, type TelemetryValue } from "./telemetry.js";
 import { featureFlags } from "./lib/feature-flags.js";
 import { type ResolvedSkill } from "./discovery/index.js";
 import {
@@ -43,7 +41,6 @@ import {
 import {
     canAccessMyProjects,
     isProjectsExclusiveSource,
-    listProjects,
     resolveApiBaseUrl,
     type Project,
 } from "./api/index.js";
@@ -140,33 +137,6 @@ export function App({ source, directInstallSource, forceUpdate, sourceError }: A
             ? resolveApiBaseUrl(source.discovery.api?.baseUrl)
             : undefined;
 
-    useEffect(() => {
-        if (!exclusiveSource || !apiBaseUrl || !authSession) {
-            setMembershipProjects(null);
-            return;
-        }
-
-        let cancelled = false;
-        (async () => {
-            try {
-                const projects = await listProjects(apiBaseUrl, authSession);
-                if (!cancelled) {
-                    setMembershipProjects(projects);
-                }
-            } catch (error) {
-                if (!cancelled) {
-                    setMembershipProjects([]);
-                    const warning = describeMembershipError(error);
-                    setWarning(warning);
-                }
-            }
-        })();
-
-        return () => {
-            cancelled = true;
-        };
-    }, [exclusiveSource, apiBaseUrl, authSession]);
-
     const leaveInstallFlow = useCallback(() => {
         if (projectContext) {
             returnToProjects();
@@ -262,159 +232,43 @@ export function App({ source, directInstallSource, forceUpdate, sourceError }: A
     );
 
     useEffect(() => {
-        if (directInstallSource) {
-            setScreen("url-install");
-            return;
-        }
-
-        if (!source) {
-            // No usable source: skip bundle/discovery resolution entirely and land
-            // straight on Source Management instead of a dead end. This covers both
-            // "nothing configured yet" and "configured sources all failed to resolve".
-            setWarning(
-                sourceError
-                    ? `Could not resolve any configured source:\n${sourceError}`
-                    : "No source configured yet. Add one from Source Management to get started.",
-            );
-            setScreen("source-manager");
-            return;
-        }
-
-        (async () => {
+        const controller = new AbortController();
+        const active = () => !controller.signal.aborted;
+        let published = false;
+        const onWarning = (message: string) => { if (active()) setWarning(message); };
+        void (async () => {
             try {
-                const startupConfig = await readConfig();
-                setTelemetryDisabledByConfig(startupConfig.telemetryDisabled ?? false);
+                const session = await loadSession({ source, directInstallSource, sourceError }, {
+                    forceUpdate, signal: controller.signal, deferMembership: true,
+                    onProgress: (message) => { if (active()) setLoadingMessage(message); },
+                    onAuthPrompt: (url) => { if (active()) handleAuthPrompt(url); },
+                    onWarning,
+                });
+                if (!active()) return;
+                setWarning(session.warnings.length ? session.warnings.join("\n") : null);
+                setManifest(session.manifest ?? null);
+                setBundleContents(session.bundleContents ?? null);
+                setBundleDir(session.bundleDir ?? "");
+                setDiscoverySkills(session.discoverySkills ?? null);
+                setDiscoveryBundleVersion(session.discoveryBundleVersion ?? null);
+                setAuthSession(session.authSession ?? null);
+                published = true;
+                setScreen(session.directInstallSource ? "url-install" : session.source ? "main-menu" : "source-manager");
 
-                if (source.type === "discovery" || source.type === "url") {
-                    await updateConfig((config) => {
-                        if (config.baseUrl !== source.baseUrl) {
-                            config.baseUrl = source.baseUrl;
-                        }
-                    });
-                }
-
-                // --- Discovery source: resolve skills from discovery document ---
-                if (source.type === "discovery") {
-                    const {
-                        skills,
-                        rovoAgents,
-                        warnings,
-                        bundleVersion: discoveredVersion,
-                        manifest: discoveredManifest,
-                        bundleDir: discoveredBundleDir,
-                        authSession: session,
-                    } = await acquireDiscoverySkills(
-                        source,
-                        setLoadingMessage,
-                        handleAuthPrompt,
-                    );
-
-                    if (warnings.length > 0) {
-                        setWarning(warnings.join("\n"));
-                    }
-
-                    setDiscoverySkills(skills);
-                    if (discoveredVersion) setDiscoveryBundleVersion(discoveredVersion);
-                    if (discoveredManifest) setManifest(discoveredManifest);
-                    if (discoveredBundleDir) setBundleDir(discoveredBundleDir);
-                    setBundleContents({ skills, rovoAgents });
-                    setAuthSession(session ?? null);
-                    setScreen("main-menu");
-                    return;
-                }
-
-                // --- Legacy bundle source (directory) ---
-
-                const currentVersion = await getCurrentBundleVersion();
-                let bundleVersionDir: string;
-                let loadedManifest: BundleManifest;
-
-                if (!currentVersion || forceUpdate || source.type === "directory") {
-                    const result = await acquireBundle(source, setLoadingMessage);
-                    loadedManifest = result.manifest;
-                    bundleVersionDir = result.bundleDir;
-
-                    if (result.warning) {
-                        setWarning(result.warning);
-                    }
-
-                    if (result.isNew) {
-                        setLoadingMessage("Setting up new bundle version...");
-                    }
-
-                    await setCurrentBundle(loadedManifest.version);
-                } else {
-                    bundleVersionDir = getBundleVersionDir(currentVersion);
-                    try {
-                        const { readFile } = await import("node:fs/promises");
-                        const raw = await readFile(`${bundleVersionDir}/manifest.json`, "utf-8");
-                        const { parseManifest } = await import("./bundle/manifest.js");
-                        loadedManifest = parseManifest(raw);
-                    } catch (loadError) {
-                        trackTelemetryError("bundle_manifest_load_failed", loadError, {
-                            ...bundleTelemetryProps,
-                            version: currentVersion,
-                        });
-                        throw loadError;
-                    }
-                }
-
-                setLoadingMessage("Scanning bundle contents...");
-
-                let scannedContents: BundleContents;
-                try {
-                    scannedContents = await scanBundle(bundleVersionDir, loadedManifest.agents);
-                } catch (scanError) {
-                    trackTelemetryError("bundle_scan_failed", scanError, {
-                        ...bundleTelemetryProps,
-                        version: loadedManifest.version,
-                    });
-                    throw scanError;
-                }
-
-                setManifest(loadedManifest);
-                setBundleContents(scannedContents);
-                setBundleDir(bundleVersionDir);
-                setScreen("main-menu");
-
-                const config = await readConfig();
-                if (shouldRunStartupUpdateChecks(config)) {
-                    void (async () => {
-                        const result = await checkForStartupUpdates({
-                            source,
-                            currentBundleVersion: loadedManifest.version,
-                        });
-
-                        if (result.notices.length > 0) {
-                            setStartupNotices(result.notices);
-                        }
-
-                        for (const startupError of result.errors) {
-                            trackTelemetryError(
-                                startupError.kind === "app"
-                                    ? "startup_app_update_check_failed"
-                                    : "startup_bundle_update_check_failed",
-                                startupError.error,
-                                bundleTelemetryProps,
-                            );
-                        }
-
-                        trackTelemetryEvent({
-                            action: "startup_update_check_completed",
-                            properties: {
-                                ...bundleTelemetryProps,
-                                appUpdateAvailable: result.notices.some((notice) => notice.kind === "app"),
-                                bundleUpdateAvailable: result.notices.some((notice) => notice.kind === "bundle"),
-                                startupCheckErrors: result.errors.length,
-                            },
-                        });
-                    })();
-                }
+                // Preserve the TUI's responsive menu while membership loads. The
+                // catalogue remains fail-closed; completion never changes screens.
+                await loadSessionMembership(session, { signal: controller.signal, onWarning });
+                if (!active()) return;
+                setMembershipProjects(session.membership.state === "not-required" ? null : session.membership.projects);
+                const result = await runStartupChecks(session);
+                if (active() && result.notices.length) setStartupNotices(result.notices);
             } catch (initialiseError) {
+                if (!active()) return;
                 setError(initialiseError instanceof Error ? initialiseError.message : String(initialiseError));
-                setScreen("main-menu");
+                if (!published) setScreen("main-menu");
             }
         })();
+        return () => controller.abort();
     }, []);
 
     const handleScopeSelect = async (scope: InstallScope, selectedRepoRoot: string | null) => {
@@ -448,16 +302,10 @@ export function App({ source, directInstallSource, forceUpdate, sourceError }: A
     const handleVersionChanged = (newVersion: string) => {
         (async () => {
             try {
-                const bundleVersionDir = getBundleVersionDir(newVersion);
-                const { readFile } = await import("node:fs/promises");
-                const raw = await readFile(`${bundleVersionDir}/manifest.json`, "utf-8");
-                const { parseManifest } = await import("./bundle/manifest.js");
-                const loadedManifest = parseManifest(raw);
-                const contents = await scanBundle(bundleVersionDir, loadedManifest.agents);
-
-                setManifest(loadedManifest);
-                setBundleContents(contents);
-                setBundleDir(bundleVersionDir);
+                const loaded = await loadBundleVersion(newVersion, { source });
+                setManifest(loaded.manifest);
+                setBundleContents(loaded.bundleContents);
+                setBundleDir(loaded.bundleDir);
                 setError(null);
             } catch (loadError) {
                 trackTelemetryError("bundle_version_reload_failed", loadError, {

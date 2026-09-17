@@ -212,6 +212,28 @@ export interface InstalledInstance {
   repoRoot?: string;
 }
 
+/** TUI version-label adapter; the cache operation revalidates source pins under its lease. */
+export function updateInstalledSkillVersion(instance: InstalledInstance, version: string) {
+  return updateSkillVersion(instance.toolId, instance.installKey, version,
+    instance.scope === 'repo' ? { scope: 'repo', repoRoot: instance.repoRoot } : undefined);
+}
+
+/** Preserve per-instance results and continue after unsupported version selections. */
+export async function alignInstalledSkillVersions(
+  instances: readonly (InstalledInstance & { currentVersion: string; skillName: string; toolName: string })[],
+  version: string,
+): Promise<{ successCount: number; failures: string[] }> {
+  let successCount = 0;
+  const failures: string[] = [];
+  for (const instance of instances) {
+    if (instance.currentVersion === version) { successCount++; continue; }
+    const result = await updateInstalledSkillVersion(instance, version);
+    if (result.success) successCount++;
+    else failures.push(`${instance.skillName} (${instance.toolName}): ${result.error}`);
+  }
+  return { successCount, failures };
+}
+
 /** Re-read the exact instance; caller snapshots never authorize writes. */
 async function readInstance(instance: InstalledInstance) {
   if (instance.scope === 'repo' && !instance.repoRoot) throw new OperationConflictError('repoRoot is required');

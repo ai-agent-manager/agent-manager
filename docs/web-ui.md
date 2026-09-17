@@ -120,6 +120,20 @@ membership failure exposes an empty permitted catalogue.
 - `scripts/dev-ui.ts`: development-only middleware and HMR transport. Upgrade
   requests reach Vite only after exact Host and Origin validation.
 
+The TUI now uses `loadSession`, `loadBundleVersion` and `runStartupChecks` from
+`src/operations/session.ts`. Its adapter renders progress/authentication prompts
+and maps the returned state into existing screens. To preserve responsive menus,
+it requests `deferMembership` and then calls `loadSessionMembership` in the
+background. Restricted catalogues remain empty until membership succeeds, and
+completion does not change the user's current screen. HTTP callers retain the
+default behavior of waiting for membership before publishing a ready session.
+Unmounting the TUI aborts pending startup authentication and suppresses late state
+updates. Per-skill version selection/alignment also uses shared operations;
+terminal menus and result messages stay in the components.
+One visible improvement is that scanner warnings, such as malformed Rovo agent
+files, now appear in the TUI warning panel instead of writing to stderr and
+disrupting the Ink display.
+
 ## Security and source scope
 
 The HTTP server listens only on `127.0.0.1`. Host must match the actual bound

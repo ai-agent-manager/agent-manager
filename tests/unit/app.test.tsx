@@ -13,6 +13,17 @@ const startupNoticeState = vi.hoisted(() => ({
 const mainMenuState = vi.hoisted(() => ({
     props: null as null | { onSelect: (action: string) => void },
 }));
+const catalogueState = vi.hoisted(() => ({ entries: [] as Array<{ skillId: string }> }));
+const sourceManagerState = vi.hoisted(() => ({ onBack: undefined as (() => void) | undefined }));
+vi.mock("../../src/components/SkillInstallFlow.js", () => ({
+    SkillInstallFlow: ({ entries }: { entries: Array<{ skillId: string }> }) => {
+        catalogueState.entries = entries;
+        return <Text>Catalogue: {entries.map((entry) => entry.skillId).join(",")}</Text>;
+    },
+}));
+vi.mock("../../src/api/index.js", async (original) => ({
+    ...await original<typeof import("../../src/api/index.js")>(), listProjects: vi.fn(),
+}));
 
 const maintenanceMenuState = vi.hoisted(() => ({
     props: null as null | { onSelect: (action: string) => void },
@@ -128,7 +139,8 @@ vi.mock("../../src/components/RovoMenu.js", () => ({
 }));
 
 vi.mock("../../src/components/SourceManager.js", () => ({
-    SourceManager: function MockSourceManager() {
+    SourceManager: function MockSourceManager({ onBack }: { onBack: () => void }) {
+        sourceManagerState.onBack = onBack;
         return <Text>Source Manager Screen</Text>;
     },
 }));
@@ -233,10 +245,25 @@ import { scanBundle } from "../../src/bundle/scanner.js";
 import { checkForStartupUpdates } from "../../src/lib/startup-update-checks.js";
 import { authenticate } from "../../src/auth/index.js";
 import { resolveDiscoverySkills } from "../../src/discovery/index.js";
+import { listProjects, ApiError } from "../../src/api/index.js";
+import { loadSession } from "../../src/operations/session.js";
+import { buildSessionCatalogue } from "../../src/operations/catalogue.js";
+import type { BundleSource } from "../../src/bundle/source.js";
+import { trackTelemetryEvent } from "../../src/telemetry.js";
+
+const restrictedSource: Extract<BundleSource, { type: "discovery" }> = {
+    type: "discovery", baseUrl: "https://skills.example.com", discovery: {
+        version: "1", sources: [], api: { baseUrl: "https://api.example.com" },
+        auth: { required: true, clientId: "example-client", oidcDiscoveryUrl: "https://auth.example.com/discovery" },
+        projects: { enabled: true, exclusiveSource: true },
+    },
+};
 
 describe("App", () => {
     beforeEach(() => {
-        vi.clearAllMocks();
+        vi.resetAllMocks();
+        catalogueState.entries = [];
+        sourceManagerState.onBack = undefined;
         startupNoticeState.props = null;
         mainMenuState.props = null;
         maintenanceMenuState.props = null;
@@ -292,6 +319,7 @@ describe("App", () => {
             rovoAgents: [],
             errors: [],
         });
+        vi.mocked(listProjects).mockResolvedValue([]);
     });
 
     it("switches to the latest cached bundle when the startup B action is used", async () => {
@@ -480,5 +508,76 @@ describe("App", () => {
 
         expect(downloadBundle).not.toHaveBeenCalled();
         expect(scanBundle).not.toHaveBeenCalled();
+    });
+
+    it("keeps the menu responsive and the catalogue fail-closed until shared membership loading finishes", async () => {
+        let finish!: (value: Awaited<ReturnType<typeof listProjects>>) => void;
+        vi.mocked(listProjects).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+        vi.mocked(resolveDiscoverySkills).mockResolvedValue({ skills: ["allowed", "excluded"].map((dirName) => ({
+            dirName, dirPath: `/example/${dirName}`, skillMdPath: `/example/${dirName}/SKILL.md`, sourceName: "official", sourceType: "http",
+        })), rovoAgents: [], errors: [] });
+        const view = render(<App source={restrictedSource} forceUpdate={false} />);
+        await vi.waitFor(() => expect(mainMenuState.props).not.toBeNull());
+        await vi.waitFor(() => expect(listProjects).toHaveBeenCalledOnce());
+        mainMenuState.props!.onSelect("search-install");
+        await vi.waitFor(() => expect(view.lastFrame()).toContain("Catalogue:"));
+        expect(catalogueState.entries).toEqual([]);
+        const memberships = [{ id: "project", name: "Example", teamId: "team", toolIds: [], createdAt: "2026-01-01", updatedAt: "2026-01-01", restrictSkills: true, allowedSkillIds: ["allowed"] }];
+        finish(memberships);
+        await vi.waitFor(() => expect(catalogueState.entries.map((entry) => entry.skillId)).toEqual(["allowed"]));
+        expect(view.lastFrame()).toContain("Catalogue: allowed"); // Does not jump back to the main menu.
+        vi.mocked(listProjects).mockResolvedValue(memberships);
+        const session = await loadSession({ source: restrictedSource }, { onAuthPrompt: vi.fn() });
+        expect(catalogueState.entries).toEqual(buildSessionCatalogue(session));
+        expect(checkForStartupUpdates).not.toHaveBeenCalled(); // Existing discovery startup policy.
+        view.unmount();
+    });
+
+    it.each([[401, "Authentication failed"], [503, "Temporarily unable"], [400, "Could not load"]])(
+        "retains classified membership warnings and an empty catalogue for HTTP %s", async (status, message) => {
+            vi.mocked(resolveDiscoverySkills).mockResolvedValue({ skills: [{ dirName: 'private', dirPath: '/example/private', skillMdPath: '/example/private/SKILL.md', sourceName: 'official', sourceType: 'http' }], rovoAgents: [], errors: [] });
+            vi.mocked(listProjects).mockRejectedValue(new ApiError("Membership unavailable", status as number));
+            const view = render(<App source={restrictedSource} forceUpdate={false} />);
+            await vi.waitFor(() => expect(view.lastFrame()).toContain(message));
+            mainMenuState.props!.onSelect("search-install");
+            await vi.waitFor(() => expect(view.lastFrame()).toContain("Catalogue:"));
+            expect(catalogueState.entries).toEqual([]);
+            view.unmount();
+        },
+    );
+
+    it("shows the menu before startup notices finish and keeps the user's later screen", async () => {
+        let finish!: (value: Awaited<ReturnType<typeof checkForStartupUpdates>>) => void;
+        vi.mocked(checkForStartupUpdates).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+        const view = render(<App source={{ type: 'url', baseUrl: 'https://skills.example.com' }} forceUpdate={false} />);
+        await vi.waitFor(() => expect(mainMenuState.props).not.toBeNull());
+        await vi.waitFor(() => expect(checkForStartupUpdates).toHaveBeenCalledOnce());
+        mainMenuState.props!.onSelect('source-management');
+        await vi.waitFor(() => expect(view.lastFrame()).toContain('Source Manager Screen'));
+        finish({ notices: [{ kind: 'bundle', message: 'New bundle', shortcutKey: 'b', actionLabel: 'Update' }], errors: [] });
+        await vi.waitFor(() => expect(trackTelemetryEvent).toHaveBeenCalledWith(expect.objectContaining({ action: 'startup_update_check_completed' })));
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(view.lastFrame()).toContain('Source Manager Screen');
+        sourceManagerState.onBack!();
+        await vi.waitFor(() => expect(startupNoticeState.props?.notices).toHaveLength(1));
+        view.unmount();
+    });
+
+    it("aborts startup authentication on unmount and never resolves content afterwards", async () => {
+        let signal: AbortSignal | undefined;
+        let aborted = false;
+        vi.mocked(authenticate).mockImplementationOnce(async (_url, _auth, prompt, options) => {
+            signal = options?.signal;
+            prompt("https://auth.example.com/authorize?state=example");
+            return new Promise((_resolve, reject) => signal!.addEventListener("abort", () => {
+                aborted = true; reject(new Error("cancelled callback"));
+            }, { once: true }));
+        });
+        const view = render(<App source={restrictedSource} forceUpdate={false} />);
+        await vi.waitFor(() => expect(view.lastFrame()).toContain("Authentication required"));
+        view.unmount();
+        await vi.waitFor(() => expect(aborted).toBe(true));
+        expect(signal!.aborted).toBe(true);
+        expect(resolveDiscoverySkills).not.toHaveBeenCalled();
     });
 });
