@@ -43,6 +43,11 @@ export class JobRegistry {
     if (!job) throw new HttpError(404, 'Job unavailable. Refresh the affected resources.', 'JOB_NOT_FOUND');
     return structuredClone(job.dto);
   }
+  /** Main-process desktop policy checks exact live prompts, never renderer claims. */
+  isActiveAuthorizationUrl(url: string): boolean {
+    return !this.stopping && [...this.jobs.values()].some((job) => !job.controller.signal.aborted
+      && job.dto.state === 'running' && job.dto.phase === 'auth' && job.dto.authorizeUrl === url);
+  }
   snapshot(): JobDto[] { return [...this.jobs.values()].map((job) => structuredClone(job.dto)); }
   subscribe(listener: (job: JobDto) => void): () => void {
     this.listeners.add(listener); return () => this.listeners.delete(listener);

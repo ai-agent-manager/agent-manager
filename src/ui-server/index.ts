@@ -24,6 +24,8 @@ import { jobRoutes } from './routes/jobs.js';
 export interface UiServerOptions {
   port?: number; cwd?: string; startupSource?: string; forceUpdate?: boolean; token?: string;
   staticDir?: string | null;
+  /** Native shell feedback when any shutdown path starts draining. */
+  onStopping?: () => void;
   /** Development middleware is injected by the launcher, never imported here. */
   staticHandler?: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>;
 }
@@ -56,7 +58,7 @@ export async function startUiServer(options: UiServerOptions = {}) {
         sendJson(res, 200, { status: 'ok' }); return;
       }
       if (pathname === '/api' || pathname.startsWith('/api/')) {
-        if (!isAuthorised(req, token)) throw new HttpError(401, 'Open the Web UI URL printed by agentman to authorize this tab.', 'UNAUTHORISED');
+        if (!isAuthorised(req, token)) throw new HttpError(401, 'Open the Web UI URL printed by Agent Manager to authorize this tab.', 'UNAUTHORISED');
         if (stopping) throw new HttpError(503, 'The server is stopping.', 'STOPPING');
         if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method ?? '')) requireJson(req);
         await router.handle(req, res);
@@ -75,6 +77,7 @@ export async function startUiServer(options: UiServerOptions = {}) {
   const stop = (): Promise<void> => {
     if (!stopPromise) {
       stopping = true;
+      options.onStopping?.();
       stopPromise = (async () => {
         // Cancel auth immediately, including when logout/cancel HTTP handlers
         // are waiting for it. Reject job submissions still being parsed and
@@ -106,5 +109,5 @@ export async function startUiServer(options: UiServerOptions = {}) {
   authority = `127.0.0.1:${port}`;
   try { await sessions.load(options.startupSource, options.forceUpdate); }
   catch (error) { await stop(); throw error; }
-  return { server, port, token, url: `http://${authority}/?token=${encodeURIComponent(token)}`, stop };
+  return { server, port, token, isActiveAuthorizationUrl: (url: string) => jobs.isActiveAuthorizationUrl(url), url: `http://${authority}/?token=${encodeURIComponent(token)}`, stop };
 }

@@ -178,7 +178,7 @@ export async function updateInstalled(
   if (!sourcePin) {
     throw new Error(
       `Cannot update '${id}': no source pin recorded. ` +
-      `Re-install the skill with the current version of agentman.`,
+      `Re-install the skill with the current version of Agent Manager.`,
     );
   }
 

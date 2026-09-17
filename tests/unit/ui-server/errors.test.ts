@@ -33,7 +33,7 @@ it.each([
 });
 
 it('classifies callback port contention as an actionable conflict', () => {
-  expect(serialiseError(new CallbackServerError('listen EADDRINUSE'))).toMatchObject({ status: 409, body: { error: { code: 'AUTH_BUSY', message: expect.stringContaining('Another agentman login') } } });
+  expect(serialiseError(new CallbackServerError('listen EADDRINUSE'))).toMatchObject({ status: 409, body: { error: { code: 'AUTH_BUSY', message: expect.stringContaining('Another Agent Manager login') } } });
 });
 
 it('redacts URL credentials and token query parameters from error metadata', () => {

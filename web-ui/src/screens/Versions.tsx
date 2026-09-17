@@ -1,3 +1,4 @@
+import { DirectoryField } from '../components/DirectoryField.js';
 import { useState } from 'react';
 import type { BundleDto, BundlesDto, ContextDto, RemoteBundlesDto, SessionDto } from '@api-types';
 import type { ApiClient } from '../api/client.js';
@@ -53,7 +54,7 @@ export function Versions({ client, session, context, refreshKey, onJob }: { clie
     <p>Use <a href="#/skill-versions">Skill versions</a> to change an individual installation, including named discovery sources.</p>
     {pending && <Dialog label={pending.action === 'select' ? 'Select bundle version' : 'Remove cached bundle'} onClose={() => { if (!busy) setPending(undefined); }}>
       <h2>{pending.action === 'select' ? 'Use' : 'Remove'} version {pending.bundle.version}?</h2><p className="break-word">{pending.bundle.source?.value}</p>
-      {pending.action === 'select' ? <><p>This changes the active catalogue.</p><label className="check-row"><input type="checkbox" checked={sync} onChange={(event) => setSync(event.target.checked)} />Also sync installed skills from this source</label>{sync && <label>Repository to include (optional)<input value={repoRoot} onChange={(event) => setRepoRoot(event.target.value)} placeholder="Absolute repository root" /></label>}<p className="muted">Sync includes personal installations and the repository selected above. Other source identities are kept separate; any sync failures appear in Activity.</p></> : <p>Bundles still used by an installation cannot be removed.</p>}
+      {pending.action === 'select' ? <><p>This changes the active catalogue.</p><label className="check-row"><input type="checkbox" checked={sync} onChange={(event) => setSync(event.target.checked)} />Also sync installed skills from this source</label>{sync && <DirectoryField label="Repository to include (optional)" value={repoRoot} onChange={setRepoRoot} placeholder="Absolute repository root" />}<p className="muted">Sync includes personal installations and the repository selected above. Other source identities are kept separate; any sync failures appear in Activity.</p></> : <p>Bundles still used by an installation cannot be removed.</p>}
       <ErrorMessage message={error} /><div className="row"><button disabled={busy} onClick={() => setPending(undefined)}>Cancel</button><button className={pending.action === 'remove' ? 'danger' : 'primary'} disabled={busy || pending.action === 'select' && session?.state !== 'ready'} onClick={() => void confirm()}>{busy ? 'Working…' : pending.action === 'select' ? 'Confirm version' : 'Confirm removal'}</button></div>
     </Dialog>}
   </>;

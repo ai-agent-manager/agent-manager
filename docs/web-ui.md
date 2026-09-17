@@ -3,8 +3,8 @@
 The browser interface runs locally alongside the CLI's TUI and headless entry
 points. It supports catalogue browsing, skill installation/update/removal, sources,
 settings, version selection and sign-in/out. Browser integration tests cover both
-development and packaged production serving. Electron launchers and installers
-are planned for M8; there is no `desktop/` package yet.
+development and packaged production serving. The [M8 desktop shell](desktop.md) adds native repository selection and
+macOS/Windows installer packaging.
 
 Use this guide for the current implementation and the [API reference](web-ui-api.md)
 for request/response fields. The M1b/M2 notes record the earlier extraction and
@@ -115,6 +115,8 @@ membership failure exposes an empty permitted catalogue.
   `scripts/check-ui-imports.mjs` rejects runtime imports across this boundary.
 - `assets/web-ui/`: generated production assets. Build through
   `npm run build:web-ui`; do not edit or commit them.
+- `desktop/`: Electron main/preload, external-link and IPC policy, installers and
+  isolated desktop tests. See [the desktop guide](desktop.md).
 - `scripts/dev-ui.ts`: development-only middleware and HMR transport. Upgrade
   requests reach Vite only after exact Host and Origin validation.
 

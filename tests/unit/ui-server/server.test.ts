@@ -60,7 +60,7 @@ it('binds loopback and enforces bearer, Host, Origin, JSON and response headers'
   for (const [name, value] of Object.entries({ 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer' })) expect(health.headers.get(name)).toBe(value);
   const unauthorized = await fetch(`${base}/api/context`);
   expect(unauthorized.status).toBe(401);
-  expect((await unauthorized.json()).error.message).toBe('Open the Web UI URL printed by agentman to authorize this tab.');
+  expect((await unauthorized.json()).error.message).toBe('Open the Web UI URL printed by Agent Manager to authorize this tab.');
   expect((await api('/api/context', 'GET', undefined, { origin: 'https://example.com' })).status).toBe(403);
   expect((await api('/api/context', 'GET', undefined, { origin: `${base}/` })).status).toBe(403);
   expect((await raw('/api/context', { authorization, host: `example.com:${server.port}` })).status).toBe(403);

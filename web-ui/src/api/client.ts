@@ -22,7 +22,7 @@ export function bootstrapToken(location: Pick<Location, 'href'>, storage: Pick<S
 export class ApiClient {
   constructor(private token: string | null, private fetchImpl: typeof fetch = (...args) => fetch(...args)) {}
   async fetch(path: string, options: RequestInit = {}): Promise<Response> {
-    if (!this.token) throw new ApiError(401, { name: 'AuthenticationRequired', message: 'Open the Web UI URL printed by agentman to connect this tab.', category: 'auth' });
+    if (!this.token) throw new ApiError(401, { name: 'AuthenticationRequired', message: 'Open the Web UI URL printed by Agent Manager to connect this tab.', category: 'auth' });
     if (!path.startsWith('/api/')) throw new Error('Only local API requests are allowed.');
     const headers = new Headers(options.headers);
     headers.set('Authorization', `Bearer ${this.token}`);

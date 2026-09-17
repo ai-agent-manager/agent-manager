@@ -101,7 +101,7 @@ a discovery catalogue are supported. The optional direct-source preview/install
 flow remains deferred. The `agentman ui` command, browser application, development middleware/HMR and
 CLI signals were added in M3/M4; M5 version/auth screens use the same DTO, job and
 session-revision contracts. M6 adds browser/packaged integration coverage.
-Desktop integration remains planned for M8.
+The [M8 desktop shell](desktop.md) embeds this same server.
 
 Synchronous filesystem mutations have a five-second queue deadline, including
 contention with this server's own jobs. A disconnected waiter cannot commit later.

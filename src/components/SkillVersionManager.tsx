@@ -191,7 +191,7 @@ export function SkillVersionManager({ onBack }: SkillVersionManagerProps) {
                 />
                 {!isInRepo && (
                     <Text color="yellow" dimColor>
-                        {"  "}Repo-level management requires running agentman from inside a git repository.
+                        {"  "}Repo-level management requires running Agent Manager from inside a git repository.
                     </Text>
                 )}
             </Box>

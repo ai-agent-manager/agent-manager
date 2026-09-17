@@ -1,0 +1,106 @@
+name: Desktop
+
+on:
+  workflow_call:
+    secrets:
+      CSC_LINK:
+        required: false
+      CSC_KEY_PASSWORD:
+        required: false
+      WIN_CSC_LINK:
+        required: false
+      WIN_CSC_KEY_PASSWORD:
+        required: false
+      APPLE_ID:
+        required: false
+      APPLE_APP_SPECIFIC_PASSWORD:
+        required: false
+      APPLE_TEAM_ID:
+        required: false
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Desktop (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web-ui/package-lock.json
+            desktop/package-lock.json
+      - run: npm ci
+      - run: npm ci --prefix web-ui
+      - run: npm run build:web-ui
+      - run: npm run build
+      - run: npm ci --prefix desktop
+      - run: npm run build --prefix desktop
+      - run: npm run typecheck:tests --prefix desktop
+      - run: npm test --prefix desktop
+      - run: npm run test:smoke --prefix desktop
+      - name: Pin published CLI for a stable release
+        if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
+        shell: pwsh
+        run: |
+          $releaseVersion = '${{ github.ref_name }}'.Substring(1)
+          node desktop/dist/published-version.js $releaseVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node desktop/scripts/use-published-cli.mjs $releaseVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm install --prefix desktop
+      - name: Build installer (unsigned when signing credentials are absent)
+        run: npm run dist --prefix desktop
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          path: |
+            desktop/release/*.dmg
+            desktop/release/*.exe
+            desktop/release/latest*.yml
+            desktop/release/*.blockmap
+          if-no-files-found: error
+      - name: Preserve desktop failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-failures-${{ matrix.os }}
+          path: desktop/test-results/
+          if-no-files-found: ignore
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*
+          path: installers
+          merge-multiple: true
+      - name: Attach installers to the existing release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release upload "$RELEASE_TAG" installers/* --clobber

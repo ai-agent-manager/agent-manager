@@ -87,7 +87,7 @@ export async function withMutation<T>(run: () => Promise<T>, options: {
       if (!localOwner) externalWaitMs += now - lastCheck;
       lastCheck = now;
       if (!localOwner && externalWaitMs >= (options.timeoutMs ?? 30_000)) {
-        throw new OperationConflictError(`Another agentman operation is running (PID ${blocker.owner?.pid ?? 'unknown'}; lock ${lockDir}). Retry when it finishes.`);
+        throw new OperationConflictError(`Another Agent Manager operation is running (PID ${blocker.owner?.pid ?? 'unknown'}; lock ${lockDir}). Retry when it finishes.`);
       }
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
@@ -151,7 +151,7 @@ async function prepareDirectory(directory: string): Promise<void> {
   let pid: number | undefined;
   try { pid = JSON.parse(await readFile(directory, 'utf8')).pid; if (pid && pid > 0) process.kill(pid, 0); }
   catch (error) { dead = (error as NodeJS.ErrnoException).code === 'ESRCH'; }
-  if (!dead && Date.now() - info.mtimeMs < MUTATION_STALE_MS) throw new OperationConflictError(`Another agentman operation owns the legacy lock ${directory} (PID ${pid ?? 'unknown'}). Retry shortly.`);
+  if (!dead && Date.now() - info.mtimeMs < MUTATION_STALE_MS) throw new OperationConflictError(`Another Agent Manager operation owns the legacy lock ${directory} (PID ${pid ?? 'unknown'}). Retry shortly.`);
   await unlink(directory).catch((error) => {
     if (!['ENOENT', 'EISDIR', 'EPERM'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error;
   });

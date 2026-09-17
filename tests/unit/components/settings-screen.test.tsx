@@ -105,12 +105,12 @@ describe("SettingsScreen", () => {
         });
     });
     it("shows contention without changing the saved toggle, and allows retry", async () => {
-        vi.mocked(updateConfig).mockRejectedValueOnce(new Error('Another agentman operation is running'));
+        vi.mocked(updateConfig).mockRejectedValueOnce(new Error('Another Agent Manager operation is running'));
         const view = render(<SettingsScreen onBack={() => {}} />);
         try {
             await vi.waitFor(() => expect(view.lastFrame()).toContain('Startup update checks   enabled'));
             await press(view.stdin, ENTER);
-            await vi.waitFor(() => expect(view.lastFrame()).toContain('Another agentman operation is running'));
+            await vi.waitFor(() => expect(view.lastFrame()).toContain('Another Agent Manager operation is running'));
             expect(view.lastFrame()).toContain('Startup update checks   enabled');
             await press(view.stdin, ENTER);
             await vi.waitFor(() => expect(view.lastFrame()).toContain('Startup update checks   disabled'));

@@ -96,7 +96,7 @@ Once launched, the TUI presents the following options:
 - **My Projects** — Available when authenticated with projects enabled and a backend API configured. Browse permitted projects and their skills/agents.
 - **Search & Install** — Browse skills and Rovo agents, choose a source, scope and tool, then install or provision.
 - **Maintenance & Updates** — Bulk sync, manage skill versions, installed skills and cached bundles, or update the CLI.
-- **Source Management** — Add, remove and activate saved sources, or install from a source URL.
+- **Manage Sources** — Add, remove and activate saved sources, or install from a source URL.
 - **Settings & Config** — Configure startup checks and telemetry; environment overrides take precedence.
 - **Exit**
 

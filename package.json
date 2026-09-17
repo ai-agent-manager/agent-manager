@@ -95,5 +95,10 @@
   },
   "optionalDependencies": {
     "playwright": "^1.61.1"
+  },
+  "exports": {
+    ".": "./dist/index.js",
+    "./ui-server": "./dist/ui-server/index.js",
+    "./package.json": "./package.json"
   }
 }

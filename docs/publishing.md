@@ -19,15 +19,22 @@ git push origin main --tags
 
 CI will publish to npmjs.org, then automatically create a GitHub Release with an npm install link and a changelog generated from commits since the previous stable tag.
 
-Monitor the CI jobs to confirm both the npm publish and GitHub Release succeed.
+Only the root version needs bumping. Desktop packaging derives its application
+version from the installed CLI, so the checked-in desktop development version
+does not block verification or determine the installer version.
+
+Monitor the CI jobs to confirm the npm publish and GitHub Release succeed. The
+stable release job then calls the desktop workflow to build and attach macOS/Windows
+installers; see [desktop signing and CI](desktop.md#signing-and-ci).
 
 ## Builds and verification
 
 The [CI workflow](../.github/workflows/ci.yml) requires Ubuntu/Windows verification
 and the Git importer smoke before either registry publish job. Verification builds
 and tests the web UI, runs root and integration typechecks, root tests, the CLI
-build and Playwright browser/tarball tests. npm cache keys include both root and
-`web-ui/package-lock.json` lockfiles.
+build and Playwright browser/tarball tests, then desktop typechecks, unit tests
+and sandboxed Electron smokes. Linux also builds and exercises the hardened ASAR
+package. npm cache keys include the root, `web-ui/` and `desktop/` lockfiles.
 
 Both publish jobs install `web-ui/` dependencies, run `npm run build:web-ui`, build
 the Chrome extension and compile the CLI. `prepublishOnly` also installs/builds

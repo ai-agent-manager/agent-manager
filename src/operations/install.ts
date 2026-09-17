@@ -344,7 +344,7 @@ async function resolveRepoRoot(scope: InstallScope, repoRoot?: string): Promise<
   if (!root) {
     throw new Error(
       `Repo scope requires being inside a git repository.\n` +
-      `  Run agentman from inside a git repo, or choose the local scope.`,
+      `  Run Agent Manager from inside a git repo, or choose the local scope.`,
     );
   }
   return root;

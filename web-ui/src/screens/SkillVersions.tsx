@@ -1,3 +1,4 @@
+import { DirectoryField } from '../components/DirectoryField.js';
 import { useState } from 'react';
 import type { BundleDto, ContextDto, InstalledRecordDto, SessionDto, SkillVersionsDto } from '@api-types';
 import type { ApiClient } from '../api/client.js';
@@ -35,7 +36,7 @@ export function SkillVersions({ client, session, context, refreshKey, onJob }: {
   const record = instances.data?.instances.find((record) => key(record) === selected);
   return <>
     <div className="page-heading"><div><p className="eyebrow">INSTALLED SKILLS</p><h1>Skill versions</h1><p className="muted">Choose a version for one tool and scope. Only versions from its recorded source are offered.</p></div><button onClick={instances.refresh}>Refresh</button></div>
-    <form className="panel filters" onSubmit={(event) => { event.preventDefault(); setApplied(root); setSelected(''); }}><label>Repository root (optional)<input value={root} onChange={(event) => setRoot(event.target.value)} placeholder="Absolute repository root" /></label><button>Load installations</button></form>
+    <form className="panel filters" onSubmit={(event) => { event.preventDefault(); setApplied(root); setSelected(''); }}><DirectoryField label="Repository root (optional)" value={root} onChange={setRoot} placeholder="Absolute repository root" /><button>Load installations</button></form>
     <ErrorMessage message={instances.error} />
     {instances.loading ? <Spinner /> : !instances.data?.instances.length ? <EmptyState title="No installed skills">Install a skill first or select another repository.</EmptyState> : <div><label htmlFor="skill-version-installation">Installation</label><select id="skill-version-installation" value={selected} onChange={(event) => setSelected(event.target.value)}><option value="">Select an installation</option>{instances.data.instances.map((record) => <option key={key(record)} value={key(record)}>{record.skillId} · {record.toolId} · {record.scope === 'repo' ? record.repoRoot : 'Personal'} · {record.version}</option>)}</select></div>}
     {record && <Selection key={`${selected}:${session?.sessionRevision}`} client={client} record={record} session={session} refreshKey={refreshKey} onJob={onJob} />}
