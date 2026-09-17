@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadSession, resolveStartupSource, runStartupChecks } from '../../../src/operations/session.js';
+import { loadSession, loadSessionMembership, resolveStartupSource, runStartupChecks } from '../../../src/operations/session.js';
 import { buildSessionCatalogue } from '../../../src/operations/catalogue.js';
 import { resolveSource, resolvePersistedSource } from '../../../src/bundle/source.js';
 import { addSource, setCurrentBundle, readConfig, getCurrentBundleVersion } from '../../../src/bundle/cache.js';
@@ -105,6 +105,15 @@ describe('startup resolution', () => {
 });
 
 describe('session catalogue', () => {
+  it('allows TUI membership deferral without granting catalogue access before completion', async () => {
+    const session = await loadSession({ source }, { onAuthPrompt: vi.fn(), deferMembership: true });
+    expect(listProjects).not.toHaveBeenCalled();
+    expect(session.membership.state).toBe('loading');
+    expect(buildSessionCatalogue(session)).toEqual([]);
+    await loadSessionMembership(session);
+    expect(session.membership.state).toBe('ready');
+    expect(buildSessionCatalogue(session).map((entry) => entry.skillId)).toEqual(['allowed']);
+  });
   it('retains membership filtering even without a My Projects screen', async () => {
     const onAuthPrompt = vi.fn();
     const session = await loadSession({ source }, { onAuthPrompt });

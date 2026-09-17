@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef } from "react";
 import path from "node:path";
 import { Box, Text, useInput } from "ink";
 import SelectInput from "ink-select-input";
-import { listCachedBundles, updateSkillVersion, type CachedBundle } from "../bundle/cache.js";
-import { listSkillVersionInstances, listInstalledSkillVersions } from "../operations/versions.js";
+import { listCachedBundles, type CachedBundle } from "../bundle/cache.js";
+import { listSkillVersionInstances, listInstalledSkillVersions, updateInstalledSkillVersion, alignInstalledSkillVersions } from "../operations/versions.js";
 import { findRepoRoot } from "../lib/repo.js";
 import { LoadingSpinner } from "./Spinner.js";
 import { StatusMessage } from "./StatusMessage.js";
@@ -429,14 +429,7 @@ export function SkillVersionManager({ onBack }: SkillVersionManagerProps) {
                         (async () => {
                             setVersionSelectionNotice(null);
                             setUpdating(true);
-                            const result = await updateSkillVersion(
-                                selectedSkill.toolId,
-                                selectedSkill.skillName,
-                                item.value,
-                                selectedSkill.scope === "repo"
-                                    ? { scope: "repo", repoRoot: detectedRepoRoot ?? undefined }
-                                    : undefined,
-                            );
+                            const result = await updateInstalledSkillVersion(selectedSkill, item.value);
 
                             if (result.success) {
                                 await refreshSkills();
@@ -498,28 +491,7 @@ export function SkillVersionManager({ onBack }: SkillVersionManagerProps) {
                         (async () => {
                             setUpdating(true);
                             const targetVersion = item.value;
-                            let successCount = 0;
-                            const failures: string[] = [];
-
-                            for (const skill of scopedSkills) {
-                                if (skill.currentVersion === targetVersion) {
-                                    successCount++;
-                                    continue;
-                                }
-                                const result = await updateSkillVersion(
-                                    skill.toolId,
-                                    skill.skillName,
-                                    targetVersion,
-                                    skill.scope === "repo"
-                                        ? { scope: "repo", repoRoot: detectedRepoRoot ?? undefined }
-                                        : undefined,
-                                );
-                                if (result.success) {
-                                    successCount++;
-                                } else {
-                                    failures.push(`${skill.skillName} (${skill.toolName}): ${result.error}`);
-                                }
-                            }
+                            const { successCount, failures } = await alignInstalledSkillVersions(scopedSkills, targetVersion);
 
                             await refreshSkills();
 
