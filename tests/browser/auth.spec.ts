@@ -24,6 +24,9 @@ test('real OAuth cancel frees the callback port; explicit retry verifies PKCE an
   await expect(activity.getByRole('link', { name: /Open sign-in page/ })).toBeVisible();
   expect(idp.control.authorizationVisits).toBe(0); // no automatic popup
   await activity.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(activity.getByText('cancelled', { exact: true })).toBeVisible();
+  await expect(activity.getByRole('link', { name: /Open sign-in page/ })).toHaveCount(0);
+  await activity.getByRole('button', { name: 'Dismiss Load catalogue notification' }).click();
   await expect(activity).toHaveCount(0);
   const probe = createServer();
   await new Promise<void>((resolve, reject) => { probe.once('error', reject); probe.listen(OAUTH_CALLBACK_PORT, '127.0.0.1', resolve); });

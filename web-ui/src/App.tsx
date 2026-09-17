@@ -1,10 +1,10 @@
 import { Dialog } from './components/Dialog.js';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { AuthDto, JobDto } from '@api-types';
 import { ApiClient, ApiError } from './api/client.js';
 import { useResource, useSession } from './api/hooks.js';
 import { useHashRoute } from './router.js';
-import { ErrorMessage } from './components/Feedback.js';
+import { ErrorMessage, Notice } from './components/Feedback.js';
 import { JobPanel } from './components/JobPanel.js';
 import { Catalogue } from './screens/Catalogue.js';
 import { SkillDetail } from './screens/SkillDetail.js';
@@ -20,6 +20,7 @@ export function App({ client }: { client: ApiClient }) {
   const { session, context, jobs, connection, error: sessionError } = useSession(client, !stopped);
   const route = useHashRoute();
   const [selectedJob, setSelectedJob] = useState<string>();
+  const dismissJob = useCallback((id: string) => setSelectedJob((selected) => selected === id ? undefined : selected), []);
   const [error, setError] = useState('');
   const [quit, setQuit] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -71,9 +72,9 @@ export function App({ client }: { client: ApiClient }) {
       <header className={styles.header}><div className="min-width"><small className="muted">ACTIVE SOURCE</small><div className={styles.source} title={session?.source?.value}>{session?.source?.value ?? 'No source selected'}</div></div><div className="row">{session?.bundleVersion && <span className="badge">{session.bundleVersion}</span>}<span className="badge">{auth?.authenticated ? 'Signed in' : auth?.required ? 'Sign-in required' : 'Local session'}</span>{auth?.required && <button disabled={busy || session?.state === 'loading'} onClick={() => void authAction()}>{auth.authenticated ? 'Sign out' : 'Sign in'}</button>}<button disabled={busy || session?.state === 'loading'} onClick={() => void reload()}>{session?.state === 'loading' ? 'Loading…' : 'Reload'}</button></div></header>
       <main id="main-content" className={styles.main} tabIndex={-1}>
         <ErrorMessage message={connection === 'unauthorised' ? 'This tab is not authorized. Open the Web UI URL printed by Agent Manager.' : error || sessionError || session?.error?.message} />
-        {connection === 'reconnecting' && <div className="notice" role="status">Connection lost. Reconnecting and refreshing activity…</div>}
-        {session?.warnings.map((warning, index) => <div className="notice" key={index}>{warning}</div>)}
-        {session?.startupNotices.map((notice, index) => <div className="notice" key={index}>{notice.message}</div>)}
+        {connection === 'reconnecting' && <Notice role="status">Connection lost. Reconnecting and refreshing activity…</Notice>}
+        {session?.warnings.map((warning, index) => <Notice key={`${index}:${warning}`}>{warning}</Notice>)}
+        {session?.startupNotices.map((notice, index) => <Notice key={`${index}:${notice.message}`}>{notice.message}</Notice>)}
         {connection === 'unauthorised' || !session && sessionError ? null : route === '/' ? <Catalogue session={session} />
           : skillId ? <SkillDetail key={`${skillId}:${session?.sessionRevision}`} client={client} skillId={skillId} session={session} context={context} onJob={setSelectedJob} />
           : route === '/installed' ? <Installed client={client} context={context} refreshKey={refreshKey} onJob={setSelectedJob} />
@@ -84,7 +85,7 @@ export function App({ client }: { client: ApiClient }) {
           : <div className="empty"><h1>Page not found</h1><a href="#/">Return to the catalogue</a></div>}
         {quit && <Dialog label="Confirm quit" onClose={() => { if (!busy) setQuit(false); }}><h2>Quit Agent Manager?</h2><p>Changes already in progress will finish before the server stops.</p><div className="row"><button className="danger" disabled={busy} onClick={() => void shutdown()}>Quit</button><button onClick={() => setQuit(false)}>Keep working</button></div><ErrorMessage message={error} /></Dialog>}
       </main>
-      <JobPanel client={client} jobs={missingJob && !jobs.some((job) => job.id === missingJob.id) ? [...jobs, missingJob] : jobs} selectedId={selectedJob} onDismiss={() => setSelectedJob(undefined)} />
+      <JobPanel client={client} jobs={missingJob && !jobs.some((job) => job.id === missingJob.id) ? [...jobs, missingJob] : jobs} selectedId={selectedJob} onDismiss={dismissJob} />
     </div>
   </div>;
 }
