@@ -53,6 +53,10 @@ legend { font-weight: 550; margin-bottom: 12px; }
 .notice { border: 1px solid #dcd5b8; border-radius: 8px; background: #fffcf0; color: #695926; padding: 14px 18px; margin-bottom: 16px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .notice.error { background: #fff3f1; border-color: #e9c6c0; color: #983329; }
 .notice p { margin-top: 7px; }
+.notice.dismissible { display: flex; align-items: flex-start; gap: 12px; }
+.notice.dismissible > div { flex: 1; min-width: 0; }
+.close-button { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 30px; width: 30px; height: 30px; padding: 6px; color: inherit; background: transparent; border-color: currentColor; opacity: .75; }
+.close-button:hover:not(:disabled), .close-button:focus-visible { opacity: 1; }
 .empty { text-align: center; padding: 64px 24px; color: var(--muted); }
 .empty h2 { color: var(--text); font-size: 21px; }
 .filters { display: grid; grid-template-columns: 150px 170px minmax(180px, 1fr); gap: 16px; margin-bottom: 24px; }
@@ -74,10 +78,17 @@ dt { color: var(--muted); } dd { margin: 0; overflow-wrap: anywhere; }
 .source-list { display: grid; gap: 14px; }
 .source-list p { margin: 10px 0 0; }
 .setting + .setting { border-top: 1px solid var(--border); margin-top: 22px; padding-top: 22px; }
-.jobs { border-top: 1px solid var(--border); background: var(--surface); padding: 20px 40px; }
-.job { max-width: 1200px; margin: auto; padding: 12px 0; }
-.job + .job { border-top: 1px solid var(--border); }
-.job p { margin: 9px 0; color: var(--muted); font-size: 12px; }
+.job-toasts { position: fixed; z-index: 50; right: 24px; bottom: 24px; width: min(420px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); overflow-y: auto; overscroll-behavior: contain; display: grid; gap: 12px; padding: 4px; pointer-events: none; }
+.job-toasts:empty { display: none; }
+.job-toast { min-width: 0; background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 12px; padding: 16px; box-shadow: 0 8px 28px #10281c26; overflow-wrap: anywhere; pointer-events: auto; animation: toast-in .18s ease-out; }
+.job-toast.failed, .job-toast.cancelled { border-left-color: var(--danger); }
+.toast-heading { display: flex; align-items: center; gap: 8px; }
+.toast-heading strong { flex: 1; min-width: 0; }
+.toast-heading .badge { margin: 0; }
+.job-toast p { margin: 9px 0; font-size: 13px; }
+.job-toast .notice { margin: 12px 0; padding: 12px; }
+.job-toast > .row:empty { display: none; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 .status-dot { display: inline-block; width: 7px; height: 7px; background: #3c8f63; border-radius: 50%; margin-right: 7px; }
 .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -85,7 +96,7 @@ dt { color: var(--muted); } dd { margin: 0; overflow-wrap: anywhere; }
 .skip-link { position: fixed; top: -100px; left: 10px; z-index: 10; background: var(--surface); padding: 12px; }
 .skip-link:focus { top: 10px; }
 @media (max-width: 1080px) { .detail-grid { grid-template-columns: minmax(0, 1fr); } }
-@media (max-width: 680px) { .filters { grid-template-columns: 1fr 1fr; } .filters label:last-child { grid-column: 1 / -1; } .source-list .spread { align-items: flex-start; flex-direction: column; } .jobs { padding: 16px 20px; } .page-heading { align-items: flex-start; } .row { flex-wrap: wrap; } }
+@media (max-width: 680px) { .filters { grid-template-columns: 1fr 1fr; } .filters label:last-child { grid-column: 1 / -1; } .source-list .spread { align-items: flex-start; flex-direction: column; } .job-toasts { right: 12px; bottom: 12px; width: calc(100vw - 24px); max-height: 55dvh; } .page-heading { align-items: flex-start; } .row { flex-wrap: wrap; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition: none !important; } }
 @media (prefers-color-scheme: dark) { :root { color: #e3eee7; background: #17221c; --background: #17221c; --surface: #202d25; --text: #e3eee7; --muted: #a7b8ac; --border: #374b3e; --accent: #8acda5; --accent-soft: #2c4234; --danger: #f0a399; } button.primary, .button.primary { color: #17221c; } .notice { background: #383424; color: #e2d5a5; border-color: #6b6040; } .notice.error { background: #402b29; color: #f0bcb4; border-color: #725049; } }
 
