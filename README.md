@@ -76,6 +76,13 @@ or Ctrl-C to drain work and stop it. A second CLI Ctrl-C forces exit and may
 interrupt an operation. See [the web UI guide](docs/web-ui.md) for repository scope,
 version support, security, development and testing.
 
+### Desktop application (experimental)
+
+The Electron shell reuses the web UI and adds a native repository picker and
+macOS/Windows installer builds. See [desktop setup and packaging](docs/desktop.md).
+From a built checkout, install with `npm ci --prefix desktop` and launch with
+`npm start --prefix desktop`.
+
 ### Interactive (recommended for local use)
 
 ```bash
@@ -235,13 +242,14 @@ The TUI's top-level menu has these options:
 - **My Projects** -- Shown when you are logged in, `projects.enabled` is `true`, and an API base URL is set (`api.baseUrl` in the discovery document, or `API_BASE_URL`). Lists the projects you can access; from a project you can Search & Install skills or provision Rovo agents, filtered by that project's catalogue allowlists. When `projects.exclusiveSource` is `true`, Search & Install and Bulk Sync are limited to skills/agents permitted by your project memberships (with project names shown on the Search & Install detail row).
 - **Search & Install** -- Search a single catalogue of skills and Rovo agents, then act on your choice. Selecting a skill installs it (choose a source, scope, and coding tool); selecting a Rovo agent provisions it in Atlassian Studio. Rovo provisioning runs Playwright-driven browser automation from the command line by default; set `AGENTMAN_CHROME_EXTENSION=1` to also offer the Chrome Extension options, including direct extension installation (see [Feature Flags](#feature-flags)).
 - **Maintenance & Updates** -- Bulk-sync a tool's skills (select the complete set for a tool; deselecting uninstalls), manage individual skill versions, manage installed skills (update/remove/inspect), manage cached bundle versions, and update the Agent Manager CLI itself.
-- **Source Management** -- Install from a source URL: a GitHub repo, an artefact zip, or a bundle URL.
+- **Manage Sources** -- Install from a source URL: a GitHub repo, an artefact zip, or a bundle URL.
 - **Settings & Config** -- Toggle startup update checks and telemetry, persisted to `~/.agentman/config.json`. Environment variables still take precedence.
 - **Exit**
 
 ### Saved sources
 
-Passing a source once saves it: `agentman <url>` resolves the source as before and also stores it, marking it the **active** source. GitHub `owner/repo` shorthand is stored as the expanded `https://github.com/…` URL (and `/tree/<ref>` pins are kept); other git remotes keep their clone URL so reload still recognises them. A later bare `agentman` (no argument) resolves the active source, so you no longer need to paste the URL every time. Manage the saved list — add, remove, or pick which one is active — from **Source Management**. When a bare invocation runs, sources are tried in order (active first); a source that is unreachable is skipped so one dead source never blocks startup. Headless (`--config`) mode is unaffected: it always requires an explicit source argument and never falls back to saved sources, keeping CI runs reproducible.
+Passing a source once saves it: `agentman <url>` resolves the source as before and also stores it, marking it the **active** source. GitHub `owner/repo` shorthand is stored as the expanded `https://github.com/…` URL (and `/tree/<ref>` pins are kept); other git remotes keep their clone URL so reload still recognises them. A later bare `agentman` (no argument) resolves the active source, so you no longer need to paste the URL every time. Manage the saved list — add, remove, or pick which one is active — from **Manage Sources**. When a bare invocation runs, sources are tried in order (active first); a source that is unreachable is skipped so one dead source never blocks startup. Headless (`--config`) mode is unaffected: it always requires an explicit source argument and never falls back to saved sources, keeping CI runs reproducible.
+
 
 On startup, if a newer app version or bundle is available, a bordered update panel appears above the menu. Press `U` to update the app, or `B` to pull the latest bundle immediately.
 

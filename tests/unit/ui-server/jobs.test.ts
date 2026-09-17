@@ -126,3 +126,32 @@ it('retains the most recently completed job even when it started first', async (
   expect(jobs.get(slow).state).toBe('succeeded');
   expect(() => jobs.get(fast)).toThrow('Job unavailable');
 });
+
+it('authorizes only the exact live, non-cancelled desktop sign-in prompt', async () => {
+  const jobs = new JobRegistry(), entered = barrier(), hold = barrier();
+  const url = 'https://auth.example.com/authorize?state=test&code_challenge=test';
+  const id = jobs.start('login', async (ctx) => ctx.auth(async () => { ctx.authPrompt(url); entered.release(); await hold.promise; return {}; }));
+  expect(jobs.isActiveAuthorizationUrl(url)).toBe(false);
+  await entered.promise;
+  expect(jobs.isActiveAuthorizationUrl(url)).toBe(true);
+  expect(jobs.isActiveAuthorizationUrl(`${url}&extra=1`)).toBe(false);
+  const cancelled = jobs.cancel(id);
+  expect(jobs.isActiveAuthorizationUrl(url)).toBe(false);
+  hold.release(); await cancelled;
+  expect(jobs.isActiveAuthorizationUrl(url)).toBe(false);
+});
+
+it.each(['success', 'stop'] as const)('revokes desktop authorization after %s', async (ending) => {
+  const jobs = new JobRegistry(), entered = barrier(), hold = barrier();
+  const url = 'https://auth.example.com/authorize?state=lifecycle';
+  const id = jobs.start('login', async (ctx) => ctx.auth(async () => {
+    ctx.authPrompt(url); entered.release(); await hold.promise; return {};
+  }));
+  await entered.promise;
+  expect(jobs.isActiveAuthorizationUrl(url)).toBe(true);
+  const stopped = ending === 'stop' ? jobs.stop() : undefined;
+  if (stopped) expect(jobs.isActiveAuthorizationUrl(url)).toBe(false);
+  hold.release(); await jobs.wait(id); await stopped;
+  expect(jobs.get(id).state).toBe(ending === 'success' ? 'succeeded' : 'cancelled');
+  expect(jobs.isActiveAuthorizationUrl(url)).toBe(false);
+});

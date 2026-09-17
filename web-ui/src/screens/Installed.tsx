@@ -1,3 +1,4 @@
+import { DirectoryField } from '../components/DirectoryField.js';
 import { Dialog } from '../components/Dialog.js';
 import { useState } from 'react';
 import type { ContextDto, InstalledRecordDto } from '@api-types';
@@ -41,7 +42,7 @@ export function Installed({ client, context, refreshKey, onJob }: { client: ApiC
   }
   return <>
     <div className="page-heading"><div><p className="eyebrow">YOUR SETUP</p><h1>Installed skills</h1><p className="muted">See what’s available to each tool and keep it up to date.</p></div><button onClick={records.refresh}>Refresh</button></div>
-    <div className="filters"><label>Scope<select value={scope} onChange={(event) => setScope(event.target.value)}><option value="all">All scopes</option><option value="system">Personal</option><option value="repo">Repository</option></select></label><label>Tool<select value={tool} onChange={(event) => setTool(event.target.value)}><option value="all">All tools</option>{context?.tools.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label>Repository root<input value={repoRoot} onChange={(event) => setRepoRoot(event.target.value)} placeholder={context?.repoRoot ?? 'Optional absolute repository path'} /></label></div>
+    <div className="filters"><label>Scope<select value={scope} onChange={(event) => setScope(event.target.value)}><option value="all">All scopes</option><option value="system">Personal</option><option value="repo">Repository</option></select></label><label>Tool<select value={tool} onChange={(event) => setTool(event.target.value)}><option value="all">All tools</option>{context?.tools.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><DirectoryField label="Repository root" value={repoRoot} onChange={setRepoRoot} placeholder={context?.repoRoot ?? 'Optional absolute repository path'} /></div>
     <ErrorMessage message={error || records.error} />
     {records.loading ? <Spinner /> : !shown.length ? <EmptyState title="No installed skills">Install a skill from the <a href="#/">catalogue</a>, or change your filters.</EmptyState> : <div className="table-wrap"><table><thead><tr><th>Skill</th><th>Tool / scope</th><th>Version</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{shown.map((record) => <tr key={`${record.installKey}-${record.toolId}-${record.scope}-${record.repoRoot}`}>
       <td><strong>{record.skillId}</strong><small>{record.installKey}</small></td><td>{context?.tools.find((tool) => tool.id === record.toolId)?.name ?? record.toolId}<small>{record.scope === 'system' ? 'Personal' : record.repoRoot ?? 'Repository'}</small></td><td><code>{record.version || 'Unknown'}</code></td>

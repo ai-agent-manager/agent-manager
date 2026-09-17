@@ -81,7 +81,7 @@ export async function installChromeExtension(crxSourcePath: string = CRX_ASSET_P
 function buildWindowsInstructions(crxPath: string): string[] {
   return [
     "Automatic installation is not supported on Windows.",
-    "To install the Agentman Chrome extension manually:",
+    "To install the Agent Manager Chrome extension manually:",
     "",
     "  Option A - Load unpacked (developer mode):",
     "    1. Open Chrome and go to chrome://extensions",

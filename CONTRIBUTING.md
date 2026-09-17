@@ -54,8 +54,8 @@ for launch/security contracts and instructions for adding routes and DTOs.
   Acquire/authenticate outside mutation critical sections; await nested work.
   Recheck identities/revisions before commit. See [mutation rules](docs/web-ui.md#coordination-cancellation-and-shutdown).
 - The OAuth callback uses fixed port 19875; the extension bridge uses 19876;
-  browser serving defaults to 19877 with fallback. Desktop packaging is a later
-  milestone; there is no `desktop/` package yet.
+  browser serving defaults to 19877 with fallback. The `desktop/` Electron package
+  reuses the local server; see [desktop development/testing](docs/desktop.md).
 - `npm pack` swaps in `scripts/README.npm.md`. Update both READMEs when launch
   instructions change, and build CLI/browser assets before packing.
 

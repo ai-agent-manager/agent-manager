@@ -49,13 +49,13 @@ test('development UI: occupied default port, same-origin API/SSE and actual HMR'
   page.on('request', (request) => { if (request.url().startsWith('http')) requests.push(request.url()); });
   page.on('websocket', (socket) => sockets.push(socket.url()));
   await page.goto(ui.url);
-  await expect(page.getByRole('link', { name: 'Agent manager home' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Agent Manager home' })).toBeVisible();
   await expect.poll(() => sockets.length).toBeGreaterThan(0);
   expect(sockets.every((url) => new URL(url).host === new URL(origin).host)).toBe(true);
   const navigationStart = await page.evaluate(() => performance.timeOrigin);
   const appPath = path.join(root, 'src/App.tsx');
-  await writeFile(appPath, (await readFile(appPath, 'utf8')).replace('<span>agent manager</span>', '<span>agent manager HMR</span>'));
-  await expect(page.getByText('agent manager HMR', { exact: true })).toBeVisible();
+  await writeFile(appPath, (await readFile(appPath, 'utf8')).replace('<span>Agent Manager</span>', '<span>Agent Manager HMR</span>'));
+  await expect(page.getByText('Agent Manager HMR', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => performance.timeOrigin)).toBe(navigationStart);
   await exerciseUi(page, ui, state.home);
   expect(requests.some((url) => url.endsWith('/api/events'))).toBe(true);
