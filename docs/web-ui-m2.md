@@ -5,7 +5,8 @@ forceUpdate, token, staticDir, staticHandler })`. It returns the HTTP server,
 actual port, launch token, bootstrap URL, and an idempotent asynchronous `stop()`.
 The default port is 19877; port 0 requests an ephemeral port. This module does not
 import Ink or terminate the process. CLI launch wiring and browser assets are
-described in the [M3/M4 usage guide](web-ui.md).
+described in [the current web UI guide](web-ui.md). The complete current request/response
+contract lives in the [API reference](web-ui-api.md).
 
 The server binds only to `127.0.0.1`. Every request must have the exact bound Host
 and, when present, the matching Origin. Every `/api/*` request needs the launch
@@ -34,7 +35,7 @@ a restrictive CSP; missing assets produce an actionable 503 response.
 | `GET /api/auth`, `POST /api/auth/login`, `POST /api/auth/logout` | Fresh auth status, login/reload jobs and coordinated sign-out |
 | `GET /api/bundles`, `GET /api/bundles/remote` | Cache inventory (separate safe removal IDs for unattested caches) and remote source/version IDs |
 | `POST /api/bundles/download`, `POST /api/bundles/current` | Download or select a version through a revision-checked job |
-| `DELETE /api/bundles/:bundleId` | Remove only unused, non-current verified caches |
+| `DELETE /api/bundles/:bundleId` | Remove unused, non-current caches via removal IDs, including unattested legacy entries |
 | `GET /api/skill-versions`, `GET /api/skill-versions/:installKey/available` | Exact installed instances and compatible cached versions |
 | `PUT /api/skill-versions` | Change an exact tool/scope/repository pin through a job |
 | `GET /api/jobs/:id`, `POST /api/jobs/:id/cancel` | Observe/cancel jobs |
@@ -57,8 +58,9 @@ repository root is supplied.
   its revision and identity again under the mutation lock before installation.
   Repository catalogue overrides use the shared facade. Client paths and source
   pins are never accepted. Membership failure leaves the catalogue restricted.
-- A short per-server queue orders revision acceptance with filesystem commits.
-  Shared cross-process mutation leases still coordinate writes with TUI/headless.
+- A short per-server gate orders revision acceptance and publication. Installation
+  loops do not hold it. Shared cross-process mutation leases coordinate filesystem
+  writes with TUI/headless; take the lease before the gate when both are needed.
   Network acquisition runs outside those leases.
 - Jobs have explicit queued/running/succeeded/failed/cancelled states. Four jobs
   may run, with at most 20 waiting and 50 completed retained. Queued cancellation
@@ -96,10 +98,10 @@ coordinator through real `authenticate` calls.
 Version routes and dedicated login/logout controls were added in M5. Direct Git sources
 currently return an explicit unsupported-operation conflict; Git sources inside
 a discovery catalogue are supported. The optional direct-source preview/install
-flow remains deferred. Browser UI, development middleware/HMR, CLI signals and
-desktop integration are separate milestones. The `agentman ui` command and core
-browser application were added in M3/M4; M5 version/auth screens use the same
-DTO, job and session-revision contracts.
+flow remains deferred. The `agentman ui` command, browser application, development middleware/HMR and
+CLI signals were added in M3/M4; M5 version/auth screens use the same DTO, job and
+session-revision contracts. M6 adds browser/packaged integration coverage.
+Desktop integration remains planned for M8.
 
 Synchronous filesystem mutations have a five-second queue deadline, including
 contention with this server's own jobs. A disconnected waiter cannot commit later.

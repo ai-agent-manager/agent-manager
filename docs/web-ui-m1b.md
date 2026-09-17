@@ -1,7 +1,8 @@
 # Shared mutations and version management (M1b)
 
 M1b applies to the TUI, headless commands, and the operations facade that the web
-server will use. HTTP routing and job management remain in M2.
+server uses. HTTP routing and job management are described in
+[the web UI guide](web-ui.md) and [API reference](web-ui-api.md).
 
 ## Mutation ownership and recovery
 

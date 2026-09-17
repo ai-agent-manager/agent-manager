@@ -6,7 +6,11 @@ Agent Manager uses a **discovery document** served at a well-known path to locat
 
 **Well-known path:** `<base_url>/.well-known/agents/discovery.json`
 
-When a user provides a base URL to agent-manager, it fetches the discovery document from this path. There is no fallback; the discovery document must exist.
+When a user provides an HTTP startup URL to the TUI or web UI, agent-manager
+fetches the discovery document from this path. These modes have no fallback;
+the document must exist. Headless `--config` mode alone treats a discovery 404
+as a legacy bundle source and reads `<content-root>/index.json`; other discovery
+errors still fail.
 
 ## Discovery Document Format
 

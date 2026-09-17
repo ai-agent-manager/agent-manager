@@ -40,3 +40,7 @@ Thumbs.db
 
 # ── Test coverage ─────────────────────────────────────────────────────────────
 coverage/
+
+# Browser test diagnostics
+test-results/
+playwright-report/
