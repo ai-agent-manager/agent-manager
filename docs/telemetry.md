@@ -41,7 +41,14 @@ coverage implied by the table.
 message or stack. Metadata labels are normalized and truncated; this is not a
 semantic redaction of arbitrary property values.
 
-Telemetry is automatically disabled in CI and other non-interactive environments.
+Telemetry is automatically disabled in detected CI environments and when either
+`stdin.isTTY` or `stdout.isTTY` is explicitly `false`. An absent (`undefined`)
+TTY flag does not disable it. A normal desktop GUI launch has absent TTY flags,
+so desktop telemetry is **enabled when a discovery document or environment
+configures an endpoint and site ID**, unless the user has opted out. The desktop
+shell deliberately retains this shared-core behavior; lack of a terminal is not
+an opt-out. Use Settings → Share anonymous usage data or the environment flags
+below to disable it. The desktop shell emits no additional events of its own.
 
 ## Disable telemetry
 

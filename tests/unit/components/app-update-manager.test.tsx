@@ -66,7 +66,7 @@ describe("AppUpdateManager", () => {
         await vi.waitFor(() => {
             expect(runSelfUpdate).toHaveBeenCalledTimes(1);
             expect(onExit).toHaveBeenCalledWith(
-                "Agent Manager updated. Restart agentman to use the new application version.",
+                "Agent Manager updated. Restart Agent Manager to use the new application version.",
             );
         });
     });

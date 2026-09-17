@@ -37,7 +37,7 @@ export function serialiseError(error: unknown): { status: number; body: { error:
     status = 409; extras.code = 'CANCELLED';
   } else if (error instanceof CallbackServerError && /address already in use|EADDRINUSE/i.test(error.message)) {
     status = 409; extras.code = 'AUTH_BUSY';
-    message = 'Another agentman login may be active. Finish or cancel it, then retry.';
+    message = 'Another Agent Manager login may be active. Finish or cancel it, then retry.';
   } else if (error instanceof AuthFlowError || error instanceof CallbackServerError) status = 401;
   else if (error instanceof DiscoveryError) {
     status = 502; extras.baseUrl = safeUrl(error.baseUrl); extras.status = error.status;

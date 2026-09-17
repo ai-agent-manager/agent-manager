@@ -44,3 +44,7 @@ coverage/
 # Browser test diagnostics
 test-results/
 playwright-report/
+
+# Desktop packaging output and generated platform icons
+desktop/release/
+desktop/build/

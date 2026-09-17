@@ -15,9 +15,9 @@ export interface UiCommandOptions extends Pick<UiServerOptions, 'cwd' | 'startup
 /** CLI lifetime policy lives here; the embeddable HTTP server never exits. */
 export async function runUiCommand(options: UiCommandOptions = {}) {
   const staticDir = options.staticDir === undefined ? fileURLToPath(new URL('../assets/web-ui/', import.meta.url)) : options.staticDir;
-  if (!staticDir) throw new Error('Web UI assets are missing. Reinstall agentman, or run npm run build:web-ui from the source checkout.');
+  if (!staticDir) throw new Error('Web UI assets are missing. Reinstall Agent Manager, or run npm run build:web-ui from the source checkout.');
   await access(path.join(staticDir, 'index.html')).catch(() => {
-    throw new Error('Web UI assets are missing. Reinstall agentman, or run npm run build:web-ui from the source checkout.');
+    throw new Error('Web UI assets are missing. Reinstall Agent Manager, or run npm run build:web-ui from the source checkout.');
   });
   let handle: Awaited<ReturnType<typeof startUiServer>> | undefined;
   let interrupted = false;
