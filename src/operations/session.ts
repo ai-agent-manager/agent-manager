@@ -242,17 +242,18 @@ export async function loadSessionMembership(session: Session, events: SessionEve
   }
 }
 
-/** Load core state; consumers choose how and when to present or publish it. */
+/** Load core state. TUI callers may defer membership to keep menus responsive,
+ * but must keep the catalogue restricted until loadSessionMembership completes. */
 export async function loadSession(
   startup: StartupResolution,
-  options: SessionEvents & { forceUpdate?: boolean; persist?: boolean } = {},
+  options: SessionEvents & { forceUpdate?: boolean; persist?: boolean; deferMembership?: boolean } = {},
 ): Promise<Session> {
   return withOperationCancellation(options.signal, () => loadSessionState(startup, options));
 }
 
 async function loadSessionState(
   startup: StartupResolution,
-  options: SessionEvents & { forceUpdate?: boolean; persist?: boolean },
+  options: SessionEvents & { forceUpdate?: boolean; persist?: boolean; deferMembership?: boolean },
 ): Promise<Session> {
   const source = startup.source;
   const required = source?.type === 'discovery' && source.discovery.auth?.required === true;
@@ -272,7 +273,7 @@ async function loadSessionState(
   if (!source) {
     warn(startup.sourceError
       ? `Could not resolve any configured source:\n${startup.sourceError}`
-      : 'No source configured yet. Add one from Source Management to get started.');
+      : 'No source configured yet. Add one from Manage Sources to get started.');
     return session;
   }
   const config = await readConfig();
@@ -293,7 +294,7 @@ async function loadSessionState(
     session.authSession = acquired.authSession;
     session.auth = { required, authenticated: !!acquired.authSession, backend: acquired.authBackend };
     acquired.warnings.forEach(warn);
-    await loadSessionMembership(session, options);
+    if (!options.deferMembership) await loadSessionMembership(session, options);
     return session;
   }
   const currentVersion = await getCurrentBundleVersion();

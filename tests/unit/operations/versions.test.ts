@@ -1,6 +1,6 @@
 vi.mock('../../../src/bundle/version-identity.js', () => ({ readBundleIdentity: vi.fn(async () => ({})), resolvePinnedBundle: vi.fn(async () => ({})) }));
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { downloadBundleVersion, listRemoteVersions, listSkillVersionInstances, listVersionsContainingSkill, switchBundleVersion } from '../../../src/operations/versions.js';
+import { alignInstalledSkillVersions, downloadBundleVersion, listRemoteVersions, listSkillVersionInstances, listVersionsContainingSkill, switchBundleVersion } from '../../../src/operations/versions.js';
 import { getValidBearerToken } from '../../../src/auth/index.js';
 import { downloadBundle, fetchIndex } from '../../../src/bundle/downloader.js';
 import { setCurrentBundle, updateSkillVersion } from '../../../src/bundle/cache.js';
@@ -30,6 +30,21 @@ beforeEach(() => {
 });
 
 describe('version operations', () => {
+  it('aligns exact installation keys and repository roots, retaining skips and partial failures', async () => {
+    vi.mocked(updateSkillVersion).mockReset();
+    vi.mocked(updateSkillVersion).mockResolvedValueOnce({ success: false, error: 'Different source' });
+    vi.mocked(updateSkillVersion).mockResolvedValueOnce({ success: true });
+    const result = await alignInstalledSkillVersions([
+      { installKey: 'already', skillName: 'Already', toolId: 'cursor', toolName: 'Cursor', scope: 'system', currentVersion: '2.0.0' },
+      { installKey: 'example.com/source/skill', skillName: 'Shared skill', toolId: 'claude-code', toolName: 'Claude Code', scope: 'system', currentVersion: '1.0.0' },
+      { installKey: 'example.com/source/skill', skillName: 'Shared skill', toolId: 'claude-code', toolName: 'Claude Code', scope: 'repo', repoRoot: '/example/project', currentVersion: '1.0.0' },
+    ], '2.0.0');
+    expect(updateSkillVersion).toHaveBeenCalledTimes(2);
+    expect(updateSkillVersion).toHaveBeenNthCalledWith(1, 'claude-code', 'example.com/source/skill', '2.0.0', undefined);
+    expect(updateSkillVersion).toHaveBeenNthCalledWith(2, 'claude-code', 'example.com/source/skill', '2.0.0', { scope: 'repo', repoRoot: '/example/project' });
+    expect(result).toEqual({ successCount: 2, failures: ['Shared skill (Claude Code): Different source'] });
+    expect(setCurrentBundle).not.toHaveBeenCalled();
+  });
   it('refreshes auth for each remote operation without activating a downloaded bundle', async () => {
     expect(await listRemoteVersions(source, auth)).toHaveLength(1);
     await downloadBundleVersion(source, '2.0.0', auth);
