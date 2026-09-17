@@ -16,6 +16,7 @@ jobs:
     verify:
         name: Verify (${{ matrix.os }})
         runs-on: ${{ matrix.os }}
+        timeout-minutes: 20
 
         strategy:
             fail-fast: false
@@ -31,7 +32,9 @@ jobs:
               with:
                   node-version-file: ".nvmrc"
                   cache: "npm"
-                  cache-dependency-path: package-lock.json
+                  cache-dependency-path: |
+                      package-lock.json
+                      web-ui/package-lock.json
 
             - name: Install dependencies
               run: npm ci
@@ -40,7 +43,7 @@ jobs:
               run: npm ci --prefix web-ui && npm run build:web-ui && npm run test:web-ui
 
             - name: Type check
-              run: npm run typecheck
+              run: npm run typecheck && npm run typecheck:integration
 
             - name: Lint
               if: runner.os == 'Linux'
@@ -51,6 +54,23 @@ jobs:
 
             - name: Build
               run: npm run build
+
+            - name: Install pinned Chromium and OS dependencies
+              run: npx --no-install playwright install --with-deps chromium
+
+            - name: Browser and installed-tarball tests
+              run: npm run test:e2e
+
+            - name: Preserve browser failure diagnostics
+              if: failure() && !cancelled()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: browser-failures-${{ matrix.os }}
+                  path: |
+                      test-results/
+                      playwright-report/
+                  retention-days: 7
+                  if-no-files-found: ignore
 
     smoke-test-git-importer:
         name: Smoke test — git skill importer
@@ -65,7 +85,9 @@ jobs:
               with:
                   node-version-file: ".nvmrc"
                   cache: "npm"
-                  cache-dependency-path: package-lock.json
+                  cache-dependency-path: |
+                      package-lock.json
+                      web-ui/package-lock.json
 
             - name: Install dependencies
               run: npm ci
@@ -96,7 +118,9 @@ jobs:
                   node-version-file: ".nvmrc"
                   registry-url: "https://registry.npmjs.org/"
                   cache: "npm"
-                  cache-dependency-path: package-lock.json
+                  cache-dependency-path: |
+                      package-lock.json
+                      web-ui/package-lock.json
 
             - name: Upgrade npm for trusted publishing
               run: npm install -g npm@11.9.0
@@ -196,7 +220,9 @@ jobs:
                   node-version-file: ".nvmrc"
                   registry-url: "https://npm.pkg.github.com/"
                   cache: "npm"
-                  cache-dependency-path: package-lock.json
+                  cache-dependency-path: |
+                      package-lock.json
+                      web-ui/package-lock.json
 
             - name: Install dependencies
               run: npm ci

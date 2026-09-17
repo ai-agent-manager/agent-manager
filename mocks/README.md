@@ -64,7 +64,9 @@ npx -y @ai-agent-manager/cli@latest http://localhost:8080
 npm run dev -- http://localhost:8080
 ```
 
-The discovery document requires auth, so the CLI will open a browser login. Use:
+The discovery document requires auth. The TUI displays the login URL and opens
+it when you press Enter; the web UI presents a sign-in link. Use these synthetic
+accounts:
 
 | Username | Password |
 |----------|----------|
@@ -76,6 +78,35 @@ After login you should see **My Projects** (projects feature + API base URL + be
 Interactive backend API sandbox (OpenAPI plugin): [http://localhost:8080/_spec](http://localhost:8080/_spec)
 
 OIDC discovery: [http://localhost:8080/oidc/.well-known/openid-configuration](http://localhost:8080/oidc/.well-known/openid-configuration)
+
+## Web UI checks
+
+From the repository root, install dependencies and build with `npm ci`,
+`npm ci --prefix web-ui`, `npm run build:web-ui` and `npm run build`. With the
+mock running on port 8080:
+
+```bash
+npm run preview:ui -- http://localhost:8080 --port 0
+```
+
+For an automated OAuth browser smoke, install the test browser with
+`npx --no-install playwright install --with-deps chromium`, then run
+`npm run test:browser:auth`. It uses the mock account and temporary token storage.
+Run it separately from other auth suites: the OAuth callback port is fixed at
+19875, even when the UI uses an ephemeral port.
+
+The integration workflow additionally runs this CLI/server catalogue check:
+
+```bash
+AGENTMAN_ACCESS_TOKEN=ci-integration-token node --import tsx tests/integration/mock-ui-smoke.ts http://localhost:8080
+```
+
+The token above is synthetic; mock content does not validate it. The script seeds
+its own temporary token cache, disables keychain access, starts the built CLI
+with `--no-open` on an ephemeral port, waits up to 30 seconds for a non-empty
+catalogue and shuts down. This is not an interactive OAuth test. Neither smoke
+replaces the self-contained Playwright suite; see the
+[test guide](../tests/e2e/README.md).
 
 ## Discovery document
 

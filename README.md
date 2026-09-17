@@ -28,7 +28,7 @@ Agent Manager gives you a single source of truth for your team's agent skills �
 
 ## Requirements
 
-- Node.js 22+
+- Node.js 22.12 or higher
 - Playwright _(optional — only needed for Rovo agent provisioning)_
 
 ---
@@ -37,22 +37,44 @@ Agent Manager gives you a single source of truth for your team's agent skills �
 
 ### Web UI (experimental)
 
-The experimental browser UI can be run from this checkout:
+Launch a release containing the web UI with:
+
+```bash
+npx -y @ai-agent-manager/cli@latest ui https://skills.example.com
+```
+
+It opens your browser and prints a local URL. Each launch generates a new access
+token in that URL; keep it private. The browser removes the token from the address
+bar and retains it for tab reloads. Omit the source to use saved sources.
+
+| Option | Behavior |
+| --- | --- |
+| `--no-open` | Print the URL without opening a browser |
+| `--port 0` | Choose an available port |
+| `--port 19877` | Require that port; without an explicit port, a busy default falls back to an available port |
+| `--update` | Force reacquisition of the selected source |
+
+The UI browses and installs skills, manages installed skills, sources and settings,
+and supports compatible cached/per-installation versions and sign-in/out. Use a
+local bundle directory or an HTTP discovery source; direct Git inputs must be
+included in a discovery catalogue for browser use. `ui` cannot be combined with
+`--config`.
+
+Use these checkout commands while the feature is unreleased, or to inspect local
+changes:
 
 ```bash
 npm ci
 npm ci --prefix web-ui
 npm run build:web-ui
-npm run preview:ui -- https://skills.example.com --port 0
+npm run preview:ui -- tests/fixtures/valid-bundle --port 0
 ```
 
-Open the printed URL. It contains a token for this server session; keep it private.
-The UI supports browsing and installing skills, managing installed skills, sources,
-settings, cached and per-installation versions, and progress with sign-in prompts.
-Dedicated sign-in and sign-out controls are available.
-
-For development with live updates, use `npm run dev:ui -- --no-open`.
-See [the web UI guide](docs/web-ui.md) for architecture and validation commands.
+`preview:ui` prints the URL without opening a browser. For live development, use
+`npm run dev:ui -- --no-open`. Closing the tab leaves the server running; use Quit
+or Ctrl-C to drain work and stop it. A second CLI Ctrl-C forces exit and may
+interrupt an operation. See [the web UI guide](docs/web-ui.md) for repository scope,
+version support, security, development and testing.
 
 ### Interactive (recommended for local use)
 
@@ -176,7 +198,7 @@ npx @ai-agent-manager/cli@latest https://bundles.example.com \
 
 If your bundle server requires authentication, Agent Manager runs an interactive OAuth2/OIDC flow on first use:
 
-1. A browser window opens to your provider's login page.
+1. The TUI displays the provider's login URL and opens it when you press Enter; the web UI presents an explicit sign-in link.
 2. After login, a local callback server receives the authorization code.
 3. Tokens are stored in the OS keychain when available, otherwise in `~/.agentman/auth/` (`0600`).
 4. Before each authenticated API or content download, Agent Manager reloads the store and refreshes the token if it is near expiry (or retries once after an HTTP 401).
@@ -258,7 +280,7 @@ The link name depends on the install source:
 
 When you run Agent Manager from inside a git repo, the scope selector offers **System-wide** or **This repository**. Repo-scoped installs symlink from the shared bundle cache — the bundle itself isn't copied into the repo.
 
-A `.agentman.json` file is written at the repo root tracking the pinned bundle version and installed skills. Commit this so everyone on the team stays in sync.
+A `.agentman.json` file is written at the repo root tracking installed skills and their source pins. This is machine-specific runtime state: keep it gitignored and do not commit it. Share a headless install config when the team needs reproducible installation instructions.
 
 ---
 
@@ -267,7 +289,7 @@ A `.agentman.json` file is written at the repo root tracking the pinned bundle v
 1. Agent Manager resolves your source: HTTP bases fetch `.well-known/agents/discovery.json`; git remotes look for `.agents/discovery.json` in the repo (GitHub via API, other hosts via a shallow clone).
 2. If the server requires authentication, an OAuth2/OIDC flow runs interactively (PKCE, browser-based login).
 3. Each source's bundle is downloaded and extracted under `~/.agentman/bundles/sources/<source-name>/<version>/`, so two sources publishing the same version number stay separate. A bundle fetched from a bare URL rather than a declared source still lands in the older `~/.agentman/bundles/<version>/` layout.
-4. `~/.agentman/current` symlinks to the active version of that older layout, and **Maintenance & Updates → Manage Bundle Versions** operates on it. Source-scoped bundles are not yet covered by either.
+4. `~/.agentman/current` points to the active flat-cache version. Named-source caches retain independent identities; the web UI and the TUI’s Manage Skill Versions select their versions per installed skill. See [version support](docs/web-ui.md#versions-and-cache-provenance) for source-specific capabilities.
 5. Multiple bundle versions coexist on disk.
 6. Installing a skill symlinks the entire skill directory from the cache into the target tool's skills path.
 7. Installation state is tracked in `~/.agentman/config.json` (system-wide) or `.agentman.json` (repo-scoped).
@@ -298,7 +320,10 @@ Important behaviour:
 
 ## Telemetry
 
-Agent Manager can send a small set of anonymous usage events to help understand adoption and catch operational failures. Telemetry is opt-in, based on your bundle server. No prompts, skill content, repo names, file paths, or personal identifiers are ever sent. Telemetry is automatically disabled in CI.
+Agent Manager can send operational usage events when telemetry is configured.
+Events include counts, tool/scope, versions and source metadata, but not prompts
+or skill contents. Telemetry is automatically disabled in CI. The web UI has a
+launch event; its installs/removals do not emit the TUI bulk-sync events.
 
 See [docs/telemetry.md](docs/telemetry.md) for the full event list and instructions to disable or override the endpoint.
 
@@ -319,13 +344,17 @@ AGENTMAN_CHROME_EXTENSION=1 npx @ai-agent-manager/cli@latest <base-url>
 ## Development
 
 ```bash
-npm install          # install dependencies
+npm ci               # install dependencies
 npm run dev -- <url> # run locally against a bundle server
 npm run build        # compile to dist/
 npm test             # run tests once
 npm run test:watch   # watch mode
 npm run typecheck    # type check without emitting
 ```
+
+For browser development, also install `web-ui/` dependencies. See the
+[web UI development guide](docs/web-ui.md#launch-and-development) and
+[test setup](tests/e2e/README.md) for builds, component tests and Playwright.
 
 ### Mock HTTP skills server
 
