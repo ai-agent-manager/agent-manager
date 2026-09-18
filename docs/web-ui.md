@@ -60,6 +60,9 @@ build both first. The pack hook replaces the repository README with
 
 ## Browser behavior
 
+- The Appearance selector above Quit offers System (the default), Light, and Dark.
+  System follows OS appearance changes. The choice is saved in application settings
+  and restored in both the browser and desktop app on subsequent launches.
 - The launch token is read into memory and session storage, then removed from
   the URL before application requests. API calls and the fetch-based SSE stream
   send it in an Authorization header. Reloading the tab preserves the session.

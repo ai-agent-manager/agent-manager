@@ -77,6 +77,7 @@ export interface SourcesDto { sources: StoredSourceDto[]; active: StoredSourceDt
 export interface SettingsDto {
   startupUpdateChecksDisabled: boolean;
   telemetryDisabled: boolean;
+  uiTheme: 'system' | 'light' | 'dark';
   envOverrides: { startupUpdateChecksDisabled: boolean; telemetryDisabled: boolean };
 }
 

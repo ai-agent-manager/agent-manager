@@ -58,7 +58,7 @@ are listed separately from JSON bodies. Success is HTTP 200 unless stated.
 | `POST /api/sources/remove` | `{kind, value}` copied from a displayed stored source | `SourcesDto` |
 | `POST /api/sources/activate` | `{kind, value}` copied from a displayed stored source | `SourcesDto` |
 | `GET /api/settings` | None | `SettingsDto`: stored values and environment overrides |
-| `PATCH /api/settings` | `{startupUpdateChecksDisabled?, telemetryDisabled?}` | Updated `SettingsDto` |
+| `PATCH /api/settings` | `{startupUpdateChecksDisabled?, telemetryDisabled?, uiTheme?}` (`uiTheme`: `system`, `light`, or `dark`) | Updated `SettingsDto` |
 | `GET /api/auth` | None | `AuthDto`; checks cached token identity/expiry without interactive login |
 | `POST /api/auth/login` | `{}` | **202** `{jobId}`; authenticates and reloads the selected source |
 | `POST /api/auth/logout` | `{}` | `{}` after token-producing jobs drain and credentials are deleted |
