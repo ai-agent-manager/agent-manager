@@ -69,6 +69,8 @@ export interface AgentmanConfig {
     startupUpdateChecksDisabled?: boolean;
     /** Persisted telemetry opt-out. Only ever disables — env vars still take precedence. */
     telemetryDisabled?: boolean;
+    /** Appearance preference shared by the browser and desktop UI. */
+    uiTheme?: 'system' | 'light' | 'dark';
     /** Sources the user has added — resolved to build the catalogue. */
     sources?: StoredSource[];
     /** The source a bare `agentman` invocation resolves first. */

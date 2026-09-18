@@ -78,6 +78,10 @@ it('validates malformed, oversized and unknown fields without changing settings'
   expect(malformed.status).toBe(400);
   expect((await api('/api/settings', 'PATCH', { extra: true })).status).toBe(400);
   expect((await api('/api/settings', 'PATCH', { telemetryDisabled: 'true' })).status).toBe(400);
+  for (const uiTheme of ['sepia', 'DARK', null, false]) {
+    expect((await api('/api/settings', 'PATCH', { uiTheme, telemetryDisabled: true })).status).toBe(400);
+  }
+  expect(await (await api('/api/settings')).json()).toMatchObject({ uiTheme: 'system', telemetryDisabled: false });
   expect((await api('/api/settings', 'PATCH', { telemetryDisabled: true, extra: 'x'.repeat(1024 * 1024) })).status).toBe(413);
   expect((await api('/api/settings?extra=1')).status).toBe(400);
   expect((await api('/api/installs?scope=system&scope=repo')).status).toBe(400);
