@@ -6,6 +6,7 @@ import { useResource, useSession } from './api/hooks.js';
 import { useHashRoute } from './router.js';
 import { ErrorMessage, Notice } from './components/Feedback.js';
 import { JobPanel } from './components/JobPanel.js';
+import { ThemeSelector } from './components/ThemeSelector.js';
 import { Catalogue } from './screens/Catalogue.js';
 import { SkillDetail } from './screens/SkillDetail.js';
 import { Installed } from './screens/Installed.js';
@@ -66,7 +67,7 @@ export function App({ client }: { client: ApiClient }) {
     <aside className={styles.sidebar}>
       <a className={styles.brand} href="#/" aria-label="Agent Manager home"><span className={styles.logo} aria-hidden="true">a</span><span>Agent Manager</span></a>
       <nav aria-label="Main navigation">{[['/', 'Catalogue', '⌘'], ['/installed', 'Installed', '▦'], ['/sources', 'Sources', '◎'], ['/versions', 'Versions', '◷'], ['/skill-versions', 'Skill versions', '⇄'], ['/settings', 'Settings', '⚙']].map(([href, label, icon]) => <a href={`#${href}`} key={href} className={(route === href || href === '/' && route.startsWith('/skills/')) ? styles.active : ''} aria-current={(route === href || href === '/' && route.startsWith('/skills/')) ? 'page' : undefined}><span aria-hidden="true">{icon}</span>{label}</a>)}</nav>
-      <div className={styles.sidebarBottom}><span className="status-dot" />Running locally<small>v{context?.appVersion ?? '…'}</small><button onClick={() => setQuit(true)}>Quit Agent Manager</button></div>
+      <div className={styles.sidebarBottom}><span className="status-dot" />Running locally<small>v{context?.appVersion ?? '…'}</small><ThemeSelector client={client} enabled={!!context && connection !== 'unauthorised'} /><button onClick={() => setQuit(true)}>Quit Agent Manager</button></div>
     </aside>
     <div className={styles.workspace}>
       <header className={styles.header}><div className="min-width"><small className="muted">ACTIVE SOURCE</small><div className={styles.source} title={session?.source?.value}>{session?.source?.value ?? 'No source selected'}</div></div><div className="row">{session?.bundleVersion && <span className="badge">{session.bundleVersion}</span>}<span className="badge">{auth?.authenticated ? 'Signed in' : auth?.required ? 'Sign-in required' : 'Local session'}</span>{auth?.required && <button disabled={busy || session?.state === 'loading'} onClick={() => void authAction()}>{auth.authenticated ? 'Sign out' : 'Sign in'}</button>}<button disabled={busy || session?.state === 'loading'} onClick={() => void reload()}>{session?.state === 'loading' ? 'Loading…' : 'Reload'}</button></div></header>

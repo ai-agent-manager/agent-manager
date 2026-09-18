@@ -1,0 +1,10 @@
+.container { margin-bottom: 14px; }
+.selector { gap: 0; }
+.selector legend { font-size: 11px; margin-bottom: 8px; color: var(--muted); }
+.options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; padding: 3px; border: 1px solid var(--border); border-radius: 8px; background: var(--background); }
+.option { display: block; position: relative; min-width: 0; font-size: 11px; font-weight: 550; cursor: pointer; }
+.option span { display: block; padding: 7px 2px; text-align: center; border: 1px solid transparent; border-radius: 5px; color: var(--muted); }
+.option:hover span { color: var(--text); }
+.option input:checked + span { background: var(--surface); border-color: var(--border); color: var(--accent); box-shadow: var(--shadow); }
+.option input:focus-visible + span { outline: 3px solid #69a286; outline-offset: 1px; }
+.option input:disabled + span { opacity: .6; cursor: wait; }

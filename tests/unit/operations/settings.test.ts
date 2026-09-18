@@ -24,7 +24,7 @@ describe('settings service', () => {
     await updateSettings({ startupUpdateChecksDisabled: true });
     await updateSettings({ telemetryDisabled: true });
     expect(await getSettings({})).toEqual({
-      startupUpdateChecksDisabled: true, telemetryDisabled: true,
+      startupUpdateChecksDisabled: true, telemetryDisabled: true, uiTheme: 'system',
       envOverrides: { startupUpdateChecksDisabled: false, telemetryDisabled: false },
     });
     expect((await readConfig()).baseUrl).toBe('https://skills.example.com');
