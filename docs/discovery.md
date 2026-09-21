@@ -11,7 +11,7 @@ When a user provides an HTTP base URL, agent-manager fetches the discovery docum
 When a user provides a **git remote** — GitHub `owner/repo` shorthand, a GitHub/GHES HTTPS URL, `*.git`, or `git@…` — agent-manager looks for `.agents/discovery.json` at the repository root:
 
 - **GitHub / GHES** — fetches the file via the Contents API (uses `GITHUB_TOKEN` when set, same as private skill installs). Works with branch, tag, and commit pins via `/tree/<ref>`.
-- **Other git hosts** (for example Bitbucket) — shallow-clones the remote and reads the file from disk. A `git` binary is required for this path.
+- **Other git hosts** (for example Bitbucket) — shallow-clones the remote and reads the file from disk. A `git` binary is required for this path. `git@host:path` and `ssh://` remotes still clone over SSH, but the catalogue identity used for the UI and auth is always an `https://host/path` URL.
 
 If the file is present, that document is the catalogue. If it is absent, GitHub remotes fall back to installing skills directly from the repo; other git hosts require the discovery file.
 

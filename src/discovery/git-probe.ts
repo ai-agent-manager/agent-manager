@@ -35,8 +35,10 @@ export interface GitRemoteRef {
   /** URL passed to `git clone`. */
   cloneUrl: string;
   /**
-   * Identity stored as discovery `baseUrl` / persisted source value.
-   * HTTPS `origin/org/repo` when that can be derived; otherwise the raw input.
+   * Identity stored as discovery `baseUrl` / auth key material.
+   * Always an `https://host/path` URL when that can be derived (including from
+   * `git@host:path` / `ssh://` remotes) so UI and token-store `new URL()` calls
+   * succeed. Cloning still uses {@link cloneUrl}.
    */
   identity: string;
   /** Explicit ref from `/tree/<ref>`; omitted when unset. */
@@ -115,9 +117,8 @@ export function parseGitRemoteInput(
     const supportsDirectSkillInstall = githubHosts.includes(host.toLowerCase());
     return {
       cloneUrl: trimmed,
-      identity: supportsDirectSkillInstall
-        ? `https://${host}/${repoPath}`
-        : trimmed,
+      // Always a parseable URL for UI / auth keys; clone still uses cloneUrl (git@…).
+      identity: `https://${host}/${repoPath}`,
       refPinned: false,
       supportsDirectSkillInstall,
     };
@@ -131,9 +132,7 @@ export function parseGitRemoteInput(
       const supportsDirectSkillInstall = githubHosts.includes(host.toLowerCase());
       return {
         cloneUrl: trimmed,
-        identity: supportsDirectSkillInstall
-          ? `https://${host}/${repoPath}`
-          : trimmed,
+        identity: `https://${host}/${repoPath}`,
         refPinned: false,
         supportsDirectSkillInstall,
       };
@@ -336,6 +335,15 @@ async function probeGithubDiscovery(
   return parseDiscoveryJson(text, remote.identity);
 }
 
+/**
+ * True when `ref` is a full 40-character commit SHA.
+ * Abbreviated SHAs are treated as branch/tag names to avoid colliding with
+ * short hex branch names.
+ */
+export function isCommitSha(ref: string): boolean {
+  return /^[0-9a-f]{40}$/i.test(ref);
+}
+
 async function probeViaGitClone(
   remote: GitRemoteRef,
   options: ProbeGitDiscoveryOptions,
@@ -343,10 +351,14 @@ async function probeViaGitClone(
   const runGit = options.execFile ?? defaultExecFile;
   const tempRoot = options.tempRoot ?? tmpdir();
   const tmp = await mkdtemp(path.join(tempRoot, 'agentman-git-probe-'));
+  const gitEnv = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
 
   try {
+    const pinIsSha = Boolean(remote.refPinned && remote.ref && isCommitSha(remote.ref));
     const args = ['clone', '--depth', '1', '--quiet'];
-    if (remote.refPinned && remote.ref) {
+    // Branch/tag pins use --branch. Commit SHAs cannot — clone default HEAD,
+    // then fetch + checkout the object (still no credentials in the URL).
+    if (remote.refPinned && remote.ref && !pinIsSha) {
       args.push('--branch', remote.ref);
     }
     args.push('--', remote.cloneUrl, tmp);
@@ -354,7 +366,7 @@ async function probeViaGitClone(
     try {
       await runGit('git', args, {
         timeout: CLONE_TIMEOUT_MS,
-        env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+        env: gitEnv,
       });
     } catch (err) {
       const detail = formatGitError(err);
@@ -364,6 +376,27 @@ async function probeViaGitClone(
         remote.identity,
         err,
       );
+    }
+
+    if (pinIsSha && remote.ref) {
+      try {
+        await runGit('git', ['-C', tmp, 'fetch', '--depth', '1', '--', 'origin', remote.ref], {
+          timeout: CLONE_TIMEOUT_MS,
+          env: gitEnv,
+        });
+        await runGit('git', ['-C', tmp, 'checkout', '--quiet', remote.ref], {
+          timeout: CLONE_TIMEOUT_MS,
+          env: gitEnv,
+        });
+      } catch (err) {
+        const detail = formatGitError(err);
+        throw new DiscoveryError(
+          `Failed to check out commit ${remote.ref} for discovery probe: ${remote.cloneUrl}` +
+            (detail ? `\n  ${detail}` : ''),
+          remote.identity,
+          err,
+        );
+      }
     }
 
     const discoveryPath = path.join(tmp, GIT_DISCOVERY_PATH);

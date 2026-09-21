@@ -8,10 +8,25 @@ import {
   gitRemoteToRepoSource,
   isGithubRepoShorthand,
   buildGithubDiscoveryContentsUrl,
+  isCommitSha,
   type GitExecFile,
   type GitProbeFetch,
 } from '../../../src/discovery/git-probe.js';
 import { GIT_DISCOVERY_PATH } from '../../../src/discovery/fetcher.js';
+
+describe('isCommitSha', () => {
+  it('accepts a full 40-character hex SHA', () => {
+    expect(isCommitSha('0123456789abcdef0123456789abcdef01234567')).toBe(true);
+    expect(isCommitSha('ABCDEF0123456789abcdef0123456789ABCDEF01')).toBe(true);
+  });
+
+  it('rejects abbreviated SHAs, branches, and tags', () => {
+    expect(isCommitSha('0123456')).toBe(false);
+    expect(isCommitSha('v1.0.0')).toBe(false);
+    expect(isCommitSha('main')).toBe(false);
+    expect(isCommitSha('')).toBe(false);
+  });
+});
 
 describe('isGithubRepoShorthand', () => {
   it('accepts bare owner/repo forms', () => {
@@ -102,6 +117,24 @@ describe('parseGitRemoteInput', () => {
       identity: 'https://github.com/org/repo',
       refPinned: false,
       supportsDirectSkillInstall: true,
+    });
+  });
+
+  it('gives non-GitHub SCP remotes an https identity while keeping git@ clone URL', () => {
+    expect(parseGitRemoteInput('git@gitlab.example.com:team/catalogue.git')).toEqual({
+      cloneUrl: 'git@gitlab.example.com:team/catalogue.git',
+      identity: 'https://gitlab.example.com/team/catalogue',
+      refPinned: false,
+      supportsDirectSkillInstall: false,
+    });
+  });
+
+  it('gives ssh:// remotes an https identity', () => {
+    expect(parseGitRemoteInput('ssh://git@bitbucket.example.com/team/skills.git')).toEqual({
+      cloneUrl: 'ssh://git@bitbucket.example.com/team/skills.git',
+      identity: 'https://bitbucket.example.com/team/skills',
+      refPinned: false,
+      supportsDirectSkillInstall: false,
     });
   });
 
@@ -363,6 +396,41 @@ describe('probeGitDiscovery', () => {
       expect(calls[1].args).toEqual(
         expect.arrayContaining(['clone', '--depth', '1', '--quiet', '--branch', 'v1']),
       );
+    });
+
+    it('fetches and checks out a full commit SHA instead of using --branch', async () => {
+      const sha = '0123456789abcdef0123456789abcdef01234567';
+      const calls: string[][] = [];
+      const execFile: GitExecFile = async (_file, args) => {
+        calls.push([...args]);
+        if (args[0] === 'clone') {
+          const dest = args[args.length - 1] as string;
+          await mkdir(dest, { recursive: true });
+        }
+        return { stdout: '', stderr: '' };
+      };
+
+      await probeGitDiscovery(
+        {
+          cloneUrl: 'https://bitbucket.example.com/team/repo.git',
+          identity: 'https://bitbucket.example.com/team/repo',
+          ref: sha,
+          refPinned: true,
+          supportsDirectSkillInstall: false,
+        },
+        { execFile, tempRoot },
+      );
+
+      expect(calls[0]).toEqual(
+        expect.arrayContaining(['clone', '--depth', '1', '--quiet']),
+      );
+      expect(calls[0]).not.toContain('--branch');
+      expect(calls[0].join(' ')).not.toContain(sha);
+
+      expect(calls[1]).toEqual(
+        expect.arrayContaining(['fetch', '--depth', '1', 'origin', sha]),
+      );
+      expect(calls[2]).toEqual(expect.arrayContaining(['checkout', '--quiet', sha]));
     });
 
     it('does not put a token into git argv when GITHUB_TOKEN is set', async () => {
