@@ -129,12 +129,34 @@ describe('parseGitRemoteInput', () => {
     });
   });
 
-  it('gives ssh:// remotes an https identity', () => {
+  it('keeps ssh:// identity (including port) for non-GitHub remotes', () => {
     expect(parseGitRemoteInput('ssh://git@bitbucket.example.com/team/skills.git')).toEqual({
       cloneUrl: 'ssh://git@bitbucket.example.com/team/skills.git',
-      identity: 'https://bitbucket.example.com/team/skills',
+      identity: 'ssh://git@bitbucket.example.com/team/skills.git',
       refPinned: false,
       supportsDirectSkillInstall: false,
+    });
+  });
+
+  it('gives distinct identities to non-GitHub ssh:// remotes on different ports', () => {
+    const a = parseGitRemoteInput('ssh://git@git.example.com:2222/team/catalogue.git');
+    const b = parseGitRemoteInput('ssh://git@git.example.com:2223/team/catalogue.git');
+    expect(a).toEqual({
+      cloneUrl: 'ssh://git@git.example.com:2222/team/catalogue.git',
+      identity: 'ssh://git@git.example.com:2222/team/catalogue.git',
+      refPinned: false,
+      supportsDirectSkillInstall: false,
+    });
+    expect(b?.identity).toBe('ssh://git@git.example.com:2223/team/catalogue.git');
+    expect(a?.identity).not.toBe(b?.identity);
+  });
+
+  it('still maps GitHub ssh:// remotes to an https identity', () => {
+    expect(parseGitRemoteInput('ssh://git@github.com/org/repo.git')).toEqual({
+      cloneUrl: 'ssh://git@github.com/org/repo.git',
+      identity: 'https://github.com/org/repo',
+      refPinned: false,
+      supportsDirectSkillInstall: true,
     });
   });
 

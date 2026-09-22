@@ -36,9 +36,10 @@ export interface GitRemoteRef {
   cloneUrl: string;
   /**
    * Identity stored as discovery `baseUrl` / auth key material.
-   * Always an `https://host/path` URL when that can be derived (including from
-   * `git@host:path` / `ssh://` remotes) so UI and token-store `new URL()` calls
-   * succeed. Cloning still uses {@link cloneUrl}.
+   * Prefer a URL `new URL()` can parse: SCP `git@host:path` becomes
+   * `https://host/path`; `ssh://` remotes keep their `ssh://` form (including
+   * port) so distinct SSH endpoints never share a token-store key. Cloning
+   * still uses {@link cloneUrl}.
    */
   identity: string;
   /** Explicit ref from `/tree/<ref>`; omitted when unset. */
@@ -132,7 +133,11 @@ export function parseGitRemoteInput(
       const supportsDirectSkillInstall = githubHosts.includes(host.toLowerCase());
       return {
         cloneUrl: trimmed,
-        identity: `https://${host}/${repoPath}`,
+        // GitHub/GHES: https identity for archive install. Other hosts: keep
+        // ssh:// (with port) so catalogues on :2222 vs :2223 never share tokens.
+        identity: supportsDirectSkillInstall
+          ? `https://${host}/${repoPath}`
+          : parsed.href,
         refPinned: false,
         supportsDirectSkillInstall,
       };
