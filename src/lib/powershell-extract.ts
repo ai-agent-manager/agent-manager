@@ -29,9 +29,10 @@ export async function extractZipFast(zipPath: string, targetDir: string): Promis
       // Use -EncodedCommand to prevent command injection.
       // Paths are passed via environment variables, which PowerShell reads
       // as literal strings without any script interpretation.
+      // -ErrorAction Stop makes errors terminating so they trigger fallback.
       const psScript = `
         $ProgressPreference = 'SilentlyContinue'
-        Expand-Archive -LiteralPath $env:AGENTMAN_ZIP_PATH -DestinationPath $env:AGENTMAN_TARGET_DIR -Force
+        Expand-Archive -LiteralPath $env:AGENTMAN_ZIP_PATH -DestinationPath $env:AGENTMAN_TARGET_DIR -Force -ErrorAction Stop
       `.trim();
 
       await execFileAsync('powershell.exe', [
