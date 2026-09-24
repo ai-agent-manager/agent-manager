@@ -106,6 +106,25 @@ describe('token-store', () => {
       expect(a).toMatch(/^[a-f0-9]{64}$/);
     });
 
+    it('produces distinct keys for ssh:// catalogues on different ports', () => {
+      const shared = {
+        oidcDiscoveryUrl: sampleIdentity.oidcDiscoveryUrl,
+        clientId: 'cli',
+      };
+      const a = tokenStorageKey({
+        ...shared,
+        discoveryBaseUrl: 'ssh://git@git.example.com:2222/team/catalogue.git',
+      });
+      const b = tokenStorageKey({
+        ...shared,
+        discoveryBaseUrl: 'ssh://git@git.example.com:2223/team/catalogue.git',
+      });
+      expect(a).not.toBe(b);
+      expect(normalizeAuthUrl('ssh://git@git.example.com:2222/team/catalogue.git')).toBe(
+        'ssh://git.example.com:2222/team/catalogue.git',
+      );
+    });
+
     it('produces distinct keys when IdP or clientId differs', () => {
       const base = {
         discoveryBaseUrl: 'https://example.com',

@@ -48,9 +48,9 @@ Beta builds require authentication with GitHub Packages.
 
 4. Run:
    ```bash
-   npx -y @ai-agent-manager/cli@beta https://your-bundle-server.com
+   npx @ai-agent-manager/cli@beta https://your-bundle-server.com
    ```
    Or pin to a version:
    ```bash
-   npx -y @ai-agent-manager/cli@0.1.0-beta https://your-bundle-server.com
+   npx @ai-agent-manager/cli@0.1.0-beta https://your-bundle-server.com
    ```
