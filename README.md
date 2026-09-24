@@ -169,7 +169,7 @@ AGENTMAN_ACCESS_TOKEN=... npx @ai-agent-manager/cli@latest https://your-bundle-s
   --config .github/ai-skills.yml
 ```
 
-`AGENTMAN_ACCESS_TOKEN` is used as-is (no store lookup or refresh). See [docs/discovery.md](docs/discovery.md) for the full auth flow.
+`AGENTMAN_ACCESS_TOKEN` is used as-is (no store lookup or refresh). See [docs/authentication.md](docs/authentication.md) for the full auth flow.
 
 ### Force re-download
 
@@ -191,7 +191,7 @@ npx @ai-agent-manager/cli@latest --help
 
 The TUI's top-level menu has these options:
 
-- **My Projects** -- Shown when you are logged in, `projects.enabled` is `true`, and an API base URL is set (`api.baseUrl` in the discovery document, or `API_BASE_URL`). Lists the projects you can access; from a project you can Search & Install skills or provision Rovo agents, filtered by that project's catalogue allowlists. When `projects.exclusiveSource` is `true`, Search & Install and Bulk Sync are limited to skills/agents permitted by your project memberships (with project names shown on the Search & Install detail row).
+- **My Projects** -- Shown when you are logged in, `projects.enabled` is `true`, and an API base URL is set (`api.baseUrl` in the discovery document, or `API_BASE_URL`). Lists the projects you can access; from a project you can Search & Install skills or provision Rovo agents, filtered by that project's catalogue allowlists. When `projects.exclusiveSource` is `true`, Search & Install and Bulk Sync are limited to skills/agents permitted by your project memberships (with project names shown on the Search & Install detail row). See [docs/projects.md](docs/projects.md).
 - **Search & Install** -- Search a single catalogue of skills and Rovo agents, then act on your choice. Selecting a skill installs it (choose a source, scope, and coding tool); selecting a Rovo agent provisions it in Atlassian Studio. Rovo provisioning runs Playwright-driven browser automation from the command line by default; set `AGENTMAN_CHROME_EXTENSION=1` to also offer the Chrome Extension options, including direct extension installation (see [Feature Flags](#feature-flags)).
 - **Maintenance & Updates** -- Bulk-sync a tool's skills (select the complete set for a tool; deselecting uninstalls), manage individual skill versions, manage installed skills (update/remove/inspect), manage cached bundle versions, and update the Agent Manager CLI itself.
 - **Source Management** -- Install from a source URL: a GitHub repo, an artefact zip, or a bundle URL.
