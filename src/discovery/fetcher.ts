@@ -1,5 +1,6 @@
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import { deriveBundleSourceNamespace } from '../bundle/skill-source.js';
+import { describeNetworkError } from '../lib/http.js';
 import _addFormats from 'ajv-formats';
 
 // ajv-formats CJS interop: the default export is the function itself
@@ -108,8 +109,9 @@ export async function fetchDiscoveryDocument(
   try {
     response = await fetch(url, { headers });
   } catch (err) {
+    const detail = describeNetworkError(err);
     throw new DiscoveryError(
-      `Failed to fetch discovery document from ${url}`,
+      `Failed to fetch discovery document from ${url}${detail ? `\n  ${detail}` : ''}`,
       baseUrl,
       err,
     );

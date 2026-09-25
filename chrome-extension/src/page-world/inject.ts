@@ -463,7 +463,7 @@ interface RovoPageWorldResponse {
     // Re-use the publish call's init for headers, credentials, CSRF
     // token, etc. Same endpoint, same auth context.
     const newInit: RequestInit = {
-      ...(publishInit ?? {}),
+      ...publishInit,
       method: 'POST',
       body: patchedBody,
     };
@@ -622,7 +622,7 @@ interface RovoPageWorldResponse {
       });
 
       const newInit: RequestInit = {
-        ...(publishInit ?? {}),
+        ...publishInit,
         method: 'POST',
         body: patchedBody,
       };
