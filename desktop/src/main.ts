@@ -19,6 +19,11 @@ function markClosing() {
   if (window && !window.isDestroyed()) window.setTitle('Agent Manager — finishing operations…');
 }
 
+// Electron defaults app.name (and therefore the macOS menu bar, Dock tooltip, Cmd+Tab
+// switcher, and any dialog left without an explicit title) to "Electron" until the app
+// is packaged. Set it explicitly so dev runs (`electron .`) also read "Agent Manager".
+app.setName('Agent Manager');
+
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance', focus); // Never interpret a second launch's URLs/arguments.
@@ -103,7 +108,7 @@ async function launch() {
     const destination = externalDestination(url, handle.isActiveAuthorizationUrl,
       !app.isPackaged && process.env.AGENTMAN_DESKTOP_ALLOW_LOOPBACK_AUTH === '1');
     if (destination) void shell.openExternal(destination).catch(() => {
-      if (!current.isDestroyed()) void dialog.showMessageBox(current, { type: 'error', message: 'Could not open the system browser. Try the sign-in link again.' });
+      if (!current.isDestroyed()) void dialog.showMessageBox(current, { type: 'error', title: 'Agent Manager', message: 'Could not open the system browser. Try the sign-in link again.' });
     });
     return { action: 'deny' };
   });

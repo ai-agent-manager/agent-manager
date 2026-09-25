@@ -19,6 +19,7 @@
     "preview:ui": "tsx src/index.tsx ui --no-open",
     "build:web-ui": "npm run build --prefix web-ui && node scripts/copy-web-ui.mjs",
     "capture-banner": "node scripts/capture-banner.mjs",
+    "capture-icon-letter": "node scripts/capture-icon-letter.mjs",
     "prepare": "git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks || true",
     "build": "tsc",
     "build:chrome-extension": "npm run build:crx --prefix chrome-extension && mkdir -p assets && cp chrome-extension/dist/agentman.crx assets/agentman.crx",
