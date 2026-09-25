@@ -1,0 +1,184 @@
+/*
+ * Agent Manager docs — brand-aligned Material overrides.
+ * Palette from assets/icon.png: navy #1a1b26, blue #7aa2f7, green #9ece6a.
+ * Prefer readable body text over terminal-neon excess.
+ */
+
+:root,
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #3d6fd4;
+  --md-primary-fg-color--light: #7aa2f7;
+  --md-primary-fg-color--dark: #2a4f9e;
+  --md-primary-bg-color: #ffffff;
+  --md-primary-bg-color--light: #f5f7fb;
+  --md-accent-fg-color: #5a9e3a;
+  --md-accent-fg-color--transparent: rgba(90, 158, 58, 0.1);
+  --md-typeset-a-color: #3d6fd4;
+  --am-surface: #f5f7fb;
+  --am-border: #d8dee9;
+  --am-hero-bg: linear-gradient(165deg, #eef2fb 0%, #f7f9fc 45%, #e8f2e4 100%);
+}
+
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #7aa2f7;
+  --md-primary-fg-color--light: #a3bffa;
+  --md-primary-fg-color--dark: #5b7fd4;
+  --md-primary-bg-color: #1a1b26;
+  --md-primary-bg-color--light: #24283b;
+  --md-accent-fg-color: #9ece6a;
+  --md-accent-fg-color--transparent: rgba(158, 206, 106, 0.12);
+  --md-default-bg-color: #1a1b26;
+  --md-default-bg-color--light: #1f2335;
+  --md-default-bg-color--lighter: #24283b;
+  --md-default-bg-color--lightest: #2a2e42;
+  --md-code-bg-color: #16161e;
+  --md-typeset-a-color: #7aa2f7;
+  --am-surface: #24283b;
+  --am-border: #3b4261;
+  --am-hero-bg: linear-gradient(165deg, #1a1b26 0%, #1f2335 50%, #1a2418 100%);
+}
+
+/* Header: calm navy bar, not neon flood */
+.md-header {
+  background-color: var(--md-primary-bg-color);
+  color: var(--md-primary-fg-color);
+  box-shadow: 0 1px 0 var(--am-border);
+}
+
+.md-header__title,
+.md-header .md-header__button,
+.md-header .md-source,
+.md-tabs {
+  color: inherit;
+}
+
+[data-md-color-scheme="slate"] .md-header {
+  background-color: #16161e;
+  color: #c0caf5;
+}
+
+[data-md-color-scheme="default"] .md-header {
+  background-color: #ffffff;
+  color: #1a1b26;
+}
+
+.md-tabs {
+  background-color: transparent;
+  border-bottom: 1px solid var(--am-border);
+}
+
+.md-header__button.md-logo img,
+.md-header__button.md-logo svg {
+  height: 1.6rem;
+  width: auto;
+  border-radius: 4px;
+}
+
+/* Home hero */
+.am-hero {
+  margin: 0 0 2rem;
+  padding: 2rem 1.75rem;
+  border-radius: 8px;
+  background: var(--am-hero-bg);
+  border: 1px solid var(--am-border);
+}
+
+.am-hero__brand {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.am-hero__brand img {
+  width: 64px;
+  height: 64px;
+  border-radius: 10px;
+  image-rendering: pixelated;
+}
+
+.am-hero__title {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.am-hero__tagline {
+  margin: 0.35rem 0 0;
+  opacity: 0.85;
+  font-size: 0.95rem;
+}
+
+.am-hero__lead {
+  margin: 0 0 1.25rem;
+  max-width: 42rem;
+  font-size: 1.05rem;
+  line-height: 1.55;
+}
+
+.am-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.am-hero__actions .md-button {
+  margin: 0;
+}
+
+.am-hero__actions .md-button--primary {
+  background-color: var(--md-primary-fg-color);
+  border-color: var(--md-primary-fg-color);
+  color: var(--md-primary-bg-color);
+}
+
+[data-md-color-scheme="slate"] .am-hero__actions .md-button--primary {
+  color: #1a1b26;
+}
+
+/* Slightly tighter readable prose */
+.md-typeset {
+  font-size: 0.78rem;
+  line-height: 1.7;
+}
+
+.md-typeset h1 {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.md-typeset code {
+  border-radius: 4px;
+}
+
+.md-typeset .admonition,
+.md-typeset details {
+  border-radius: 6px;
+}
+
+/* Accent tip/note borders with brand green/blue */
+.md-typeset .admonition.tip,
+.md-typeset details.tip {
+  border-color: #9ece6a;
+}
+
+.md-typeset .admonition.note,
+.md-typeset details.note {
+  border-color: #7aa2f7;
+}
+
+.md-typeset .admonition.warning,
+.md-typeset details.warning {
+  border-color: #e0af68;
+}
+
+/* Footer */
+.md-footer {
+  border-top: 1px solid var(--am-border);
+}
+
+.md-copyright {
+  font-size: 0.7rem;
+}

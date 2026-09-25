@@ -1,0 +1,8 @@
+# Python dependencies for building and serving the documentation site.
+# Used by CI (GitHub Pages) and by scripts/docs.sh (Docker).
+
+mkdocs>=1.6,<2
+mkdocs-material>=9.5,<10
+mkdocs-git-revision-date-localized-plugin>=1.2,<2
+mkdocs-minify-plugin>=0.8,<1
+mkdocs-glightbox>=0.4,<1

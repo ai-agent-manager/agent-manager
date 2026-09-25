@@ -61,7 +61,7 @@ cd chrome-extension
 npm run build:crx
 ```
 
-See [chrome-extension/README.md](../chrome-extension/README.md) for full build details.
+See the [chrome-extension README](https://github.com/ai-agent-manager/agent-manager/blob/main/chrome-extension/README.md) for full build details.
 
 ## Relevant source files
 
