@@ -1,14 +1,14 @@
 /** Additional Imposter CI check, deliberately separate from the self-contained suite. */
 import { tokenStorageKey } from '../../src/auth/token-store.js';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { startCli } from '../support/cli.js';
 import { ready } from '../support/http.js';
 
 const source = process.argv[2]; assert(source, 'Pass the Imposter base URL');
-const home = await mkdtemp(path.join(os.tmpdir(), 'agentman-mock-ui-'));
+const home = await mkdtemp(path.join(await realpath(os.tmpdir()), 'agentman-mock-ui-'));
 try {
   const auth = (await (await fetch(new URL('/.well-known/agents/discovery.json', source), { signal: AbortSignal.timeout(30_000) })).json()).auth;
   const bearerToken = process.env.AGENTMAN_ACCESS_TOKEN;

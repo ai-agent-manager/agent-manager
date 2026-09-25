@@ -2,7 +2,7 @@ import React from 'react';
 import { Text } from 'ink';
 import { render } from 'ink-testing-library';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
-import { mkdtemp, mkdir, writeFile, cp, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, cp, realpath, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { SkillVersionManager } from '../../../src/components/SkillVersionManager.js';
@@ -16,7 +16,7 @@ vi.mock('../../../src/lib/repo.js', () => ({ findRepoRoot: async () => null }));
 vi.mock('ink-select-input', () => ({ default: (props: typeof menu) => { menu = props; return <Text>{props.items.map((item) => item.label).join('\n')}</Text>; } }));
 
 beforeEach(async () => {
-  home = await mkdtemp(path.join(os.tmpdir(), 'agentman-version-ui-'));
+  home = await mkdtemp(path.join(await realpath(os.tmpdir()), 'agentman-version-ui-'));
   directory = path.join(home, 'source');
   await mkdir(path.join(directory, 'skill'), { recursive: true });
   await writeFile(path.join(directory, 'manifest.json'), JSON.stringify({ version: '1.0.0', published: '2026-01-01' }));

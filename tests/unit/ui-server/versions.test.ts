@@ -17,7 +17,7 @@ let directory: string, home: string, source: string, repo: string, base: string;
 let content: Server | undefined;
 let contentUrl: string;
 beforeEach(async () => {
-  directory = await mkdtemp(path.join(os.tmpdir(), 'agentman-version-http-'));
+  directory = await mkdtemp(path.join(await realpath(os.tmpdir()), 'agentman-version-http-'));
   home = path.join(directory, 'home'); await mkdir(home);
   vi.stubEnv('HOME', home); vi.stubEnv('USERPROFILE', home);
   vi.stubEnv('AGENTMAN_DISABLE_STARTUP_UPDATE_CHECKS', 'true');

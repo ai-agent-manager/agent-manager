@@ -1,10 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdir, rm, writeFile, readFile, readdir } from 'node:fs/promises';
+import { realpathSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
-// Mock paths to redirect cache to a temp directory
-const mockAgentmanDir = path.join(os.tmpdir(), `agentman-importer-test-${Date.now()}`);
+// Mock paths to redirect cache to a temp directory. Resolve tmpdir() first since it can
+// itself be a symlink (e.g. macOS /var -> /private/var), which would otherwise trip the
+// "must not be a symlink" bundle cache safety check.
+const mockAgentmanDir = path.join(realpathSync(os.tmpdir()), `agentman-importer-test-${Date.now()}`);
 vi.mock('../../../src/config/paths.js', () => ({
   getAgentmanDir: () => mockAgentmanDir,
   getBundlesDir: () => path.join(mockAgentmanDir, 'bundles'),
@@ -35,7 +38,7 @@ describe('importLocalBundle', () => {
   vi.setConfig({ testTimeout: 15000 });
 
   beforeEach(async () => {
-    sourceDir = path.join(os.tmpdir(), `import-source-${Date.now()}`);
+    sourceDir = path.join(realpathSync(os.tmpdir()), `import-source-${Date.now()}`);
     await mkdir(sourceDir, { recursive: true });
     await mkdir(path.join(mockAgentmanDir, 'bundles'), { recursive: true });
   });

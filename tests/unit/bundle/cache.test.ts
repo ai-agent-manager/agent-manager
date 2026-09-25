@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, rm, readFile, writeFile, mkdir, symlink } from 'node:fs/promises';
+import { mkdtemp, realpath, rm, readFile, writeFile, mkdir, symlink } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { vi } from 'vitest';
@@ -56,7 +56,7 @@ import {
 import { getPlatform } from '../../../src/lib/platform.js';
 
 beforeEach(async () => {
-  tempDir = await mkdtemp(path.join(os.tmpdir(), 'agentman-cache-test-'));
+  tempDir = await mkdtemp(path.join(await realpath(os.tmpdir()), 'agentman-cache-test-'));
 });
 
 afterEach(async () => {

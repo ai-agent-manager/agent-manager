@@ -1,11 +1,11 @@
 import { expect, it, vi } from 'vitest';
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 
 it('launches the real UI command without a TTY and exits cleanly on SIGINT', async () => {
-  const home = await mkdtemp(path.join(os.tmpdir(), 'agentman-ui-cli-'));
+  const home = await mkdtemp(path.join(await realpath(os.tmpdir()), 'agentman-ui-cli-'));
   const child = spawn(process.execPath, ['--import', 'tsx', 'src/index.tsx', 'ui', path.resolve('tests/fixtures/valid-bundle'), '--no-open', '--port', '0'], {
     cwd: process.cwd(), stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, HOME: home, USERPROFILE: home, AGENTMAN_DISABLE_STARTUP_UPDATE_CHECKS: 'true', DO_NOT_TRACK: 'true' },
