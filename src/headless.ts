@@ -5,6 +5,7 @@ import { extractBundle } from './bundle/extractor.js';
 import { importLocalBundle } from './bundle/importer.js';
 import { scanBundle, type SkillInfo } from './bundle/scanner.js';
 import { setCurrentBundle } from './bundle/cache.js';
+import { resolveSource, type StartupSource } from './bundle/source.js';
 import {
   resolveSkillSource,
   isRepoSource,
@@ -15,12 +16,14 @@ import {
   deriveSkillInstallKey,
   type SkillSource,
   type SkillSourcePin,
+  type RepoSkillSource,
 } from './bundle/skill-source.js';
 import { downloadRepoArchive } from './bundle/repo-downloader.js';
 import { scanRepoForSkills } from './bundle/repo-scanner.js';
 import { downloadArtefact } from './bundle/artefact-downloader.js';
 import { scanArtefactForSkills } from './bundle/artefact-scanner.js';
 import { DiscoveryError, fetchDiscoveryDocument, resolveDiscoverySkills } from './discovery/index.js';
+import { parseGitRemoteInput } from './discovery/git-probe.js';
 import type { DiscoveryDocument } from './discovery/types.js';
 import { authenticate, type AuthSession } from './auth/index.js';
 import {
@@ -92,10 +95,23 @@ export async function parseHeadlessConfig(configPath: string): Promise<HeadlessC
   };
 }
 
+export interface RunHeadlessOptions {
+  /**
+   * Startup source already resolved by the CLI entry (e.g. for telemetry).
+   * When set, skips a second {@link resolveSource} / git probe for the same input.
+   */
+  resolvedStartup?: StartupSource;
+}
+
 // TODO(#39): wire _forceUpdate into the headless acquisition path so `agentman <url> --update`
 // bypasses the cached bundle in extractBundle (src/bundle/extractor.ts:33-37).
 // See https://github.com/ai-agent-manager/agent-manager/issues/39
-export async function runHeadless(sourceInput: string, configPath: string, _forceUpdate: boolean): Promise<void> {
+export async function runHeadless(
+  sourceInput: string,
+  configPath: string,
+  _forceUpdate: boolean,
+  options: RunHeadlessOptions = {},
+): Promise<void> {
   const config = await parseHeadlessConfig(configPath);
   const repoRoot = process.cwd();
 
@@ -106,28 +122,49 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
   console.log(`  Skills:  ${config.skills.join(", ")}\n`);
   console.log(`  Bundle version: ${config.bundleVersion ?? "latest"}\n`);
 
-  // Resolve the source type (repo, artefact, or bundle)
-  const skillSource = await resolveSkillSource(sourceInput);
   let allSkills: SkillInfo[];
   let bundleVersion: string;
   let sourcePin: SkillSourcePin | undefined;
 
-  // For bundle URLs, check if there's a discovery document available
+  // Git remotes are probed for a discovery document first (shared with the TUI).
+  // Other http(s) URLs still soft-404 into the legacy bare-bundle path.
   let discovery: DiscoveryDocument | undefined;
-  if (isBundleSource(skillSource) && skillSource.baseUrl && !skillSource.dirPath) {
-    try {
-      discovery = await fetchDiscoveryDocument(skillSource.baseUrl);
-    } catch (error) {
-      if (!(error instanceof DiscoveryError) || error.status !== 404) {
-        throw error;
+  let discoveryBaseUrl = '';
+  let skillSource: SkillSource | undefined;
+  let repoSource: RepoSkillSource | undefined;
+
+  const applyStartup = async (startup: StartupSource): Promise<void> => {
+    if (startup.type === 'discovery') {
+      discovery = startup.discovery;
+      discoveryBaseUrl = startup.baseUrl;
+    } else if (startup.type === 'repo') {
+      repoSource = startup;
+    } else if (startup.type === 'directory') {
+      skillSource = await resolveSkillSource(startup.dirPath);
+    }
+  };
+
+  if (options.resolvedStartup) {
+    await applyStartup(options.resolvedStartup);
+  } else if (parseGitRemoteInput(sourceInput)) {
+    await applyStartup(await resolveSource(sourceInput));
+  } else {
+    skillSource = await resolveSkillSource(sourceInput);
+    if (isBundleSource(skillSource) && skillSource.baseUrl && !skillSource.dirPath) {
+      try {
+        discovery = await fetchDiscoveryDocument(skillSource.baseUrl);
+        discoveryBaseUrl = skillSource.baseUrl;
+      } catch (error) {
+        if (!(error instanceof DiscoveryError) || error.status !== 404) {
+          throw error;
+        }
+        // No discovery document exists at this origin, so treat it as a legacy bundle.
       }
-      // No discovery document exists at this origin, so treat it as a legacy bundle.
     }
   }
 
   // Handle each source type
   if (discovery) {
-    // Discovery document found for bundle URL
     console.log("[agentman] Discovery document found");
 
     let accessToken: string | undefined;
@@ -141,7 +178,7 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
       } else {
         console.log('[agentman] Attempting cached token authentication...');
         await authenticate(
-          skillSource.type === 'bundle' && skillSource.baseUrl ? skillSource.baseUrl : '',
+          discoveryBaseUrl,
           discovery.auth,
           (url) => {
             console.error(`\n[agentman] ERROR: Authentication required. Visit this URL to authorise:`);
@@ -151,7 +188,7 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
           },
         );
         authSession = {
-          discoveryBaseUrl: skillSource.type === 'bundle' && skillSource.baseUrl ? skillSource.baseUrl : '',
+          discoveryBaseUrl,
           auth: discovery.auth,
         };
       }
@@ -222,19 +259,19 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
         );
       }
     }
-  } else if (isRepoSource(skillSource)) {
-    // GitHub repository source
-    console.log(`[agentman] Downloading repository: ${skillSource.repoUrl}`);
+  } else if (repoSource || (skillSource && isRepoSource(skillSource))) {
+    const repo = repoSource ?? (skillSource as RepoSkillSource);
+    console.log(`[agentman] Downloading repository: ${repo.repoUrl}`);
     const token = process.env.GITHUB_TOKEN;
-    const { extractDir } = await downloadRepoArchive(skillSource, { forceUpdate: _forceUpdate, token });
+    const { extractDir } = await downloadRepoArchive(repo, { forceUpdate: _forceUpdate, token });
 
     console.log("[agentman] Scanning for skills...");
-    const scanResult = await scanRepoForSkills(extractDir, skillSource);
+    const scanResult = await scanRepoForSkills(extractDir, repo);
 
     allSkills = scanResult.skills;
     bundleVersion = '';
-    sourcePin = buildSourcePin(skillSource);
-  } else if (isArtefactSource(skillSource)) {
+    sourcePin = buildSourcePin(repo);
+  } else if (skillSource && isArtefactSource(skillSource)) {
     // Artefact (.zip) source
     console.log(`[agentman] Downloading artefact: ${skillSource.artefactUrl}`);
     const artefactSource = config.artefactSha256 ? { ...skillSource, sha256: config.artefactSha256 } : skillSource;
@@ -250,7 +287,7 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
       sha256: download.sha256 ?? artefactSource.sha256,
       version: download.version,
     });
-  } else if (isBundleSource(skillSource)) {
+  } else if (skillSource && isBundleSource(skillSource)) {
     // Legacy bundle source (URL or directory)
     let bundleDir: string;
 
@@ -279,8 +316,11 @@ export async function runHeadless(sourceInput: string, configPath: string, _forc
     const contents = await scanBundle(bundleDir);
     allSkills = contents.skills;
   } else {
-    // This should never happen with the discriminated union
-    throw new Error(`Unknown source type: ${(skillSource as SkillSource).type}`);
+    throw new Error(
+      skillSource
+        ? `Unknown source type: ${(skillSource as SkillSource).type}`
+        : `Unable to resolve source: ${sourceInput}`,
+    );
   }
 
   // Key by qualified identity so same-named skills from different sources both survive.
