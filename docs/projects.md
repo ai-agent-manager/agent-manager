@@ -12,7 +12,7 @@ See the [full field reference](discovery.md#fields) for schema details. Projects
 | `projects.enabled` | When `true`, enable **My Projects** (also requires auth and a resolved API base URL) |
 | `projects.exclusiveSource` | When `true`, constrain global Search & Install, Bulk Sync, and headless installs to the caller's project allowlists |
 
-JSON Schema: [`src/discovery/schema.json`](../src/discovery/schema.json).
+JSON Schema: [`src/discovery/schema.json`](https://github.com/ai-agent-manager/agent-manager/blob/main/src/discovery/schema.json).
 
 Publishers that do not expose projects should omit the `projects` block or set `projects.enabled` to `false`.
 
@@ -62,4 +62,4 @@ When `exclusiveSource` is omitted or `false`, global Search & Install, Bulk Sync
 
 - [Discovery document format](discovery.md) — `sources`, `api`, and `projects` blocks
 - [Authentication](authentication.md) — bearer tokens for API and content requests
-- [Mock server setup](../mocks/README.md) — local My Projects + OIDC end-to-end testing
+- [Mock server setup](https://github.com/ai-agent-manager/agent-manager/blob/main/mocks/README.md) — local My Projects + OIDC end-to-end testing

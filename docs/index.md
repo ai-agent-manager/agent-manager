@@ -50,6 +50,9 @@ Copilot, Cursor, or Kiro — interactively on a laptop, or silently in CI.
 |-------|-----------------|
 | [Getting started](getting-started.md) | Install and first run |
 | [Discovery](discovery.md) | Publish a catalogue your team can trust |
+| [Authentication](authentication.md) | OIDC login and `AGENTMAN_ACCESS_TOKEN` |
+| [My Projects](projects.md) | Project-scoped installs |
+| [Artefact sources](artefact-sources.md) | Third-party zip packaging |
 | [Bundle format](bundle-format.md) | Shape of `index.json` and `bundle.zip` |
 | [Telemetry](telemetry.md) | What is collected and how to turn it off |
 | [Publishing](publishing.md) | Release tags and npm publish (maintainers) |

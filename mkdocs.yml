@@ -145,6 +145,9 @@ nav:
   - Getting started: getting-started.md
   - Guides:
       - Discovery: discovery.md
+      - Authentication: authentication.md
+      - My Projects: projects.md
+      - Artefact sources: artefact-sources.md
       - Bundle format: bundle-format.md
       - Atlassian auth: atlassian-auth.md
       - Chrome extension: chrome-extension-install.md
