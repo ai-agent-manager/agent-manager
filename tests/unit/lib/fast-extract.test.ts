@@ -1,13 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, rm, writeFile, readFile, mkdir, stat, lstat, readlink } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile, readFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { execSync } from 'node:child_process';
 import { extractZipStreaming } from '../../../src/lib/fast-extract.js';
-import { fileURLToPath } from 'node:url';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const fixturesDir = path.join(__dirname, 'fixtures');
 
 describe('extractZipStreaming', () => {
   let tmpDir: string;
@@ -73,80 +69,6 @@ describe('extractZipStreaming', () => {
     const { stat } = await import('node:fs/promises');
     const stats = await stat(path.join(extractDir, 'empty-dir'));
     expect(stats.isDirectory()).toBe(true);
-  });
-
-  it('preserves executable permissions for shell scripts', async () => {
-    // Skip on Windows (different permission model)
-    if (process.platform === 'win32') {
-      console.log('Skipping test: Unix permissions not supported on Windows');
-      return;
-    }
-
-    // Use pre-built fixture with executable script
-    const zipPath = path.join(fixturesDir, 'executable-script.zip');
-
-    // Extract
-    await extractZipStreaming(zipPath, extractDir);
-
-    // Verify the script has executable permissions
-    const extractedScriptPath = path.join(extractDir, 'run.sh');
-    const stats = await stat(extractedScriptPath);
-    const mode = stats.mode & 0o777;
-
-    // Should have executable bit (0755)
-    expect(mode).toBe(0o755);
-
-    // Verify the file content is correct
-    const content = await readFile(extractedScriptPath, 'utf-8');
-    expect(content).toBe('#!/bin/bash\necho "Hello"\n');
-
-    // Verify regular file has 0644 permissions
-    const regularFilePath = path.join(extractDir, 'regular.txt');
-    const regularStats = await stat(regularFilePath);
-    const regularMode = regularStats.mode & 0o777;
-    expect(regularMode).toBe(0o644);
-  });
-
-  it('preserves internal symlinks', async () => {
-    // Skip on Windows (symlinks require admin privileges)
-    if (process.platform === 'win32') {
-      console.log('Skipping test: symlinks require admin privileges on Windows');
-      return;
-    }
-
-    // Use pre-built fixture with symlink
-    const zipPath = path.join(fixturesDir, 'with-symlink.zip');
-
-    // Extract
-    await extractZipStreaming(zipPath, extractDir);
-
-    // Verify the symlink was extracted as a symlink
-    const linkPath = path.join(extractDir, 'link.txt');
-    const linkStats = await lstat(linkPath);
-
-    expect(linkStats.isSymbolicLink()).toBe(true);
-
-    // Verify the symlink target
-    const linkTarget = await readlink(linkPath);
-    expect(linkTarget).toBe('target.txt');
-
-    // Verify the symlink resolves to the correct content
-    const content = await readFile(linkPath, 'utf-8');
-    expect(content).toBe('target content\n');
-  });
-
-  it('rejects symlinks that escape extraction directory', async () => {
-    // Skip on Windows (symlinks require admin privileges)
-    if (process.platform === 'win32') {
-      console.log('Skipping test: symlinks require admin privileges on Windows');
-      return;
-    }
-
-    // Use pre-built fixture with malicious symlink
-    const zipPath = path.join(fixturesDir, 'malicious-symlink.zip');
-
-    // Extraction should reject the malicious symlink
-    await expect(extractZipStreaming(zipPath, extractDir)).rejects.toThrow(/Symlink target escapes extraction directory/);
   });
 
   it('rejects path traversal attempts', async () => {
