@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell } from 'electron';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { access } from 'node:fs/promises';
@@ -47,6 +47,15 @@ async function launch() {
   // Register the drain before waiting for ready/startup.
   const started = (async () => {
     await app.whenReady();
+    // Packaged builds already carry the icon in the app bundle/executable via electron-builder;
+    // set it explicitly here so `electron .` dev runs also show the correct Dock/taskbar icon.
+    if (!app.isPackaged) {
+      const iconPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '../build/icon.png');
+      try {
+        const icon = nativeImage.createFromPath(iconPath);
+        if (!icon.isEmpty()) app.dock?.setIcon(icon);
+      } catch { /* Missing dev icon is non-fatal. */ }
+    }
     const cliRoot = path.dirname(fileURLToPath(import.meta.resolve('@ai-agent-manager/cli/package.json')));
     const staticDir = path.join(cliRoot, 'assets/web-ui');
     await access(path.join(staticDir, 'index.html'));
@@ -63,7 +72,9 @@ async function launch() {
   handle.server.once('close', () => { if (!quitting) void shutdown!().catch(reportShutdown); });
   if (closing) return;
   const origin = new URL(handle.url).origin;
+  const iconPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '../build/icon.png');
   window = new BrowserWindow({ title: 'Agent Manager', width: 1240, height: 880, minWidth: 760, minHeight: 600, show: false,
+    ...(app.isPackaged ? {} : { icon: iconPath }),
     webPreferences: { preload: fileURLToPath(new URL('./preload.cjs', import.meta.url)),
       nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true,
       nodeIntegrationInWorker: false, nodeIntegrationInSubFrames: false, webviewTag: false,

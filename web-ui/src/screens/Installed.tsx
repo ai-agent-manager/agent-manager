@@ -9,7 +9,7 @@ import { EmptyState, ErrorMessage, Spinner } from '../components/Feedback.js';
 function instanceQuery(record: InstalledRecordDto): string {
   return new URLSearchParams({ scope: record.scope, toolId: record.toolId, ...(record.repoRoot ? { repoRoot: record.repoRoot } : {}) }).toString();
 }
-export function Installed({ client, context, refreshKey, onJob }: { client: ApiClient; context?: ContextDto; refreshKey: string; onJob(id: string): void }) {
+export function Installed({ client, context, refreshKey, onJob, onToast }: { client: ApiClient; context?: ContextDto; refreshKey: string; onJob(id: string): void; onToast(label: string, kind: 'success' | 'error', message: string): void }) {
   const [scope, setScope] = useState('all');
   const [tool, setTool] = useState('all');
   const [repoRoot, setRepoRoot] = useState(context?.repoRoot ?? '');
@@ -26,8 +26,13 @@ export function Installed({ client, context, refreshKey, onJob }: { client: ApiC
     try {
       const { result } = await client.request<{ result: { errors: Array<{ error: string }> } }>(`/api/installs/${encodeURIComponent(selected.installKey)}?${instanceQuery(selected)}`, 'DELETE');
       if (result.errors.length) throw new Error(result.errors.map((item) => item.error).join('\n'));
+      onToast('Uninstall skill', 'success', `Uninstalled ${selected.skillId}.`);
       setSelected(undefined); setConfirmRemove(false); records.refresh();
-    } catch (error) { setError((error as Error).message); }
+    } catch (error) {
+      const message = (error as Error).message;
+      setError(message);
+      onToast('Uninstall skill', 'error', `Could not uninstall ${selected.skillId}: ${message}`);
+    }
     finally { setBusy(false); }
   }
   async function update(record: InstalledRecordDto) {

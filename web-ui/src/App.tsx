@@ -1,11 +1,11 @@
 import { Dialog } from './components/Dialog.js';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AuthDto, JobDto } from '@api-types';
 import { ApiClient, ApiError } from './api/client.js';
 import { useResource, useSession } from './api/hooks.js';
 import { useHashRoute } from './router.js';
 import { ErrorMessage, Notice } from './components/Feedback.js';
-import { JobPanel } from './components/JobPanel.js';
+import { JobPanel, type ActionNotice } from './components/JobPanel.js';
 import { ThemeSelector } from './components/ThemeSelector.js';
 import { Catalogue } from './screens/Catalogue.js';
 import { SkillDetail } from './screens/SkillDetail.js';
@@ -26,6 +26,13 @@ export function App({ client }: { client: ApiClient }) {
   const [quit, setQuit] = useState(false);
   const [busy, setBusy] = useState(false);
   const [missingJob, setMissingJob] = useState<JobDto>();
+  const [notices, setNotices] = useState<ActionNotice[]>([]);
+  const noticeCounter = useRef(0);
+  const addNotice = useCallback((label: string, kind: ActionNotice['kind'], message: string) => {
+    noticeCounter.current += 1;
+    setNotices((current) => [...current, { id: `notice-${noticeCounter.current}`, label, kind, message }]);
+  }, []);
+  const dismissNotice = useCallback((id: string) => setNotices((current) => current.filter((notice) => notice.id !== id)), []);
   useEffect(() => { setError(''); }, [route]);
   useEffect(() => {
     if (!selectedJob || jobs.some((job) => job.id === selectedJob)) { setMissingJob(undefined); return; }
@@ -77,8 +84,8 @@ export function App({ client }: { client: ApiClient }) {
         {session?.warnings.map((warning, index) => <Notice key={`${index}:${warning}`}>{warning}</Notice>)}
         {session?.startupNotices.map((notice, index) => <Notice key={`${index}:${notice.message}`}>{notice.message}</Notice>)}
         {connection === 'unauthorised' || !session && sessionError ? null : route === '/' ? <Catalogue session={session} />
-          : skillId ? <SkillDetail key={`${skillId}:${session?.sessionRevision}`} client={client} skillId={skillId} session={session} context={context} onJob={setSelectedJob} />
-          : route === '/installed' ? <Installed client={client} context={context} refreshKey={refreshKey} onJob={setSelectedJob} />
+          : skillId ? <SkillDetail key={`${skillId}:${session?.sessionRevision}`} client={client} skillId={skillId} session={session} context={context} jobs={jobs} onJob={setSelectedJob} />
+          : route === '/installed' ? <Installed client={client} context={context} refreshKey={refreshKey} onJob={setSelectedJob} onToast={addNotice} />
           : route === '/sources' ? <Sources client={client} onJob={setSelectedJob} />
           : route === '/versions' ? <Versions key={session?.sessionRevision} client={client} session={session} context={context} refreshKey={refreshKey} onJob={setSelectedJob} />
           : route === '/skill-versions' ? <SkillVersions client={client} session={session} context={context} refreshKey={refreshKey} onJob={setSelectedJob} />
@@ -86,7 +93,7 @@ export function App({ client }: { client: ApiClient }) {
           : <div className="empty"><h1>Page not found</h1><a href="#/">Return to the catalogue</a></div>}
         {quit && <Dialog label="Confirm quit" onClose={() => { if (!busy) setQuit(false); }}><h2>Quit Agent Manager?</h2><p>Changes already in progress will finish before the server stops.</p><div className="row"><button className="danger" disabled={busy} onClick={() => void shutdown()}>Quit</button><button onClick={() => setQuit(false)}>Keep working</button></div><ErrorMessage message={error} /></Dialog>}
       </main>
-      <JobPanel client={client} jobs={missingJob && !jobs.some((job) => job.id === missingJob.id) ? [...jobs, missingJob] : jobs} selectedId={selectedJob} onDismiss={dismissJob} />
+      <JobPanel client={client} jobs={missingJob && !jobs.some((job) => job.id === missingJob.id) ? [...jobs, missingJob] : jobs} selectedId={selectedJob} onDismiss={dismissJob} notices={notices} onDismissNotice={dismissNotice} />
     </div>
   </div>;
 }
