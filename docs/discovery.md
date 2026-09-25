@@ -2,6 +2,8 @@
 
 ## Overview
 
+> **Prefer `http` and `git` sources.** Use those types when declaring catalogue sources. The `artefact` type is a secondary option for third-party zip packages — see [Artefact packaging](artefacts.md).
+
 Agent Manager uses a **discovery document** to locate skills and determine authentication requirements. Any team can publish one on their own HTTP origin or in a git repository. When auth is required, see [Authentication](authentication.md). For project-scoped installs, see [My Projects](projects.md).
 
 **Discovery path (HTTP bases):** `<base_url>/.well-known/agents/discovery.json`
@@ -92,7 +94,7 @@ If the file is present, that document is the catalogue. If it is absent, GitHub 
 
 - **`http`** — `url` is the **content root**: the directory owning that source's `index.json` and its versioned subdirectories. For version `1.2.3`, agent-manager reads `<url>/index.json`, then `<url>/1.2.3/bundle.zip` and `<url>/1.2.3/bundle.zip.sha256`. It appends nothing else — there is no implicit `agents` path segment, so a source may publish at any path. If [authentication](authentication.md) is required, agent-manager passes the access token as a Bearer header. Supports both skills and rovo agents.
 - **`git`** — URL points to a git repository in the [Claude Code plugin marketplace format](https://code.claude.com/docs/en/plugin-marketplaces). Agent-manager clones the repo and scans for skills (`.claude-plugin/` directory, `skills/<name>/SKILL.md` files). Only skills are supported in this model.
-- **`artefact`** — URL points directly to a `.zip` file containing one or more packaged skills. Artefact URLs must use `https://` (plain `http://` is only allowed for `localhost` during development). Agent-manager downloads the zip, checks integrity against a `.sha256` sidecar if one exists (the install proceeds with a warning if no sidecar is found — publish a sidecar or set `artefact-sha256` for stronger guarantees), then extracts and scans for skills. Artefact sources are **untrusted third-party packages** — review the source before adding it to your discovery document. Artefact sources produce skills only (no rovo agents).
+- **`artefact`** — URL points directly to a `.zip` file containing one or more packaged skills. Prefer `http` and `git` when you can; see [Artefact packaging](artefacts.md) for layout, integrity, and publishing. Artefact URLs must use `https://` (plain `http://` is only allowed for `localhost` during development). Artefact sources are **untrusted third-party packages** — review the source before adding it to your discovery document. Artefact sources produce skills only (no rovo agents).
 
 ### HTTP bundle layout
 
@@ -126,143 +128,5 @@ may each declare a source with the same name. agentman records the content root 
 source was cached from and refuses to reuse that cache for a different root, so
 one publisher's bundle is never served under another's pin.
 
----
-
-## Artefact Source — Packaging and Publishing
-
-### What is an artefact?
-
-An artefact is a **versioned `.zip` file** containing one or more skills. Unlike a bundle (which uses an index/manifest and supports rovo agents), an artefact is a self-contained package — simpler to create, version, and distribute.
-
-### Directory layout inside the zip
-
-agentman scans for skills in three layout patterns (checked in this order):
-
-```
-# Layout 1: SKILL.md at the zip root (single skill, name derived from zip filename)
-artefact.zip/
-  SKILL.md
-
-# Layout 2: skill directories at the root (each dir with SKILL.md = one skill)
-artefact.zip/
-  my-skill/
-    SKILL.md
-  another-skill/
-    SKILL.md
-
-# Layout 3: single wrapper directory containing skill directories
-artefact.zip/
-  my-wrapper/
-    my-skill/
-      SKILL.md
-    another-skill/
-      SKILL.md
-```
-
-**Resolution order matters:** Layout 1 is checked first — if a `SKILL.md` exists at the root, that single skill is used and subdirectories are ignored (a warning is logged if skill directories are also present). Layout 3 only kicks in when there's exactly one top-level directory and no skills were found at root level.
-
-> **Note:** In Layout 1, the skill's identifier is derived from the zip filename (e.g. `my-skill-1.0.0.zip` → `my-skill`), not from the `name:` field in `SKILL.md`. The `name:` field is used as display metadata only. Use Layouts 2 or 3 if you need to control the skill identifier directly.
-
-Each skill **must** have a `SKILL.md` file. The frontmatter is optional but recommended:
-
-```markdown
----
-name: my-skill
-description: What this skill does
-version: 1.0.0
----
-
-# My Skill
-
-Instructions for the AI go here...
-```
-
-### Creating an artefact zip
-
-```bash
-# Single skill
-mkdir -p my-skill && cp SKILL.md my-skill/
-zip -r my-skill-1.0.0.zip my-skill/
-
-# Multiple skills
-mkdir -p skills/skill-a skills/skill-b
-cp skill-a/SKILL.md skills/skill-a/
-cp skill-b/SKILL.md skills/skill-b/
-zip -r my-skills-2.0.0.zip skills/
-```
-
-### Publishing
-
-1. **Upload the zip** to any HTTPS-accessible URL (CDN, GitHub Releases, S3, etc.)
-2. **Create a `.sha256` sidecar** next to the zip:
-   ```bash
-   shasum -a 256 my-skill-1.0.0.zip | awk '{print $1}' > my-skill-1.0.0.zip.sha256
-   ```
-3. **Add to your discovery document:**
-   ```json
-   {
-     "name": "my-skill-artefact",
-     "type": "artefact",
-     "url": "https://cdn.example.com/skills/my-skill-1.0.0.zip",
-     "status": "official"
-   }
-   ```
-
-### Version resolution
-
-The artefact version is resolved in this priority order:
-1. Version extracted from the URL/filename pattern (e.g. `my-skill-1.2.0.zip` → `1.2.0`, or a semver path segment like `.../1.2.0/skill.zip`)
-2. Embedded `manifest.json` in the zip root (if present, with a `version` field)
-3. Content hash as a fallback (`sha-<first 12 hex chars>`)
-
-### Integrity verification
-
-- agentman fetches `<artefact-url>.sha256` automatically (e.g. `my-skill-1.0.0.zip.sha256`)
-- If the sidecar exists, the downloaded zip is verified against it
-- If verification fails, the install is rejected (zip is deleted)
-- If no sidecar exists, the install proceeds with a warning
-- An explicit `sha256` field on the source (or `artefact-sha256` in headless config) takes precedence over the sidecar — use this for out-of-band integrity pinning:
-  ```yaml
-  artefact-sha256: 5927d6052d97440998d2b0de8d19b6142d35ddde9996d792aafde81c6efeb207
-  ```
-
-### Security requirements
-
-- Artefact URLs **must** use `https://`
-- Plain `http://` is only allowed for `localhost` / `127.0.0.1` / `::1` (local development)
-- This prevents network attackers from swapping both the zip and its sha256 sidecar
-
-### Example: full end-to-end
-
-```bash
-# 1. Create skill
-mkdir -p my-skill
-cat > my-skill/SKILL.md << 'EOF'
----
-name: code-reviewer
-description: Reviews pull requests for common issues
-version: 1.0.0
----
-# Code Reviewer
-You review code changes and flag potential issues...
-EOF
-
-# 2. Package
-zip -r code-reviewer-1.0.0.zip my-skill/
-
-# 3. Create integrity sidecar
-shasum -a 256 code-reviewer-1.0.0.zip | awk '{print $1}' > code-reviewer-1.0.0.zip.sha256
-
-# 4. Upload both files to your CDN
-# aws s3 cp code-reviewer-1.0.0.zip s3://my-bucket/skills/
-# aws s3 cp code-reviewer-1.0.0.zip.sha256 s3://my-bucket/skills/
-
-# 5. Add to discovery.json
-# { "name": "code-reviewer", "type": "artefact", "url": "https://cdn.example.com/skills/code-reviewer-1.0.0.zip" }
-
-# 6. Users install via:
-# npx @ai-agent-manager/cli@latest https://your-domain.com
-```
-
-For authentication (browser OAuth, token refresh, `AGENTMAN_ACCESS_TOKEN`), see [Authentication](authentication.md). For the authenticated API and **My Projects**, see [My Projects](projects.md).
+For authentication (browser OAuth, token refresh, `AGENTMAN_ACCESS_TOKEN`), see [Authentication](authentication.md). For the authenticated API and **My Projects**, see [My Projects](projects.md). For packaging zip artefacts, see [Artefact packaging](artefacts.md).
 
