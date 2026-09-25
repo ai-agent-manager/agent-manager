@@ -25,7 +25,7 @@ const skill = 'react-component-generator';
 vi.mock('../../../src/lib/platform.js', async (original) => ({ ...await original<typeof import('../../../src/lib/platform.js')>(), getHomeDir: () => home }));
 
 beforeEach(async () => {
-  home = await mkdtemp(path.join(os.tmpdir(), 'agentman-upgrade-'));
+  home = await mkdtemp(path.join(await realpath(os.tmpdir()), 'agentman-upgrade-'));
   cache = path.join(home, '.agentman', 'bundles', version);
   await mkdir(cache, { recursive: true });
   const zip = path.resolve('mocks/agents/0.1.1/bundle.zip');

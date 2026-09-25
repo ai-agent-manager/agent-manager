@@ -8,7 +8,7 @@
  * without its addressing marker while every unit test still passed.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, realpath, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 
@@ -67,7 +67,7 @@ async function pinOf(): Promise<Record<string, unknown>> {
 
 describe('updateInstalled — full round trip', () => {
   beforeEach(async () => {
-    tmpDir = await mkdtemp(path.join(os.tmpdir(), 'agentman-update-rt-'));
+    tmpDir = await mkdtemp(path.join(await realpath(os.tmpdir()), 'agentman-update-rt-'));
     bundleDir = path.join(tmpDir, '.agentman', 'bundles', '1.1.0');
     await mkdir(path.join(bundleDir, 'react-skill'), { recursive: true });
     await writeFile(path.join(bundleDir, 'react-skill', 'SKILL.md'), '# skill\n', 'utf-8');

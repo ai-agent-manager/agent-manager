@@ -4,12 +4,12 @@ import { exerciseUi } from './workflow.js';
  * Requires the Playwright Chromium browser installed in the development cache.
  */
 import assert from 'node:assert/strict';
-import { cp, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { chromium } from 'playwright';
 
-const home = await mkdtemp(path.join(os.tmpdir(), 'agentman-browser-'));
+const home = await mkdtemp(path.join(await realpath(os.tmpdir()), 'agentman-browser-'));
 const previous = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE, AGENTMAN_DISABLE_STARTUP_UPDATE_CHECKS: process.env.AGENTMAN_DISABLE_STARTUP_UPDATE_CHECKS };
 process.env.HOME = home; process.env.USERPROFILE = home; process.env.AGENTMAN_DISABLE_STARTUP_UPDATE_CHECKS = 'true';
 await mkdir(path.join(home, 'repo', '.git'), { recursive: true });

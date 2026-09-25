@@ -2,12 +2,12 @@
  * Real browser, OAuth callback and filesystem token store; no real account/keychain.
  */
 import assert from 'node:assert/strict';
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, realpath, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { chromium } from 'playwright';
 
-const home = await mkdtemp(path.join(os.tmpdir(), 'agentman-browser-auth-'));
+const home = await mkdtemp(path.join(await realpath(os.tmpdir()), 'agentman-browser-auth-'));
 const previous = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE, AGENTMAN_DISABLE_STARTUP_UPDATE_CHECKS: process.env.AGENTMAN_DISABLE_STARTUP_UPDATE_CHECKS };
 process.env.HOME = home; process.env.USERPROFILE = home; process.env.AGENTMAN_DISABLE_STARTUP_UPDATE_CHECKS = 'true';
 const { _disableKeychain } = await import('../../src/auth/token-store.js');

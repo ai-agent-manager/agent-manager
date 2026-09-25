@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
-import { mkdtemp, mkdir, writeFile, rm, readFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, realpath, rm, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { runHeadless } from '../../../src/headless.js';
@@ -11,7 +11,7 @@ import { installResolvedSkills } from '../../../src/operations/install.js';
 
 let home: string;
 vi.mock('../../../src/lib/platform.js', async (original) => ({ ...await original<typeof import('../../../src/lib/platform.js')>(), getHomeDir: () => home }));
-beforeEach(async () => { home = await mkdtemp(path.join(os.tmpdir(), 'agentman-parity-')); });
+beforeEach(async () => { home = await mkdtemp(path.join(await realpath(os.tmpdir()), 'agentman-parity-')); });
 afterEach(async () => { vi.restoreAllMocks(); await rm(home, { recursive: true, force: true }); });
 
 it('TUI catalogue and headless install use repository content and the same pin, despite a different global version', async () => {

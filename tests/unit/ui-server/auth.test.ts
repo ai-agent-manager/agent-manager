@@ -1,6 +1,6 @@
 import { withAuthCoordinator } from '../../../src/auth/coordinator.js';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { startUiServer } from '../../../src/ui-server/index.js';
@@ -24,7 +24,7 @@ let grant: () => void;
 let cleanupCount: number;
 beforeEach(async () => {
   vi.clearAllMocks(); storage.tokens = null; cleanupCount = 0;
-  home = await mkdtemp(path.join(os.tmpdir(), 'agentman-auth-http-'));
+  home = await mkdtemp(path.join(await realpath(os.tmpdir()), 'agentman-auth-http-'));
   vi.stubEnv('HOME', home); vi.stubEnv('USERPROFILE', home); vi.stubEnv('AGENTMAN_DISABLE_STARTUP_UPDATE_CHECKS', 'true');
   vi.mocked(resolveStartupSource).mockResolvedValue({ source: { type: 'discovery', baseUrl: sourceUrl, discovery: { version: '1', auth, sources: [] } }, stored: { kind: 'discovery', value: sourceUrl } });
   vi.mocked(authenticate).mockImplementation(async (_base, _auth, onPrompt, options) => {

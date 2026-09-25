@@ -37,7 +37,7 @@ async function bundle(pin: SkillSourcePin, version: string, contentRoot = root) 
 }
 
 beforeEach(async () => {
-  home = await fs.mkdtemp(path.join(os.tmpdir(), 'agentman-version-'));
+  home = await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()), 'agentman-version-'));
   vi.mocked(getPlatform).mockReturnValue('linux');
 });
 afterEach(async () => { vi.restoreAllMocks(); await fs.rm(home, { recursive: true, force: true }); });
