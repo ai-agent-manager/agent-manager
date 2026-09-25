@@ -1,8 +1,7 @@
 .app { min-height: 100vh; display: grid; grid-template-columns: 238px minmax(0, 1fr); }
 .sidebar { padding: 34px 20px 24px; border-right: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
-.brand { display: flex; align-items: center; gap: 12px; padding: 0 12px 40px; font-size: 25px; font-weight: 750; letter-spacing: -.8px; color: var(--text); text-decoration: none; }
-.brand { line-height: 1.1; }
-.logo { color: var(--on-accent); background: var(--accent); width: 36px; height: 40px; flex-shrink: 0; display: grid; place-items: center; border-radius: 11px; font-size: 30px; font-weight: 700; }
+.brand { display: flex; align-items: center; padding: 0 12px 32px; text-decoration: none; }
+.brandMark { width: 100%; height: auto; display: block; }
 .sidebar nav { display: grid; gap: 7px; }
 .sidebar nav a { display: flex; align-items: center; gap: 13px; padding: 12px 16px; text-decoration: none; color: var(--muted); border-radius: 8px; font-weight: 550; }
 .sidebar nav a:hover { background: var(--background); color: var(--text); }
@@ -16,6 +15,6 @@
 .header small { font-size: 9px; letter-spacing: 1.5px; }
 .source { font-size: 13px; margin-top: 5px; max-width: min(50vw, 620px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .main { max-width: 1280px; margin: auto; padding: 42px 40px 70px; }
-@media (max-width: 950px) { .app { grid-template-columns: 190px minmax(0, 1fr); } .sidebar { padding-inline: 10px; } .header, .main { padding-inline: 24px; } .brand { font-size: 22px; gap: 8px; } .header > div:last-child { gap: 8px; } }
+@media (max-width: 950px) { .app { grid-template-columns: 190px minmax(0, 1fr); } .sidebar { padding-inline: 10px; } .header, .main { padding-inline: 24px; } .header > div:last-child { gap: 8px; } }
 @media (max-width: 680px) { .app { display: block; } .sidebar { position: static; height: auto; padding: 18px; border-right: 0; border-bottom: 1px solid var(--border); } .brand { padding-bottom: 18px; } .sidebar nav { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px; } .sidebar nav a { flex: 1 0 30%; font-size: 12px; padding: 10px 7px; gap: 4px; } .sidebar nav a span { display: none; } .sidebarBottom { display: none; } .header { padding: 16px 20px; } .header .row { flex-wrap: wrap; } .main { padding: 28px 20px 40px; } .source { max-width: 42vw; } }
 @media (max-width: 680px) { .sidebarBottom { display: block; padding: 12px 6px 0; } .sidebarBottom > small { display: inline; margin-left: 10px; } .sidebarBottom > div { margin-top: 14px; } }
