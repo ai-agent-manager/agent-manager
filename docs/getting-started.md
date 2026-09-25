@@ -92,7 +92,8 @@ AGENTMAN_ACCESS_TOKEN=... npx @ai-agent-manager/cli@latest https://your-bundle-s
   --config .github/ai-skills.yml
 ```
 
-See [Discovery](discovery.md) for the full auth and catalogue model.
+See [Discovery](discovery.md) for the catalogue model and
+[Authentication](authentication.md) for the full auth flow.
 
 ## Supported tools
 
@@ -112,5 +113,7 @@ See [Discovery](discovery.md) for the full auth and catalogue model.
 ## Next steps
 
 - [Discovery](discovery.md) — publish a catalogue
+- [Authentication](authentication.md) — OIDC and CI bearer tokens
+- [Artefact sources](artefact-sources.md) — third-party zip packaging
 - [Bundle format](bundle-format.md) — zip layout and integrity sidecars
 - [Telemetry](telemetry.md) — opt-out and overrides

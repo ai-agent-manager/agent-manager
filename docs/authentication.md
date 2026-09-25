@@ -13,7 +13,7 @@ Publishers configure auth in the discovery document's `auth` block. See the [fie
 | `auth.clientId` | OAuth2 client ID for the CLI |
 | `auth.scopes` | OAuth2 scopes to request (defaults to `["openid"]`) |
 
-JSON Schema: [`src/discovery/schema.json`](../src/discovery/schema.json).
+JSON Schema: [`src/discovery/schema.json`](https://github.com/ai-agent-manager/agent-manager/blob/main/src/discovery/schema.json).
 
 ## `AGENTMAN_ACCESS_TOKEN`
 
