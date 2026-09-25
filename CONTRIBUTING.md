@@ -23,7 +23,11 @@ npm run typecheck                               # type check
 npm test                                        # run tests once
 npm run test:watch                              # watch mode
 npm run build                                   # compile to dist/
+./scripts/docs.sh                               # docs site preview (Docker)
 ```
+
+Documentation is built with MkDocs Material and published to GitHub Pages on
+push to `main`. Preview locally with `./scripts/docs.sh` (requires Docker).
 
 ## Commit messages
 
