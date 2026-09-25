@@ -2,13 +2,15 @@
 
 ## Overview
 
-Agent Manager uses a **discovery document** served at a well-known path to locate skills and determine authentication requirements. Any team can publish a discovery document to their own domain. When auth is required, see [Authentication](authentication.md). For project-scoped installs, see [My Projects](projects.md).
+Agent Manager uses a **discovery document** to locate skills and determine authentication requirements. Any team can publish one on their own HTTP origin or in a git repository. When auth is required, see [Authentication](authentication.md). For project-scoped installs, see [My Projects](projects.md).
 
-**Well-known path (HTTP bases):** `<base_url>/.well-known/agents/discovery.json`
+**Discovery path (HTTP bases):** `<base_url>/.well-known/agents/discovery.json`
 
-When a user provides an HTTP base URL, agent-manager fetches the discovery document from this path. In the interactive TUI there is no fallback — the document must exist. In headless mode (`--config`), a missing discovery document (HTTP 404) falls back to the legacy bare-bundle path so existing CI installs keep working.
+**Discovery path (git remotes):** `.agents/discovery.json` at the repository root
 
-When a user provides a **git remote** — GitHub `owner/repo` shorthand, a GitHub/GHES HTTPS URL, `*.git`, or `git@…` — agent-manager looks for `.agents/discovery.json` at the repository root:
+When a user provides an HTTP base URL, agent-manager fetches the discovery document from the HTTP path. In the interactive TUI there is no fallback — the document must exist. In headless mode (`--config`), a missing discovery document (HTTP 404) falls back to the legacy bare-bundle path so existing CI installs keep working.
+
+When a user provides a **git remote** — GitHub `owner/repo` shorthand, a GitHub/GHES HTTPS URL, `*.git`, or `git@…` — agent-manager looks for the git path:
 
 - **GitHub / GHES** — fetches the file via the Contents API (uses `GITHUB_TOKEN` when set, same as private skill installs). Works with branch, tag, and commit pins via `/tree/<ref>`.
 - **Other git hosts** (for example Bitbucket) — shallow-clones the remote and reads the file from disk. A `git` binary is required for this path. `git@host:path` remotes still clone over SSH but use an `https://host/path` catalogue identity (SCP form is not a URL). `ssh://` remotes keep their `ssh://` identity, including any non-default port, so distinct SSH endpoints never share auth tokens.
