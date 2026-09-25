@@ -14,6 +14,7 @@ import { Sources } from './screens/Sources.js';
 import { Versions } from './screens/Versions.js';
 import { SkillVersions } from './screens/SkillVersions.js';
 import { Settings } from './screens/Settings.js';
+import bannerUrl from './assets/banner.png';
 import styles from './App.module.css';
 
 export function App({ client }: { client: ApiClient }) {
@@ -72,7 +73,7 @@ export function App({ client }: { client: ApiClient }) {
   return <div className={styles.app}>
     <a className="skip-link" href="#main-content" onClick={(event) => { event.preventDefault(); document.getElementById('main-content')?.focus(); }}>Skip to content</a>
     <aside className={styles.sidebar}>
-      <a className={styles.brand} href="#/" aria-label="Agent Manager home"><span className={styles.logo} aria-hidden="true">a</span><span>Agent Manager</span></a>
+      <a className={styles.brand} href="#/" aria-label="Agent Manager home"><img className={styles.brandMark} src={bannerUrl} alt="" /></a>
       <nav aria-label="Main navigation">{[['/', 'Catalogue', '⌘'], ['/installed', 'Installed', '▦'], ['/sources', 'Sources', '◎'], ['/versions', 'Versions', '◷'], ['/skill-versions', 'Skill versions', '⇄'], ['/settings', 'Settings', '⚙']].map(([href, label, icon]) => <a href={`#${href}`} key={href} className={(route === href || href === '/' && route.startsWith('/skills/')) ? styles.active : ''} aria-current={(route === href || href === '/' && route.startsWith('/skills/')) ? 'page' : undefined}><span aria-hidden="true">{icon}</span>{label}</a>)}</nav>
       <div className={styles.sidebarBottom}><span className="status-dot" />Running locally<small>v{context?.appVersion ?? '…'}</small><ThemeSelector client={client} enabled={!!context && connection !== 'unauthorised'} /><button onClick={() => setQuit(true)}>Quit Agent Manager</button></div>
     </aside>
