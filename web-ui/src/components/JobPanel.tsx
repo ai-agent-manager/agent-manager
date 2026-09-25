@@ -10,7 +10,29 @@ function safeAuthorizeUrl(value?: string): string | undefined {
 }
 function isActive(job: JobDto) { return job.state === 'queued' || job.state === 'running'; }
 
-export function JobPanel({ client, jobs, selectedId, onDismiss }: { client: ApiClient; jobs: JobDto[]; selectedId?: string; onDismiss(id: string): void }) {
+export interface ActionNotice { id: string; label: string; kind: 'success' | 'error'; message: string }
+
+/** A one-shot completion message for actions that are not tracked jobs (e.g. uninstall),
+ * rendered alongside job toasts in the same fixed stack so all activity feedback lives
+ * in one place. Successes auto-dismiss like a clean job toast; errors stay until closed. */
+function ActionToast({ notice, onDismiss }: { notice: ActionNotice; onDismiss(id: string): void }) {
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const autoDismiss = notice.kind === 'success';
+  useEffect(() => {
+    if (!autoDismiss || hovered || focused) return;
+    const timer = window.setTimeout(() => onDismiss(notice.id), 8000);
+    return () => window.clearTimeout(timer);
+  }, [autoDismiss, hovered, focused, notice.id, onDismiss]);
+  return <section className={`job-toast ${notice.kind === 'error' ? 'failed' : 'succeeded'}`} aria-label={notice.label}
+    onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
+    onFocus={() => setFocused(true)} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false); }}>
+    <div className="toast-heading"><strong>{notice.label}</strong><CloseButton label={`Dismiss ${notice.label} notification`} onClick={() => onDismiss(notice.id)} /></div>
+    <p role="status" aria-atomic="true">{notice.message}</p>
+  </section>;
+}
+
+export function JobPanel({ client, jobs, selectedId, onDismiss, notices = [], onDismissNotice }: { client: ApiClient; jobs: JobDto[]; selectedId?: string; onDismiss(id: string): void; notices?: ActionNotice[]; onDismissNotice?(id: string): void }) {
   const [observed, setObserved] = useState<string[]>([]);
   const [dismissed, setDismissed] = useState<string[]>([]);
   // Keep results for jobs seen running, including overlapping jobs. Historical
@@ -26,7 +48,11 @@ export function JobPanel({ client, jobs, selectedId, onDismiss }: { client: ApiC
     onDismiss(id);
   }, [onDismiss]);
   const visible = jobs.filter((job) => !dismissed.includes(job.id) && (isActive(job) || job.id === selectedId || observed.includes(job.id)));
-  return <aside className="job-toasts" aria-label="Activity">{visible.map((job) => <JobToast key={job.id} client={client} job={job} onDismiss={dismiss} />)}</aside>;
+  if (!visible.length && !notices.length) return null;
+  return <aside className="job-toasts" aria-label="Activity">
+    {visible.map((job) => <JobToast key={job.id} client={client} job={job} onDismiss={dismiss} />)}
+    {notices.map((notice) => <ActionToast key={notice.id} notice={notice} onDismiss={(id) => onDismissNotice?.(id)} />)}
+  </aside>;
 }
 
 function JobToast({ client, job, onDismiss }: { client: ApiClient; job: JobDto; onDismiss(id: string): void }) {
