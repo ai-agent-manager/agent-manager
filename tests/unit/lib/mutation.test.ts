@@ -36,7 +36,7 @@ function child(operation: string, value: string) {
     }, { timeout: 10_000, interval: 20 });
   } };
 }
-beforeEach(async () => { home = await fs.mkdtemp(path.join(os.tmpdir(), 'agentman-mutation-')); });
+beforeEach(async () => { home = await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()), 'agentman-mutation-')); });
 afterEach(async () => {
   for (const proc of children.splice(0)) { if (proc.exitCode === null) proc.kill(); }
   vi.restoreAllMocks();
