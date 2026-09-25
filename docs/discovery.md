@@ -2,7 +2,7 @@
 
 ## Overview
 
-> **Prefer `http` and `git` sources.** Use those types when declaring catalogue sources. The `artefact` type is a secondary option for third-party zip packages — see [Artefact packaging](artefacts.md).
+> **Prefer `http` and `git` sources.** Use those types when declaring catalogue sources. The `artefact` type is a secondary option for third-party zip packages — see [Artefact packaging](artefact-sources.md).
 
 Agent Manager uses a **discovery document** to locate skills and determine authentication requirements. Any team can publish one on their own HTTP origin or in a git repository. When auth is required, see [Authentication](authentication.md). For project-scoped installs, see [My Projects](projects.md).
 
@@ -78,8 +78,8 @@ If the file is present, that document is the catalogue. If it is absent, GitHub 
 | `projects.exclusiveSource` | boolean | No | When `true` (default `false`), Search & Install and headless installs are limited to skills/agents permitted by at least one project the caller belongs to |
 | `auth` | object | No | Authentication configuration — see [Authentication](authentication.md) |
 | `auth.required` | boolean | Yes (if auth present) | Whether authentication is needed to access skills |
-| `auth.oidcDiscoveryUrl` | string (URI) | Yes (if auth.required=true) | URL to the standard OIDC discovery document |
-| `auth.clientId` | string | Yes (if auth.required=true) | OAuth2 client ID for agent-manager to use |
+| `auth.oidcDiscoveryUrl` | string (URI) | No | URL to the standard OIDC discovery document. Required for browser login; omit when clients authenticate only via `AGENTMAN_ACCESS_TOKEN` |
+| `auth.clientId` | string | No | OAuth2 client ID for agent-manager to use. Required for browser login; omit when clients authenticate only via `AGENTMAN_ACCESS_TOKEN` |
 | `auth.scopes` | string[] | No | OAuth2 scopes to request (defaults to `["openid"]`) |
 | `telemetry` | object | No | Telemetry configuration (omit to leave unconfigured) |
 | `telemetry.url` | string (URI) | Yes (if telemetry present) | Base URL of the telemetry endpoint |
@@ -92,9 +92,9 @@ If the file is present, that document is the catalogue. If it is absent, GitHub 
 
 ### Source Types
 
-- **`http`** — `url` is the **content root**: the directory owning that source's `index.json` and its versioned subdirectories. For version `1.2.3`, agent-manager reads `<url>/index.json`, then `<url>/1.2.3/bundle.zip` and `<url>/1.2.3/bundle.zip.sha256`. It appends nothing else — there is no implicit `agents` path segment, so a source may publish at any path. If [authentication](authentication.md) is required, agent-manager passes the access token as a Bearer header. Supports both skills and rovo agents.
+- **`http`** — `url` is the **content root**: the directory owning that source's `index.json` and its versioned subdirectories. For version `1.2.3`, agent-manager reads `<url>/index.json`, then `<url>/1.2.3/bundle.zip` and `<url>/1.2.3/bundle.zip.sha256`. It appends nothing else — there is no implicit `agents` path segment, so a source may publish at any path. If [authentication](authentication.md) is required, agent-manager passes the access token as a Bearer header. Supports both skills and rovo agents. When using `AGENTMAN_ACCESS_TOKEN` in the interactive TUI, include the content host in `AGENTMAN_INTERACTIVE_TOKEN_HOSTS` if it differs from the discovery base URL.
 - **`git`** — URL points to a git repository in the [Claude Code plugin marketplace format](https://code.claude.com/docs/en/plugin-marketplaces). Agent-manager clones the repo and scans for skills (`.claude-plugin/` directory, `skills/<name>/SKILL.md` files). Only skills are supported in this model.
-- **`artefact`** — URL points directly to a `.zip` file containing one or more packaged skills. Prefer `http` and `git` when you can; see [Artefact packaging](artefacts.md) for layout, integrity, and publishing. Artefact URLs must use `https://` (plain `http://` is only allowed for `localhost` during development). Artefact sources are **untrusted third-party packages** — review the source before adding it to your discovery document. Artefact sources produce skills only (no rovo agents).
+- **`artefact`** — URL points directly to a `.zip` file containing one or more packaged skills. Prefer `http` and `git` when you can; see [Artefact packaging](artefact-sources.md) for layout, integrity, and publishing. Artefact URLs must use `https://` (plain `http://` is only allowed for `localhost` during development). Artefact sources are **untrusted third-party packages** — review the source before adding it to your discovery document. Artefact sources produce skills only (no rovo agents).
 
 ### HTTP bundle layout
 
@@ -128,5 +128,5 @@ may each declare a source with the same name. agentman records the content root 
 source was cached from and refuses to reuse that cache for a different root, so
 one publisher's bundle is never served under another's pin.
 
-For authentication (browser OAuth, token refresh, `AGENTMAN_ACCESS_TOKEN`), see [Authentication](authentication.md). For the authenticated API and **My Projects**, see [My Projects](projects.md). For packaging zip artefacts, see [Artefact packaging](artefacts.md).
+For authentication (browser OAuth, token refresh, `AGENTMAN_ACCESS_TOKEN`, and interactive host allowlisting), see [Authentication](authentication.md). For the authenticated API and **My Projects**, see [My Projects](projects.md). For packaging zip artefacts, see [Artefact packaging](artefact-sources.md).
 

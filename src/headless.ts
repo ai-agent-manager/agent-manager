@@ -167,37 +167,32 @@ export async function runHeadless(
   if (discovery) {
     console.log("[agentman] Discovery document found");
 
-    let accessToken: string | undefined;
     let authSession: AuthSession | undefined;
 
     if (discovery.auth?.required) {
-      const envToken = process.env['AGENTMAN_ACCESS_TOKEN'];
-      if (envToken) {
-        accessToken = envToken;
+      const authResult = await authenticate(
+        discoveryBaseUrl,
+        discovery.auth,
+        (url) => {
+          console.error(`\n[agentman] ERROR: Authentication required. Visit this URL to authorise:`);
+          console.error(`  ${url}\n`);
+          console.error(`  Or set AGENTMAN_ACCESS_TOKEN environment variable.\n`);
+          process.exit(1);
+        },
+      );
+      if (authResult.fromEnv) {
         console.log('[agentman] Using access token from AGENTMAN_ACCESS_TOKEN');
-      } else {
-        console.log('[agentman] Attempting cached token authentication...');
-        await authenticate(
-          discoveryBaseUrl,
-          discovery.auth,
-          (url) => {
-            console.error(`\n[agentman] ERROR: Authentication required. Visit this URL to authorise:`);
-            console.error(`  ${url}\n`);
-            console.error(`  Or set AGENTMAN_ACCESS_TOKEN environment variable.\n`);
-            process.exit(1);
-          },
-        );
-        authSession = {
-          discoveryBaseUrl,
-          auth: discovery.auth,
-        };
       }
+      authSession = {
+        discoveryBaseUrl,
+        auth: discovery.auth,
+      };
     }
 
     console.log(`[agentman] Resolving ${discovery.sources.length} source(s) from discovery document...`);
     const result = await resolveDiscoverySkills(
       discovery,
-      accessToken,
+      undefined,
       (msg) => console.log(`[agentman] ${msg}`),
       {
         artefactSha256: config.artefactSha256,
@@ -232,9 +227,7 @@ export async function runHeadless(
       }
 
       let apiAuth: ApiAuth | undefined;
-      if (accessToken) {
-        apiAuth = { bearerToken: accessToken };
-      } else if (authSession) {
+      if (authSession) {
         apiAuth = authSession;
       } else {
         console.error(

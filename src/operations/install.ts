@@ -20,14 +20,19 @@ import type { InstallScope } from '../config/scopes.js';
 import type { InstallResult } from '../provisioners/types.js';
 import { createSkillProvisioner } from '../provisioners/registry.js';
 import { findRepoRoot } from '../lib/repo.js';
-import { getValidBearerToken, type AuthSession } from '../auth/index.js';
+import { getValidBearerToken, bearerOptionsFromSession, type AuthSession } from '../auth/index.js';
 
 async function resolveInstallBearer(
   authSession?: AuthSession,
   bearerToken?: string,
+  requestUrl?: string,
 ): Promise<string | undefined> {
   if (authSession) {
-    return getValidBearerToken(authSession.discoveryBaseUrl, authSession.auth);
+    return getValidBearerToken(
+      authSession.discoveryBaseUrl,
+      authSession.auth,
+      bearerOptionsFromSession(authSession, requestUrl ?? authSession.discoveryBaseUrl),
+    );
   }
   return bearerToken;
 }
@@ -166,7 +171,7 @@ export async function installFromBundle(opts: InstallFromBundleOpts): Promise<In
 
   if (source.baseUrl) {
     const sourceKey = sourceName ? bundleSourceKey(sourceName) : undefined;
-    const bearer = await resolveInstallBearer(authSession, bearerToken);
+    const bearer = await resolveInstallBearer(authSession, bearerToken, source.baseUrl);
     const { zipPath } = await downloadBundle(source.baseUrl, requestedVersion, bearer, sourceKey);
     const extracted = await extractBundle(
       zipPath,
@@ -242,7 +247,7 @@ export async function acquireSource(
 
   if (source.type === 'artefact') {
     const artefactSource = opts.sha256 ? { ...source, sha256: opts.sha256 } : source;
-    const bearer = await resolveInstallBearer(opts.authSession, opts.bearerToken);
+    const bearer = await resolveInstallBearer(opts.authSession, opts.bearerToken, artefactSource.artefactUrl);
     const download = await downloadArtefact(artefactSource, {
       forceUpdate: opts.forceUpdate,
       bearerToken: bearer,
@@ -261,7 +266,7 @@ export async function acquireSource(
 
   if (source.baseUrl) {
     const sourceKey = source.sourceName ? bundleSourceKey(source.sourceName) : undefined;
-    const bearer = await resolveInstallBearer(opts.authSession, opts.bearerToken);
+    const bearer = await resolveInstallBearer(opts.authSession, opts.bearerToken, source.baseUrl);
     const { zipPath } = await downloadBundle(
       source.baseUrl,
       opts.bundleVersion,
