@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, rm, writeFile, readFile, mkdir, chmod, symlink, stat, lstat, readlink } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile, readFile, mkdir, stat, lstat, readlink } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { execSync } from 'node:child_process';

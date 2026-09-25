@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -6,13 +6,9 @@ import { Buffer } from 'node:buffer';
 
 describe('extractZipFast', () => {
   let tmpDir: string;
-  let extractDir: string;
-  let zipPath: string;
 
   beforeEach(async () => {
     tmpDir = await mkdtemp(path.join(os.tmpdir(), 'powershell-extract-test-'));
-    extractDir = path.join(tmpDir, 'extracted');
-    zipPath = path.join(tmpDir, 'test.zip');
   });
 
   afterEach(async () => {
