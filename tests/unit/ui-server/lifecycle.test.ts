@@ -2,6 +2,7 @@ import { withMutation } from '../../../src/lib/mutation.js';
 import { updateInstalled } from '../../../src/operations/manage.js';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { startUiServer } from '../../../src/ui-server/index.js';
@@ -83,6 +84,25 @@ it('shutdown drains a real installation and publishes its terminal state before 
   }
   await events.close(); await stopping;
   expect(await readFile(path.join(os.homedir(), '.claude/skills/test-skill/SKILL.md'), 'utf8')).toContain('Test Skill');
+});
+
+it('stop closes sockets that were mid-request when the server began closing', async () => {
+  // Desktop window close and CLI Ctrl-C leave the page running while the server
+  // drains; a request in flight at close time must not leave a keep-alive socket
+  // that the page's reconnect loop can keep busy with 503s.
+  const socket = net.connect(server.port, '127.0.0.1');
+  await new Promise<void>((resolve) => socket.once('connect', resolve));
+  const closed = new Promise<void>((resolve) => socket.once('close', () => resolve()));
+  let response = '';
+  socket.on('data', (chunk) => { response += chunk; });
+  socket.write(`GET /api/session HTTP/1.1\r\nHost: 127.0.0.1:${server.port}\r\nAuthorization: ${authorization}\r\n`);
+  const started = Date.now();
+  const stopping = server.stop();
+  socket.write('\r\n');
+  await closed; await stopping;
+  expect(response).toMatch(/^HTTP\/1\.1 503/);
+  expect(response).toMatch(/\r\nconnection: close\r\n/i);
+  expect(Date.now() - started).toBeLessThan(2_000);
 });
 
 it('stop cancels authentication promptly and waits for its asynchronous cleanup', async () => {

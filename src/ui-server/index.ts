@@ -48,6 +48,9 @@ export async function startUiServer(options: UiServerOptions = {}) {
   const requests = new Set<Promise<void>>();
   const handle = async (req: IncomingMessage, res: ServerResponse) => {
     responseHeaders(res);
+    // server.close() only reaps sockets idle at that moment; an open tab's reconnect
+    // loop would otherwise keep reusing a socket that was mid-request and delay the drain.
+    if (stopping) res.setHeader('Connection', 'close');
     try {
       checkHost(req, authority); checkOrigin(req, authority);
       if (!req.url?.startsWith('/') || req.url.startsWith('//') || req.url.includes('#')) throw new ValidationError('Invalid request target.');
