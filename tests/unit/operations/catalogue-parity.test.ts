@@ -61,3 +61,29 @@ it('reports a missing directory provenance marker without leaking a filesystem e
   await expect(loadRepositoryBundle(state, repo)).rejects.toMatchObject({ name: 'OperationConflictError', message: expect.stringContaining('import it again') });
   try { await loadRepositoryBundle(state, repo); } catch (error) { expect((error as Error).message).not.toContain(home); }
 });
+
+it('ignores repository pins from another directory source, including legacy pins without a recorded directory', async () => {
+  const a = path.join(home, 'source-a'), b = path.join(home, 'source-b'), repoRoot = path.join(home, 'repo');
+  const imported: Record<string, string> = {};
+  for (const [dir, version] of [[a, '2.0.0'], [b, '3.0.0']] as const) {
+    await mkdir(path.join(dir, 'repo-skill'), { recursive: true });
+    await writeFile(path.join(dir, 'manifest.json'), JSON.stringify({ version, published: '2026-01-01' }));
+    await writeFile(path.join(dir, 'repo-skill', 'SKILL.md'), '# Repository content');
+    imported[version] = (await importLocalBundle(dir)).bundleDir;
+  }
+  await mkdir(repoRoot);
+  const contents = await scanBundle(imported['2.0.0']!);
+  const skills = toCatalogueSkills({ source: { type: 'directory', dirPath: a }, manifest: { version: '2.0.0', published: '2026-01-01' }, bundleContents: contents }, { scope: 'repo', repoBundle: { version: '2.0.0', contents } });
+  expect((await installResolvedSkills({ skills, toolId: 'claude-code', scope: 'repo', repoRoot, bundleVersion: '2.0.0' })).errors).toEqual([]);
+  const from = (dirPath: string, version: string) => loadRepositoryBundle({ source: { type: 'directory', dirPath }, manifest: { version, published: '2026-01-01' } }, repoRoot);
+  expect((await from(a, '2.0.0'))?.version).toBe('2.0.0');
+  // Directory B has no repository installs of its own, so A's pin must not select B's catalogue version.
+  expect(await from(b, '3.0.0')).toBeUndefined();
+  // Pins written before bundleDirectory existed are matched through the cached bundle's provenance marker.
+  const configPath = path.join(repoRoot, '.agentman.json');
+  const config = JSON.parse(await readFile(configPath, 'utf8')) as { installations: Record<string, Record<string, { sourcePin: Record<string, unknown> }>> };
+  for (const records of Object.values(config.installations)) for (const record of Object.values(records)) delete record.sourcePin.bundleDirectory;
+  await writeFile(configPath, JSON.stringify(config));
+  expect((await from(a, '2.0.0'))?.version).toBe('2.0.0');
+  expect(await from(b, '3.0.0')).toBeUndefined();
+});

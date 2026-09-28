@@ -10,7 +10,7 @@ import { scanBundle } from '../bundle/scanner.js';
 import type { BundleContents } from '../bundle/scanner.js';
 import type { InstallScope } from '../config/scopes.js';
 import { buildScopedCatalogue } from '../catalogue-scope/index.js';
-import { buildPinForDirectorySource, buildSourcePin } from '../bundle/skill-source.js';
+import { buildPinForDirectorySource, buildSourcePin, type SkillSourcePin } from '../bundle/skill-source.js';
 import type { ResolvedSkill } from '../discovery/resolver.js';
 import type { Session } from './session.js';
 
@@ -53,14 +53,19 @@ export async function loadRepositoryBundle(session: CatalogueSession, repoRoot: 
   if (session.discoverySkills || !session.source || session.source.type === 'discovery') return undefined;
   const source = session.source;
   const config = await readRepoConfig(repoRoot);
-  const pins = Object.values(config?.installations ?? {}).flatMap((records) => Object.values(records))
+  const directory = source.type === 'directory' ? await realpath(source.dirPath).catch(() => path.resolve(source.dirPath)) : undefined;
+  const candidates = Object.values(config?.installations ?? {}).flatMap((records) => Object.values(records))
     .map((record) => record.sourcePin)
-    .filter((pin) => pin?.sourceType === 'bundle' && !pin.bundleSourceName && (
+    .filter((pin): pin is SkillSourcePin => pin?.sourceType === 'bundle' && !pin.bundleSourceName && (
       source.type === 'url'
-        ? pin.bundleBaseUrl && canonicaliseContentRoot(pin.bundleBaseUrl) === canonicaliseContentRoot(source.baseUrl)
+        ? !!pin.bundleBaseUrl && canonicaliseContentRoot(pin.bundleBaseUrl) === canonicaliseContentRoot(source.baseUrl)
         : !pin.bundleBaseUrl
     ));
-  const versions = [...new Set(pins.map((pin) => pin!.bundleVersion))];
+  // Directory pins from other local sources must not select this catalogue's version.
+  const pins = directory
+    ? (await Promise.all(candidates.map(async (pin) => await pinBelongsToDirectory(pin, directory) ? pin : undefined))).filter((pin): pin is SkillSourcePin => !!pin)
+    : candidates;
+  const versions = [...new Set(pins.map((pin) => pin.bundleVersion))];
   if (versions.length === 0) return undefined;
   if (versions.length !== 1 || !versions[0]) throw new OperationConflictError('Repository skills use mixed bundle versions. Select their versions individually before using a repository catalogue.');
   const version = versions[0];
@@ -69,12 +74,25 @@ export async function loadRepositoryBundle(session: CatalogueSession, repoRoot: 
   if (source.type === 'url') await resolvePinnedBundle(pins[0], version);
   else {
     const identity = await readBundleIdentity(bundleDir);
-    const directory = await realpath(source.dirPath).catch(() => path.resolve(source.dirPath));
-    if (identity.directory !== directory && !identity.directoryAliases?.includes(directory)) throw new OperationConflictError('Repository bundle belongs to an unknown or different directory source.');
+    if (identity.directory !== directory && !identity.directoryAliases?.includes(directory!)) throw new OperationConflictError('Repository bundle belongs to an unknown or different directory source.');
   }
   const manifest = parseManifest(await readFile(path.join(bundleDir, 'manifest.json'), 'utf8'));
   if (manifest.version !== version) throw new OperationConflictError('Repository manifest does not match its pinned version.');
   return { version, contents: await scanBundle(bundleDir, manifest.agents) };
+}
+
+/** Directory pins record their source directory. Pins written before that field
+ * existed are matched through the cached bundle's provenance marker; when that
+ * cannot be read the pin is kept so the later identity check reports the cause.
+ */
+async function pinBelongsToDirectory(pin: SkillSourcePin, directory: string): Promise<boolean> {
+  if (pin.bundleDirectory) return (await realpath(pin.bundleDirectory).catch(() => path.resolve(pin.bundleDirectory!))) === directory;
+  if (!pin.bundleVersion) return true;
+  try {
+    assertBundleVersion(pin.bundleVersion);
+    const identity = await readBundleIdentity(getBundleVersionDir(pin.bundleVersion));
+    return identity.directory === directory || !!identity.directoryAliases?.includes(directory);
+  } catch { return true; }
 }
 
 export async function buildRepositoryCatalogue(session: Session, repoRoot: string) {
