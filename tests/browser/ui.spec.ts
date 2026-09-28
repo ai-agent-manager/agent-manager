@@ -54,8 +54,10 @@ test('development UI: occupied default port, same-origin API/SSE and actual HMR'
   expect(sockets.every((url) => new URL(url).host === new URL(origin).host)).toBe(true);
   const navigationStart = await page.evaluate(() => performance.timeOrigin);
   const appPath = path.join(root, 'src/App.tsx');
-  await writeFile(appPath, (await readFile(appPath, 'utf8')).replace('<span>Agent Manager</span>', '<span>Agent Manager HMR</span>'));
-  await expect(page.getByText('Agent Manager HMR', { exact: true })).toBeVisible();
+  const hmrTarget = 'src={bannerUrl} alt="" />', source = await readFile(appPath, 'utf8');
+  expect(source).toContain(hmrTarget); // A silent no-op replace would only surface as a timeout.
+  await writeFile(appPath, source.replace(hmrTarget, 'src={bannerUrl} alt="Agent Manager HMR" />'));
+  await expect(page.getByAltText('Agent Manager HMR', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => performance.timeOrigin)).toBe(navigationStart);
   await exerciseUi(page, ui, state.home);
   expect(requests.some((url) => url.endsWith('/api/events'))).toBe(true);
