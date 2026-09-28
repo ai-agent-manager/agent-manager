@@ -129,6 +129,7 @@ async function acquireDiscoverySkills(
     source: Extract<BundleSource, { type: 'discovery' }>,
     setLoadingMessage: (message: string) => void,
     onAuthPrompt: (authorizeUrl: string) => void,
+    onAuthCallback: () => void,
 ): Promise<{
     skills: ResolvedSkill[];
     rovoAgents: RovoAgentInfo[];
@@ -148,6 +149,7 @@ async function acquireDiscoverySkills(
             source.baseUrl,
             source.discovery.auth,
             onAuthPrompt,
+            { onCallback: onAuthCallback },
         );
         authSession = {
             discoveryBaseUrl: source.baseUrl,
@@ -193,6 +195,7 @@ export function App({ source, directInstallSource, forceUpdate, sourceError }: A
     const [loadingMessage, setLoadingMessage] = useState("Initializing...");
     const [error, setError] = useState<string | null>(null);
     const [warning, setWarning] = useState<string | null>(null);
+    const [authStatus, setAuthStatus] = useState<'waiting' | 'completing'>('waiting');
     const [startupNotices, setStartupNotices] = useState<StartupUpdateNotice[]>([]);
     const [repoBundleContents, setRepoBundleContents] = useState<BundleContents | null>(null);
     const [repoBundleVersion, setRepoBundleVersion] = useState<string | null>(null);
@@ -346,8 +349,15 @@ export function App({ source, directInstallSource, forceUpdate, sourceError }: A
     };
 
     const handleAuthPrompt = useCallback((url: string) => {
+        setAuthStatus('waiting');
         setAuthorizeUrl(url);
         setScreen("auth");
+    }, []);
+
+    const handleAuthCallback = useCallback(() => {
+        setAuthStatus('completing');
+        setLoadingMessage("Completing sign-in...");
+        setScreen("loading");
     }, []);
 
     const handleAuthOpen = useCallback(() => {
@@ -416,6 +426,7 @@ export function App({ source, directInstallSource, forceUpdate, sourceError }: A
                         source,
                         setLoadingMessage,
                         handleAuthPrompt,
+                        handleAuthCallback,
                     );
 
                     if (warnings.length > 0) {
@@ -648,7 +659,11 @@ export function App({ source, directInstallSource, forceUpdate, sourceError }: A
     if (screen === "auth" && authorizeUrl) {
         return (
             <Box flexDirection="column">
-                <AuthPrompt authorizeUrl={authorizeUrl} onOpen={handleAuthOpen} />
+                <AuthPrompt
+                    authorizeUrl={authorizeUrl}
+                    onOpen={handleAuthOpen}
+                    status={authStatus}
+                />
             </Box>
         );
     }

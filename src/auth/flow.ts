@@ -62,6 +62,8 @@ export interface AuthSession {
 
 export interface GetValidBearerTokenOptions {
   onPrompt?: (authorizeUrl: string) => void;
+  /** Called after the authorization callback has been accepted. */
+  onCallback?: () => void;
   /**
    * When true, fall through to interactive login if cache/refresh cannot
    * produce a token. Default false (API / background callers).
@@ -94,6 +96,8 @@ export class AuthCancelledError extends AuthFlowError {
 export interface AuthenticateOptions {
   /** Cancels any in-flight stage (OIDC discovery, callback wait, token exchange/refresh). */
   signal?: AbortSignal;
+  /** Called after the authorization callback has been accepted. */
+  onCallback?: () => void;
 }
 
 function requireAuthConfig(auth: DiscoveryAuth): asserts auth is DiscoveryAuth & {
@@ -117,7 +121,13 @@ async function resolveBearerToken(
 ): Promise<AuthResult> {
   requireAuthConfig(auth);
 
-  const { onPrompt, allowInteractive = false, forceRefresh = false, signal } = options;
+  const {
+    onPrompt,
+    onCallback,
+    allowInteractive = false,
+    forceRefresh = false,
+    signal,
+  } = options;
 
   if (signal?.aborted) throw new AuthCancelledError();
 
@@ -160,7 +170,7 @@ async function resolveBearerToken(
     }
 
     if (allowInteractive && onPrompt) {
-      return interactiveLogin(baseUrl, auth, oidcConfig, onPrompt, signal);
+      return interactiveLogin(baseUrl, auth, oidcConfig, onPrompt, onCallback, signal);
     }
 
     throw new AuthFlowError(
@@ -218,6 +228,7 @@ export async function authenticate(
     allowInteractive: true,
     onPrompt,
     signal: options.signal,
+    onCallback: options.onCallback,
   });
 }
 
@@ -229,6 +240,7 @@ async function interactiveLogin(
   auth: DiscoveryAuth & { oidcDiscoveryUrl: string; clientId: string },
   oidcConfig: OidcConfiguration,
   onPrompt: (authorizeUrl: string) => void,
+  onCallback: (() => void) | undefined,
   signal?: AbortSignal,
 ): Promise<AuthResult> {
   const codeVerifier = generateCodeVerifier();
@@ -253,6 +265,7 @@ async function interactiveLogin(
 
   // Wait for the callback
   const { code } = await waitForCallback(state, { signal });
+  onCallback?.();
 
   // Exchange code for tokens — still abortable: the inline prompt stays
   // visible while this fetch runs, so cancel must cover it too.
@@ -367,12 +380,22 @@ function toStoredTokens(
  */
 export function openInBrowser(url: string): void {
   const platform = getPlatform();
-  const cmd =
-    platform === 'macos'
-      ? 'open'
-      : platform === 'windows'
-        ? 'start'
-        : 'xdg-open';
 
+  if (platform === 'windows') {
+    // `start` is a cmd.exe builtin, not an executable, so it must be invoked
+    // via cmd /c. The empty "" title arg prevents `start` from treating the
+    // URL itself as the window title. windowsVerbatimArguments + manual
+    // quoting is required because OAuth URLs contain `&`, which cmd.exe
+    // treats as a command separator unless the argument is quoted — Node's
+    // default Windows quoting only quotes args containing spaces, so an
+    // unquoted URL gets truncated at the first `&`.
+    execFile('cmd', ['/c', 'start', '""', `"${url}"`], {
+      shell: false,
+      windowsVerbatimArguments: true,
+    });
+    return;
+  }
+
+  const cmd = platform === 'macos' ? 'open' : 'xdg-open';
   execFile(cmd, [url], { shell: false });
 }
