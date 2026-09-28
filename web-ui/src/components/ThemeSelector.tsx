@@ -26,7 +26,8 @@ export function ThemeSelector({ client, enabled }: { client: ApiClient; enabled:
   }
 
   return <div className={styles.container}>
-    <fieldset className={styles.selector} disabled={busy || !settings.data} aria-busy={busy}>
+    {/* Not disabled while saving: a disabled fieldset drops keyboard focus, and select() already ignores repeat saves. */}
+    <fieldset className={styles.selector} disabled={!settings.data} aria-busy={busy}>
       <legend>Appearance</legend>
       <div className={styles.options}>
         {(['system', 'light', 'dark'] as const).map((value) => <label className={styles.option} key={value}>

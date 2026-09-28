@@ -21,7 +21,11 @@ test('appearance follows the system, overrides it explicitly, and survives a new
     expect((await saved).status()).toBe(200);
     await expect(light).toBeEnabled();
   };
-  await choose('Light');
+  // Keyboard selection keeps focus on the chosen radio while the save is in flight.
+  const savedByKeyboard = page.waitForResponse((response) => response.url().endsWith('/api/settings') && response.request().method() === 'PATCH');
+  await system.focus(); await page.keyboard.press('ArrowRight');
+  expect((await savedByKeyboard).status()).toBe(200);
+  await expect(light).toBeChecked(); await expect(light).toBeFocused();
   await expect(root).toHaveCSS('color-scheme', 'light');
   await expect(root).toHaveCSS('background-color', 'rgb(246, 248, 246)');
   await page.emulateMedia({ colorScheme: 'light' });

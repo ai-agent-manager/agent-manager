@@ -16,6 +16,8 @@ import { Settings } from './screens/Settings.js';
 import bannerUrl from './assets/banner.png';
 import styles from './App.module.css';
 
+const pageTitles: Record<string, string> = { '/': 'Catalogue', '/installed': 'Installed skills', '/sources': 'Sources', '/versions': 'Versions', '/skill-versions': 'Skill versions', '/settings': 'Settings' };
+
 export function App({ client }: { client: ApiClient }) {
   const { session, context, jobs, connection, error: sessionError } = useSession(client);
   const route = useHashRoute();
@@ -32,6 +34,16 @@ export function App({ client }: { client: ApiClient }) {
   }, []);
   const dismissNotice = useCallback((id: string) => setNotices((current) => current.filter((notice) => notice.id !== id)), []);
   useEffect(() => { setError(''); }, [route]);
+  let skillId: string | undefined;
+  if (route.startsWith('/skills/')) { try { skillId = decodeURIComponent(route.slice('/skills/'.length)); } catch { /* Invalid navigation renders the not-found screen. */ } }
+  const skillName = skillId ? session?.catalogue.find((entry) => entry.skillId === skillId)?.displayName ?? skillId : undefined;
+  useEffect(() => { document.title = `${skillName ?? pageTitles[route] ?? 'Page not found'} · Agent Manager`; }, [route, skillName]);
+  // Hash navigation replaces the content without a page load; move focus to the new main region (not on first render).
+  const firstRoute = useRef(true);
+  useEffect(() => {
+    if (firstRoute.current) { firstRoute.current = false; return; }
+    document.getElementById('main-content')?.focus();
+  }, [route]);
   useEffect(() => {
     if (!selectedJob || jobs.some((job) => job.id === selectedJob)) { setMissingJob(undefined); return; }
     let disposed = false;
@@ -58,8 +70,6 @@ export function App({ client }: { client: ApiClient }) {
     } catch (error) { setError((error as Error).message); }
     finally { setBusy(false); }
   }
-  let skillId: string | undefined;
-  if (route.startsWith('/skills/')) { try { skillId = decodeURIComponent(route.slice('/skills/'.length)); } catch { /* Invalid navigation renders the not-found screen. */ } }
   return <div className={styles.app}>
     <a className="skip-link" href="#main-content" onClick={(event) => { event.preventDefault(); document.getElementById('main-content')?.focus(); }}>Skip to content</a>
     <aside className={styles.sidebar}>

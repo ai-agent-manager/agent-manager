@@ -196,3 +196,13 @@ it('shows the repository-specific tool note when repository scope is selected', 
   expect(screen.getByText('Installs to <repo>/.claude/skills')).toBeTruthy();
   expect(screen.queryByText('Installs to ~/.claude/skills')).toBeNull();
 });
+it('titles each route and moves focus to the main region after hash navigation', async () => {
+  window.location.hash = '#/';
+  render(<App client={new ApiClient(null)} />);
+  await waitFor(() => expect(document.title).toBe('Catalogue · Agent Manager'));
+  expect(document.activeElement).toBe(document.body); // First render must not steal focus.
+  window.location.hash = '#/sources'; window.dispatchEvent(new HashChangeEvent('hashchange'));
+  await waitFor(() => expect(document.title).toBe('Sources · Agent Manager'));
+  expect(document.activeElement?.id).toBe('main-content');
+  window.location.hash = '#/';
+});
