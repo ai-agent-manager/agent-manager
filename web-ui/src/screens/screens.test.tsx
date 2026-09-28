@@ -170,3 +170,29 @@ it('focuses confirmation controls, traps Tab, and restores the trigger on Escape
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(document.activeElement).toBe(trigger);
 });
+
+it('keeps the install form retryable when a succeeded job carries per-tool failures', async () => {
+  const onJob = vi.fn();
+  const { client } = mockApi((path) => path.startsWith('/api/catalogue') ? { entry } : { jobId: 'install-job' });
+  const { rerender } = render(<SkillDetail client={client} skillId="test-skill" session={session} context={context} jobs={[]} onJob={onJob} />);
+  await screen.findByRole('heading', { name: 'Install skill' });
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Claude Code' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Install to 1 tool' }));
+  await waitFor(() => expect(onJob).toHaveBeenCalledWith('install-job'));
+  const partial: JobDto = { id: 'install-job', kind: 'install', state: 'succeeded', phase: 'complete', canCancel: false, progress: '', result: { result: { installed: [], errors: [{ name: 'test-skill', error: 'EACCES: permission denied' }] } } };
+  rerender(<SkillDetail client={client} skillId="test-skill" session={session} context={context} jobs={[partial]} onJob={onJob} />);
+  const retry = await screen.findByRole('button', { name: 'Install to 1 tool' });
+  expect((retry as HTMLButtonElement).disabled).toBe(false);
+  expect(screen.getByRole('alert').textContent).toContain('Installed for 0 of 1 tool');
+  expect(screen.queryByRole('button', { name: /Installed 0 skills/ })).toBeNull();
+});
+it('shows the repository-specific tool note when repository scope is selected', async () => {
+  const { client } = mockApi(() => ({ entry }));
+  const tools = [{ id: 'claude-code', name: 'Claude Code', note: 'Installs to ~/.claude/skills', repoNote: 'Installs to <repo>/.claude/skills' }];
+  render(<SkillDetail client={client} skillId="test-skill" session={session} context={{ ...context, tools }} jobs={[]} onJob={vi.fn()} />);
+  await screen.findByRole('heading', { name: 'Install skill' });
+  expect(screen.getByText('Installs to ~/.claude/skills')).toBeTruthy();
+  await userEvent.selectOptions(screen.getByLabelText('Install scope'), 'repo');
+  expect(screen.getByText('Installs to <repo>/.claude/skills')).toBeTruthy();
+  expect(screen.queryByText('Installs to ~/.claude/skills')).toBeNull();
+});
