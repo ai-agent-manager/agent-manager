@@ -117,16 +117,16 @@ try {
       skillId: skill.skillId, installKey: skill.candidates[0]!.installKey, scope: 'system', toolIds: ['claude-code'] });
     const { jobId } = await install.json(); assert.equal(install.status, 202);
     await eventually(async () => (await (await api(endpoint, `/api/jobs/${jobId}`)).json()).phase, (phase) => phase === 'commit');
-    await page.getByRole('button', { name: 'Quit Agent Manager' }).click();
-    await page.getByRole('button', { name: 'Quit', exact: true }).click();
+    // Closing the window is the user's quit path; it must drain rather than exit.
+    await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0]!.close(); });
     await eventually(async () => (await api(endpoint, '/api/session')).status, (status) => status === 503);
     assert.equal(app.process().exitCode, null); // A running commit keeps Electron alive.
     assert.equal(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.getTitle()), 'Agent Manager — finishing operations…');
   } finally { release.release(); await held; }
-  await deadline(closed, 10_000, 'Desktop Quit did not drain and close.');
+  await deadline(closed, 10_000, 'Closing the desktop window did not drain and quit.');
   assert.match(await readFile(path.join(state.home, '.claude/skills/test-skill/SKILL.md'), 'utf8'), /Test Skill/);
   assert(JSON.parse(await readFile(path.join(state.home, '.agentman/config.json'), 'utf8')).installations['claude-code']['test-skill']);
-  console.log('Desktop smoke passed: isolated renderer, blocked external launches, real installs, native picker IPC, OAuth PKCE and graceful Quit.');
+  console.log('Desktop smoke passed: isolated renderer, blocked external launches, real installs, native picker IPC, OAuth PKCE and graceful window-close quit.');
 } catch (error) {
   failed = true;
   const diagnostics = path.join(checkout, 'desktop/test-results'); await mkdir(diagnostics, { recursive: true });

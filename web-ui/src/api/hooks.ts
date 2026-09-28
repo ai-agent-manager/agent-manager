@@ -3,14 +3,13 @@ import type { ContextDto, JobDto, SessionDto } from '@api-types';
 import { ApiClient } from './client.js';
 import { subscribeEvents, type ConnectionState } from './events.js';
 
-export function useSession(client: ApiClient, enabled = true) {
+export function useSession(client: ApiClient) {
   const [session, setSession] = useState<SessionDto>();
   const [context, setContext] = useState<ContextDto>();
   const [jobs, setJobs] = useState<JobDto[]>([]);
   const [connection, setConnection] = useState<ConnectionState>('connecting');
   const [error, setError] = useState('');
   useEffect(() => {
-    if (!enabled) return;
     let disposed = false, receivedSnapshot = false;
     void client.request<ContextDto>('/api/context').then((value) => { if (!disposed) setContext(value); }).catch((error: Error) => { if (!disposed) setError(error.message); });
     void client.request<SessionDto>('/api/session').then((value) => { if (!disposed && !receivedSnapshot) setSession(value); }).catch((error: Error) => { if (!disposed) setError(error.message); });
@@ -20,7 +19,7 @@ export function useSession(client: ApiClient, enabled = true) {
       if (event.event === 'job') setJobs((current) => [...current.filter((job) => job.id !== event.data.id), event.data].slice(-74));
     }, setConnection);
     return () => { disposed = true; unsubscribe(); };
-  }, [client, enabled]);
+  }, [client]);
   return { session, context, jobs, connection, error };
 }
 

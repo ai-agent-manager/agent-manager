@@ -1,4 +1,3 @@
-import { Dialog } from './components/Dialog.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AuthDto, JobDto } from '@api-types';
 import { ApiClient, ApiError } from './api/client.js';
@@ -18,13 +17,11 @@ import bannerUrl from './assets/banner.png';
 import styles from './App.module.css';
 
 export function App({ client }: { client: ApiClient }) {
-  const [stopped, setStopped] = useState(false);
-  const { session, context, jobs, connection, error: sessionError } = useSession(client, !stopped);
+  const { session, context, jobs, connection, error: sessionError } = useSession(client);
   const route = useHashRoute();
   const [selectedJob, setSelectedJob] = useState<string>();
   const dismissJob = useCallback((id: string) => setSelectedJob((selected) => selected === id ? undefined : selected), []);
   const [error, setError] = useState('');
-  const [quit, setQuit] = useState(false);
   const [busy, setBusy] = useState(false);
   const [missingJob, setMissingJob] = useState<JobDto>();
   const [notices, setNotices] = useState<ActionNotice[]>([]);
@@ -61,21 +58,14 @@ export function App({ client }: { client: ApiClient }) {
     } catch (error) { setError((error as Error).message); }
     finally { setBusy(false); }
   }
-  async function shutdown() {
-    setError(''); setBusy(true);
-    try { await client.request('/api/shutdown', 'POST'); setStopped(true); }
-    catch (error) { setError((error as Error).message); }
-    finally { setBusy(false); }
-  }
   let skillId: string | undefined;
   if (route.startsWith('/skills/')) { try { skillId = decodeURIComponent(route.slice('/skills/'.length)); } catch { /* Invalid navigation renders the not-found screen. */ } }
-  if (stopped) return <main className="empty"><h1>Agent Manager is shutting down</h1><p>Any changes already in progress will finish before the server stops. You can close this tab.</p></main>;
   return <div className={styles.app}>
     <a className="skip-link" href="#main-content" onClick={(event) => { event.preventDefault(); document.getElementById('main-content')?.focus(); }}>Skip to content</a>
     <aside className={styles.sidebar}>
       <a className={styles.brand} href="#/" aria-label="Agent Manager home"><img className={styles.brandMark} src={bannerUrl} alt="" /></a>
       <nav aria-label="Main navigation">{[['/', 'Catalogue', '⌘'], ['/installed', 'Installed', '▦'], ['/sources', 'Sources', '◎'], ['/versions', 'Versions', '◷'], ['/skill-versions', 'Skill versions', '⇄'], ['/settings', 'Settings', '⚙']].map(([href, label, icon]) => <a href={`#${href}`} key={href} className={(route === href || href === '/' && route.startsWith('/skills/')) ? styles.active : ''} aria-current={(route === href || href === '/' && route.startsWith('/skills/')) ? 'page' : undefined}><span aria-hidden="true">{icon}</span>{label}</a>)}</nav>
-      <div className={styles.sidebarBottom}><span className="status-dot" />Running locally<small>v{context?.appVersion ?? '…'}</small><ThemeSelector client={client} enabled={!!context && connection !== 'unauthorised'} /><button onClick={() => setQuit(true)}>Quit Agent Manager</button></div>
+      <div className={styles.sidebarBottom}><span className="status-dot" />Running locally<small>v{context?.appVersion ?? '…'}</small><ThemeSelector client={client} enabled={!!context && connection !== 'unauthorised'} /></div>
     </aside>
     <div className={styles.workspace}>
       <header className={styles.header}><div className="min-width"><small className="muted">ACTIVE SOURCE</small><div className={styles.source} title={session?.source?.value}>{session?.source?.value ?? 'No source selected'}</div></div><div className="row">{session?.bundleVersion && <span className="badge">{session.bundleVersion}</span>}<span className="badge">{auth?.authenticated ? 'Signed in' : auth?.required ? 'Sign-in required' : 'Local session'}</span>{auth?.required && <button disabled={busy || session?.state === 'loading'} onClick={() => void authAction()}>{auth.authenticated ? 'Sign out' : 'Sign in'}</button>}<button disabled={busy || session?.state === 'loading'} onClick={() => void reload()}>{session?.state === 'loading' ? 'Loading…' : 'Reload'}</button></div></header>
@@ -92,7 +82,6 @@ export function App({ client }: { client: ApiClient }) {
           : route === '/skill-versions' ? <SkillVersions client={client} session={session} context={context} refreshKey={refreshKey} onJob={setSelectedJob} />
           : route === '/settings' ? <Settings client={client} />
           : <div className="empty"><h1>Page not found</h1><a href="#/">Return to the catalogue</a></div>}
-        {quit && <Dialog label="Confirm quit" onClose={() => { if (!busy) setQuit(false); }}><h2>Quit Agent Manager?</h2><p>Changes already in progress will finish before the server stops.</p><div className="row"><button className="danger" disabled={busy} onClick={() => void shutdown()}>Quit</button><button onClick={() => setQuit(false)}>Keep working</button></div><ErrorMessage message={error} /></Dialog>}
       </main>
       <JobPanel client={client} jobs={missingJob && !jobs.some((job) => job.id === missingJob.id) ? [...jobs, missingJob] : jobs} selectedId={selectedJob} onDismiss={dismissJob} notices={notices} onDismissNotice={dismissNotice} />
     </div>

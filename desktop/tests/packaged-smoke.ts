@@ -59,9 +59,8 @@ try {
   await page.getByRole('region', { name: 'Install skill', exact: true }).getByText('succeeded', { exact: true }).waitFor();
   assert.match(await readFile(path.join(state.home, '.claude/skills/test-skill/SKILL.md'), 'utf8'), /Test Skill/);
   assert(JSON.parse(await readFile(path.join(state.home, '.agentman/config.json'), 'utf8')).installations['claude-code']['test-skill']);
-  await page.getByRole('button', { name: 'Quit Agent Manager' }).click();
-  await page.getByRole('button', { name: 'Quit', exact: true }).click();
-  assert.equal(await deadline(exited, 10_000, 'Packaged Quit did not finish.'), 0);
+  await page.evaluate(() => { window.close(); });
+  assert.equal(await deadline(exited, 10_000, 'Closing the packaged window did not quit.'), 0);
   console.log('Packaged desktop smoke passed: hardened fuses, sandboxed launch, ASAR assets and real skill installation.');
 } catch (error) {
   failed = true;

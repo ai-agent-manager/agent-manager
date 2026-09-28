@@ -44,8 +44,7 @@ Each launch creates a new bearer token in the printed URL. Keep it private; the
 browser strips it from the address bar and keeps it in session storage for reloads.
 The server listens only on local loopback. Sign-in uses an explicit authorization
 link; upstream OAuth tokens stay in the keychain or private filesystem store.
-Closing the tab leaves the server running. Use Quit or Ctrl-C to drain work and
-stop; a second CLI Ctrl-C forces exit and may interrupt an operation. Published
+Closing the tab leaves the server running. Use Ctrl-C to drain work and stop; a second CLI Ctrl-C forces exit and may interrupt an operation. Published
 packages include browser assets; users do not need Vite or Playwright for this UI.
 
 ### Run with npx

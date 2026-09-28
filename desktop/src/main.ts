@@ -73,7 +73,7 @@ async function launch() {
     return drain();
   };
   const handle = await started;
-  // The UI Quit action closes the HTTP server before Electron quits.
+  // If the HTTP server stops first (for example via POST /api/shutdown), quit Electron too.
   handle.server.once('close', () => { if (!quitting) void shutdown!().catch(reportShutdown); });
   if (closing) return;
   const origin = new URL(handle.url).origin;

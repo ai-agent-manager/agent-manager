@@ -43,9 +43,10 @@ For live development, run `npm run dev:ui -- [source] [--no-open] [--port 0]`.
 One launcher serves Vite, API requests, event streams, and guarded HMR upgrades
 on the same loopback port. It loads `web-ui/vite.config.ts`; production modules
 do not import Vite. Ctrl-C drains work and closes the server. In the production CLI, a second
-Ctrl-C releases owned locks and forces exit with code 130. The Quit button
-uses the same shutdown contract. Closing the browser tab leaves the server and
-its jobs running. Neither mode has an idle shutdown timer.
+Ctrl-C releases owned locks and forces exit with code 130. The browser UI has
+no Quit control: closing the tab leaves the server and its jobs running, so stop
+it with Ctrl-C. In the desktop app, closing the window drains work and quits.
+Neither mode has an idle shutdown timer.
 
 | Service | Port |
 | --- | --- |
@@ -60,7 +61,7 @@ build both first. The pack hook replaces the repository README with
 
 ## Browser behavior
 
-- The Appearance selector above Quit offers System (the default), Light, and Dark.
+- The Appearance selector at the bottom of the sidebar offers System (the default), Light, and Dark.
   System follows OS appearance changes. The choice is saved in application settings
   and restored in both the browser and desktop app on subsequent launches.
 - The launch token is read into memory and session storage, then removed from

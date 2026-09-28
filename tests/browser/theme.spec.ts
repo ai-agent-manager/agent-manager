@@ -58,8 +58,8 @@ test('appearance follows the system, overrides it explicitly, and survives a new
     await page.setViewportSize(viewport);
     await expect(appearance).toBeVisible();
     const selector = (await appearance.boundingBox())!;
-    const quit = (await page.getByRole('button', { name: 'Quit Agent Manager', exact: true }).boundingBox())!;
-    expect(selector.y + selector.height).toBeLessThan(quit.y);
+    const sidebar = (await page.locator('aside').boundingBox())!;
+    expect(selector.y + selector.height).toBeLessThanOrEqual(sidebar.y + sidebar.height);
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
   }
 });

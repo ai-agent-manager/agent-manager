@@ -71,8 +71,8 @@ npm run preview:ui -- tests/fixtures/valid-bundle --port 0
 ```
 
 `preview:ui` prints the URL without opening a browser. For live development, use
-`npm run dev:ui -- --no-open`. Closing the tab leaves the server running; use Quit
-or Ctrl-C to drain work and stop it. A second CLI Ctrl-C forces exit and may
+`npm run dev:ui -- --no-open`. Closing the tab leaves the server running; use
+Ctrl-C to drain work and stop it. A second CLI Ctrl-C forces exit and may
 interrupt an operation. See [the web UI guide](docs/web-ui.md) for repository scope,
 version support, security, development and testing.
 
