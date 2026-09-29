@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createServer } from 'node:http';
 import { connect } from 'node:net';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { startDevUi } from '../../../scripts/dev-ui.js';
@@ -12,7 +12,8 @@ let ui: Awaited<ReturnType<typeof startDevUi>> | undefined;
 afterEach(async () => { await ui?.stop(); vi.unstubAllEnvs(); if (directory) await rm(directory, { recursive: true, force: true }); });
 it('serves Vite, API, SSE and guarded HMR on the fallback port', async () => {
   vi.stubEnv('AGENTMAN_DISABLE_STARTUP_UPDATE_CHECKS', 'true');
-  directory = await mkdtemp(path.join(os.tmpdir(), 'agentman-vite-'));
+  // Vite's fs.allow list holds real paths; a symlinked or 8.3 short-name temp dir would be refused.
+  directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'agentman-vite-')));
   await writeFile(path.join(directory, 'index.html'), '<!doctype html><div>dev fixture</div><script type="module" src="/main.js"></script>');
   await writeFile(path.join(directory, 'main.js'), 'export const fixture = true;');
   const occupied = createServer();

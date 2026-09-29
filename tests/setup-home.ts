@@ -7,11 +7,12 @@ import { afterAll } from 'vitest';
 // real agentman state. Each test file gets its own home (including on Windows).
 const originalHome = process.env.HOME;
 const originalProfile = process.env.USERPROFILE;
-// os.tmpdir() can itself be a symlink (e.g. macOS: /var -> /private/var), which
-// would make the bundle cache root's realpath differ from itself and trip the
-// "must not be a symlink" cache safety check. Resolve it first so the fake
-// HOME the tests use is a real, non-symlinked path end to end.
-const testHome = mkdtempSync(path.join(realpathSync(os.tmpdir()), 'agentman-test-home-'));
+// os.tmpdir() can itself be a symlink (e.g. macOS: /var -> /private/var) or a
+// Windows 8.3 short name (C:\Users\RUNNER~1 on CI), either of which makes the
+// bundle cache root's realpath differ from itself and trips the "must not be a
+// symlink" cache safety check. Resolve it with the native realpath, which is
+// what the runtime uses and the only variant that expands short names.
+const testHome = mkdtempSync(path.join(realpathSync.native(os.tmpdir()), 'agentman-test-home-'));
 process.env.HOME = testHome;
 process.env.USERPROFILE = testHome;
 afterAll(() => {
