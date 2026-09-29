@@ -37,3 +37,9 @@ Thumbs.db
 
 # ── Test coverage ─────────────────────────────────────────────────────────────
 coverage/
+
+# ── MkDocs build output ───────────────────────────────────────────────────────
+site/
+
+# Brand assets copied into docs/ at build/serve time (see scripts/docs.sh)
+docs/assets/

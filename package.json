@@ -26,7 +26,9 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint"
+    "lint": "oxlint",
+    "docs": "./scripts/docs.sh",
+    "docs:build": "./scripts/docs.sh build"
   },
   "keywords": [
     "agent",

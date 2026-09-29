@@ -6,6 +6,8 @@ Your team has AI skills. This tool makes sure everyone's coding agent actually u
 
 Agent Manager pulls a versioned bundle of skills and Rovo agent configs from a URL you control, then installs them into Claude Code, Devin Desktop (formerly Windsurf), GitHub Copilot, or Cursor — interactively on a laptop, or silently in CI.
 
+**Docs:** [ai-agent-manager.github.io/agent-manager](https://ai-agent-manager.github.io/agent-manager/)
+
 ---
 
 ## Quick Start
@@ -306,7 +308,12 @@ npm run build        # compile to dist/
 npm test             # run tests once
 npm run test:watch   # watch mode
 npm run typecheck    # type check without emitting
+./scripts/docs.sh    # preview the docs site (Docker, http://localhost:8000)
 ```
+
+Full documentation lives in [`docs/`](docs/) and is published to
+[GitHub Pages](https://ai-agent-manager.github.io/agent-manager/). See
+[docs/docs-preview.md](docs/docs-preview.md) for the Docker preview workflow.
 
 ### Mock HTTP skills server
 
