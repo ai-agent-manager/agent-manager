@@ -34,7 +34,7 @@ npx @ai-agent-manager/cli@latest <source> --config .github/ai-skills.yml
 **Config format:**
 
 ```yaml
-tools: claude-code        # claude-code | windsurf | github-copilot | cursor | kiro
+tools: claude-code        # one or more — see Supported tools below
 scope: repo              # repo (default) | system
 skills:
   - my-skill-name
