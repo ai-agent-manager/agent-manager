@@ -9,15 +9,29 @@ set -euo pipefail
 #######################################
 usage() {
   cat <<'EOF'
-Usage: ./scripts/docs.sh [serve|build] [extra mkdocs args...]
+Usage: ./scripts/docs.sh [serve|build|sync-assets] [extra mkdocs args...]
 
-  serve   Live-reload preview on http://localhost:8000 (default)
-  build   Strict production build into ./site
+  serve        Live-reload preview on http://localhost:8000 (default)
+  build        Strict production build into ./site
+  sync-assets  Copy brand assets from assets/ into docs/assets/
 
 Environment:
   DOCS_PORT   Host port for serve (default: 8000)
   DOCS_IMAGE  Image tag to build/use (default: agent-manager-docs)
 EOF
+}
+
+#######################################
+# Copy brand assets needed by MkDocs from the repo root assets/ tree.
+# Globals:
+#   REPO_ROOT
+# Arguments:
+#   None
+#######################################
+sync_docs_assets() {
+  local dest="${REPO_ROOT}/docs/assets"
+  mkdir -p "${dest}"
+  cp "${REPO_ROOT}/assets/icon.png" "${dest}/icon.png"
 }
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -34,10 +48,27 @@ if [[ "${#}" -gt 0 ]]; then
   shift
 fi
 
+case "${command}" in
+  sync-assets)
+    sync_docs_assets
+    echo "Synced docs assets into docs/assets/"
+    exit 0
+    ;;
+  serve|build)
+    ;;
+  *)
+    echo "Error: unknown command '${command}'" >&2
+    usage >&2
+    exit 1
+    ;;
+esac
+
 if ! command -v docker >/dev/null 2>&1; then
   echo "Error: docker is required to preview the docs site." >&2
   exit 1
 fi
+
+sync_docs_assets
 
 echo "Building docs image (${DOCS_IMAGE})..."
 docker build \
@@ -64,10 +95,5 @@ case "${command}" in
       "${docker_mounts[@]}" \
       "${DOCS_IMAGE}" \
       build --strict "$@"
-    ;;
-  *)
-    echo "Error: unknown command '${command}'" >&2
-    usage >&2
-    exit 1
     ;;
 esac

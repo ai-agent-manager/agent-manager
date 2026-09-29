@@ -36,10 +36,18 @@ Output lands in `site/` (gitignored).
 
 ## What the script does
 
-1. Builds the `Dockerfile.docs` image (MkDocs Material + plugins from
+1. Copies brand assets from `assets/` into `docs/assets/` (MkDocs can only
+   serve files under `docs/`)
+2. Builds the `Dockerfile.docs` image (MkDocs Material + plugins from
    `requirements-docs.txt`)
-2. Mounts the repository into the container
-3. Runs `mkdocs serve` or `mkdocs build --strict`
+3. Mounts the repository into the container
+4. Runs `mkdocs serve` or `mkdocs build --strict`
+
+Asset sync alone (used by CI before `mkdocs build`):
+
+```bash
+./scripts/docs.sh sync-assets
+```
 
 !!! note "Git revision dates"
     Page timestamps from the revision-date plugin are enabled in CI
