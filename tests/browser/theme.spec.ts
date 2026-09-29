@@ -62,7 +62,7 @@ test('appearance follows the system, overrides it explicitly, and survives a new
     await page.setViewportSize(viewport);
     await expect(appearance).toBeVisible();
     const selector = (await appearance.boundingBox())!;
-    const sidebar = (await page.locator('aside').boundingBox())!;
+    const sidebar = (await page.locator('aside', { has: page.getByRole('navigation', { name: 'Main navigation' }) }).boundingBox())!; // not the Activity aside
     expect(selector.y + selector.height).toBeLessThanOrEqual(sidebar.y + sidebar.height);
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
   }

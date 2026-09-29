@@ -37,6 +37,7 @@ test('a completed job is recovered when the first event stream attaches late', a
 });
 test('a job finishing while disconnected is reconciled by the reconnect snapshot', async ({ page, context, app, state }) => {
   const ui = await app();
+  await ready(ui); // The startup load needs the mutation lease this test is about to hold.
   const streams = new Set<import('node:http').ServerResponse>();
   ui.server.on('request', (req, res) => { if (req.url === '/api/events') { streams.add(res); res.once('close', () => streams.delete(res)); } });
   await page.goto(ui.url);
