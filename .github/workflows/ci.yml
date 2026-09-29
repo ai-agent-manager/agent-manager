@@ -65,6 +65,11 @@ jobs:
             - name: Build and test desktop shell
               run: npm ci --prefix desktop && npm run build --prefix desktop && npm run typecheck:tests --prefix desktop && npm test --prefix desktop
 
+            # Electron 44 has no postinstall; its binary downloads on the first require().
+            # Fetch it here so the sandbox chown below and the smoke launch find it.
+            - name: Fetch Electron binary
+              run: node -e "console.log(require('./desktop/node_modules/electron'))"
+
             - name: Desktop smoke (Linux virtual display)
               if: runner.os == 'Linux'
               run: |
