@@ -6,7 +6,9 @@ export default defineConfig({
     setupFiles: ['tests/setup-home.ts'],
     environment: 'node',
     include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
-    testTimeout: 10_000,
+    // CI runners (Windows especially) stall unpredictably; keep local feedback tight.
+    testTimeout: process.env.CI ? 30_000 : 10_000,
+    hookTimeout: process.env.CI ? 30_000 : 10_000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],

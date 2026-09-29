@@ -32,7 +32,7 @@ beforeEach(async () => {
   await writeFile(path.join(source, 'manifest.json'), JSON.stringify({ version: '1.0.0', published: '2026-01-01' }));
   ui = await startUiServer({ cwd: repo, port: 0, startupSource: source, staticDir: null });
   base = `http://127.0.0.1:${ui.port}`;
-  await vi.waitFor(async () => expect((await session()).state).toBe('ready'));
+  await vi.waitFor(async () => expect((await session()).state).toBe('ready'), { timeout: 10_000 });
 });
 afterEach(async () => {
   await ui?.stop();

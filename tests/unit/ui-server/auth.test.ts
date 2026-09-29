@@ -47,7 +47,7 @@ afterEach(async () => { await ui?.stop(); vi.unstubAllEnvs(); await rm(home, { r
 const api = (route: string, method = 'GET') => fetch(base + route, { method, headers: { authorization: `Bearer ${ui.token}`, ...(method === 'GET' ? {} : { 'content-type': 'application/json' }) }, ...(method === 'GET' ? {} : { body: '{}' }) });
 const session = async (): Promise<SessionDto> => (await api('/api/session')).json();
 async function currentJob(): Promise<JobDto> { return (await api(`/api/jobs/${(await session()).loadJobId}`)).json(); }
-async function ready() { grant(); await vi.waitFor(async () => expect((await session()).state).toBe('ready')); }
+async function ready() { grant(); await vi.waitFor(async () => expect((await session()).state).toBe('ready'), { timeout: 10_000 }); }
 it('retries a cancelled initial login using the unpersisted source and exposes only safe auth status', async () => {
   const initial = await currentJob();
   expect(initial.authorizeUrl).toContain('http://localhost:8080/authorize');

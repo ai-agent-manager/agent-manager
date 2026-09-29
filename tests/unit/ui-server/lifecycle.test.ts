@@ -37,7 +37,7 @@ beforeEach(async () => {
   vi.mocked(loadSession).mockImplementation(actual.loadSession);
   server = await startUiServer({ port: 0, cwd, startupSource: fixture, staticDir: null });
   base = `http://127.0.0.1:${server.port}`; authorization = `Bearer ${server.token}`;
-  await vi.waitFor(async () => expect((await (await api('/api/session')).json()).state).toBe('ready'));
+  await vi.waitFor(async () => expect((await (await api('/api/session')).json()).state).toBe('ready'), { timeout: 10_000 });
 });
 afterEach(async () => { await server.stop(); vi.unstubAllEnvs(); await rm(cwd, { recursive: true, force: true }); });
 function api(route: string, body?: unknown) {

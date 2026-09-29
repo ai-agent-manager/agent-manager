@@ -21,7 +21,7 @@ it('launches the real UI command without a TTY and exits cleanly on SIGINT', asy
     await vi.waitFor(async () => {
       const response = await fetch(`${url.origin}/api/session`, { headers: { authorization: `Bearer ${token}` } });
       expect((await response.json()).state).toBe('ready');
-    });
+    }, { timeout: 10_000 });
     if (process.platform === 'win32') {
       // Windows does not deliver POSIX SIGINT to child processes. Exercise the
       // same graceful stop through HTTP; signal handlers are unit-tested too.

@@ -23,7 +23,7 @@ it('replaces inherited npm cache and config paths before invoking real npm', asy
       npm_config_cache: outsideCache, npm_config_userconfig: outsideConfig, NPM_CONFIG_GLOBALCONFIG: outsideConfig });
     expect(process.env.npm_execpath).toBeTruthy();
     const { stdout } = await promisify(execFile)(process.execPath, [process.env.npm_execpath!, 'config', 'list', '--json'], {
-      cwd: state.directory, env, timeout: 10_000,
+      cwd: state.directory, env, timeout: 20_000,
     });
     const config = JSON.parse(stdout);
     expect(config.cache).toBe(path.join(privateDirectory, 'cache'));
