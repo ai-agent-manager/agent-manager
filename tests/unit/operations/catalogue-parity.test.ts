@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
-import { mkdtemp, mkdir, writeFile, realpath, rm, readFile } from 'node:fs/promises';
+import { cp, mkdtemp, mkdir, writeFile, realpath, rm, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { runHeadless } from '../../../src/headless.js';
@@ -62,7 +62,7 @@ it('reports a missing directory provenance marker without leaking a filesystem e
   try { await loadRepositoryBundle(state, repo); } catch (error) { expect((error as Error).message).not.toContain(home); }
 });
 
-it('ignores repository pins from another directory source, including legacy pins without a recorded directory', async () => {
+it('scopes repository pins to the active directory and its verified aliases, including legacy pins without a recorded directory', async () => {
   const a = path.join(home, 'source-a'), b = path.join(home, 'source-b'), repoRoot = path.join(home, 'repo');
   const imported: Record<string, string> = {};
   for (const [dir, version] of [[a, '2.0.0'], [b, '3.0.0']] as const) {
@@ -79,11 +79,18 @@ it('ignores repository pins from another directory source, including legacy pins
   expect((await from(a, '2.0.0'))?.version).toBe('2.0.0');
   // Directory B has no repository installs of its own, so A's pin must not select B's catalogue version.
   expect(await from(b, '3.0.0')).toBeUndefined();
+  // A verified copy of A becomes an alias of the cached 2.0.0; A's pin still applies there, even after the copy moves ahead.
+  const alias = path.join(home, 'source-a-copy');
+  await cp(a, alias, { recursive: true }); await importLocalBundle(alias);
+  expect((await from(alias, '2.0.0'))?.version).toBe('2.0.0');
+  await writeFile(path.join(alias, 'manifest.json'), JSON.stringify({ version: '4.0.0', published: '2026-01-01' })); await importLocalBundle(alias);
+  expect((await from(alias, '4.0.0'))?.version).toBe('2.0.0');
   // Pins written before bundleDirectory existed are matched through the cached bundle's provenance marker.
   const configPath = path.join(repoRoot, '.agentman.json');
   const config = JSON.parse(await readFile(configPath, 'utf8')) as { installations: Record<string, Record<string, { sourcePin: Record<string, unknown> }>> };
   for (const records of Object.values(config.installations)) for (const record of Object.values(records)) delete record.sourcePin.bundleDirectory;
   await writeFile(configPath, JSON.stringify(config));
   expect((await from(a, '2.0.0'))?.version).toBe('2.0.0');
+  expect((await from(alias, '4.0.0'))?.version).toBe('2.0.0');
   expect(await from(b, '3.0.0')).toBeUndefined();
 });

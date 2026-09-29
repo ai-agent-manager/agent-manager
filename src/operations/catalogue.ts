@@ -81,18 +81,21 @@ export async function loadRepositoryBundle(session: CatalogueSession, repoRoot: 
   return { version, contents: await scanBundle(bundleDir, manifest.agents) };
 }
 
-/** Directory pins record their source directory. Pins written before that field
- * existed are matched through the cached bundle's provenance marker; when that
- * cannot be read the pin is kept so the later identity check reports the cause.
+/** A pin belongs to the active directory when it recorded that directory, or when
+ * the cached bundle's provenance marker lists the active directory as its source
+ * or a verified alias of it. Pins written before bundleDirectory existed rely on
+ * the marker alone; when it cannot be read they are kept so the later identity
+ * check reports the cause, whereas a pin recorded elsewhere is dropped.
  */
 async function pinBelongsToDirectory(pin: SkillSourcePin, directory: string): Promise<boolean> {
-  if (pin.bundleDirectory) return (await realpath(pin.bundleDirectory).catch(() => path.resolve(pin.bundleDirectory!))) === directory;
-  if (!pin.bundleVersion) return true;
+  const recorded = pin.bundleDirectory ? await realpath(pin.bundleDirectory).catch(() => path.resolve(pin.bundleDirectory!)) : undefined;
+  if (recorded === directory) return true;
+  if (!pin.bundleVersion) return !recorded;
   try {
     assertBundleVersion(pin.bundleVersion);
     const identity = await readBundleIdentity(getBundleVersionDir(pin.bundleVersion));
     return identity.directory === directory || !!identity.directoryAliases?.includes(directory);
-  } catch { return true; }
+  } catch { return !recorded; }
 }
 
 export async function buildRepositoryCatalogue(session: Session, repoRoot: string) {
