@@ -17,20 +17,20 @@ JSON Schema: [`src/discovery/schema.json`](../src/discovery/schema.json).
 
 ## `AGENTMAN_ACCESS_TOKEN`
 
-Set this environment variable to a bearer token to skip the browser OAuth flow. This is the usual approach for CI and headless mode:
+In **headless** mode (`--config`), set this environment variable to a bearer token to skip the browser OAuth flow. This is the usual approach for CI:
 
 ```bash
 AGENTMAN_ACCESS_TOKEN=eyJ... npx @ai-agent-manager/cli@latest https://your-bundle-server.com \
   --config .github/ai-skills.yml
 ```
 
-When set (non-empty after trimming), agent-manager uses the value directly. The token is sent as-is — no store lookup, no refresh.
+When set (truthy), headless mode uses the value directly as the bearer — no store lookup, no refresh. Interactive mode (the TUI) does not read this variable; it always uses browser OAuth (or a cached/refreshed session).
 
 In headless mode without a cached token and without `AGENTMAN_ACCESS_TOKEN`, agent-manager prints the authorise URL and exits — there is no browser login in CI.
 
 ## Browser OAuth (OIDC)
 
-When `auth.required` is `true` and `AGENTMAN_ACCESS_TOKEN` is unset:
+When `auth.required` is `true` (and, in headless mode, `AGENTMAN_ACCESS_TOKEN` is unset):
 
 1. Agent-manager fetches the OIDC discovery document from `auth.oidcDiscoveryUrl`.
 2. From the OIDC document, it extracts `authorization_endpoint` and `token_endpoint`.
