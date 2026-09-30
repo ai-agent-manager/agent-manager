@@ -80,7 +80,7 @@ export function installRoutes(router: Router, sessions: SessionStore, jobs: JobR
     const id = jobs.start('install-update', async (ctx) => {
       if (JSON.stringify(await resolveIdentifier(key, scope, toolId, { repoRoot })) !== JSON.stringify(captured)) throw new ConflictError('The installation changed. Refresh and retry.', 'INSTALL_CHANGED');
       ctx.phase('download');
-      const result = await updateInstalled(key, scope, toolId, (contentUrl) => ctx.auth(() => { sessions.assertAuthAvailable(); return getToken(contentUrl, { onAuthPrompt: ctx.authPrompt, signal: ctx.signal }); }), { repoRoot });
+      const result = await updateInstalled(key, scope, toolId, (contentUrl) => ctx.auth(() => { sessions.assertAuthAvailable(); return getToken(contentUrl, { onAuthPrompt: ctx.authPrompt, signal: ctx.signal }); }), { repoRoot, signal: ctx.signal });
       return { result: installResultDto(result) };
     });
     sendJson(res, 202, { jobId: id });

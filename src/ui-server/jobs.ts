@@ -73,6 +73,11 @@ export class JobRegistry {
   }
   async stop(): Promise<void> {
     this.stopping = true;
+    // Network phases have nothing on disk yet, so abort them rather than wait for a
+    // remote that may never answer; commit sections finish (see cancelAndWait).
+    for (const job of this.jobs.values()) {
+      if (job.dto.state === 'running' && (job.dto.phase === 'resolving' || job.dto.phase === 'download')) job.controller.abort();
+    }
     await this.cancelAndWait(() => true);
   }
   private pump(): void {
@@ -91,7 +96,7 @@ export class JobRegistry {
       signal: job.controller.signal,
       progress: (message) => { job.dto.progress = safeText(message).slice(0, 8192); this.emit(job.dto); },
       phase: (phase) => {
-        if (phase === 'auth' && this.stopping) job.controller.abort();
+        if (this.stopping && phase !== 'commit') job.controller.abort();
         checkOperationCancelled(job.controller.signal);
         job.dto.phase = phase; job.dto.canCancel = phase === 'auth';
         if (phase !== 'auth') delete job.dto.authorizeUrl;

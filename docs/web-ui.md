@@ -258,8 +258,10 @@ loaded by this server. Late token work cannot restore the signed-out session.
 A cancelled initial login returns to idle so the user can retry.
 
 Graceful shutdown rejects new API work, cancels queued/auth jobs (including jobs
-that enter auth after shutdown starts), drains accepted non-abortable work, emits
-final job states, closes SSE and then closes HTTP. The embeddable server's `stop()`
+that enter auth after shutdown starts), aborts jobs that are still resolving a
+source or downloading (nothing of theirs is on disk yet, so a remote that never
+answers cannot hold the drain), finishes accepted commit work, emits final job
+states, closes SSE and then closes HTTP. The embeddable server's `stop()`
 is asynchronous and idempotent; it never calls `process.exit`. The CLI owns signal
 handling. A second CLI signal forces exit and may leave an interrupted operation;
 it is not successful cancellation.

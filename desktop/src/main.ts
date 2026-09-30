@@ -123,7 +123,11 @@ async function launch() {
     } finally { picking = false; }
   });
   current.on('close', (event) => {
-    if (!quitting) { event.preventDefault(); void shutdown!().catch(reportShutdown); }
+    if (quitting) return;
+    event.preventDefault();
+    // A second close while draining is the escape hatch if a remote never answers.
+    if (closing) { finishQuit(); return; }
+    void shutdown!().catch(reportShutdown);
   });
   current.on('closed', () => ipcMain.removeHandler('agentman:pick-directory'));
   await current.loadURL(handle.url);

@@ -53,16 +53,17 @@ function splitStartupSource(source: StartupSource): StartupResolution {
 /** Resolve startup without requiring a renderer. Web callers defer persistence until commit. */
 export async function resolveStartupSource(
   input?: string,
-  options: { persist?: boolean } = {},
+  options: { persist?: boolean; signal?: AbortSignal } = {},
 ): Promise<StartupResolution> {
+  const network = options.signal ? [{ signal: options.signal }] : [];
   if (input) {
-    const resolved = await resolveSource(input);
+    const resolved = await resolveSource(input, ...network);
     const stored = classifyStoredSource(input);
     if (options.persist !== false) await addSource(stored, { setActive: true });
     return { ...splitStartupSource(resolved), stored };
   }
   try {
-    const resolved = await resolvePersistedSource();
+    const resolved = await resolvePersistedSource(...network);
     return resolved ? { ...splitStartupSource(resolved.source), stored: resolved.stored } : {};
   } catch (error) {
     trackTelemetryError('bundle_source_resolve_failed', error, {
@@ -75,10 +76,11 @@ export async function resolveStartupSource(
 export async function acquireBundle(
     source: BundleSource,
     setLoadingMessage: (message: string) => void,
+    options: { signal?: AbortSignal } = {},
 ): Promise<{ manifest: BundleManifest; bundleDir: string; isNew: boolean; warning?: string }> {
     if (source.type === "url") {
         setLoadingMessage("Downloading agent bundle...");
-        const { zipPath } = await downloadBundle(source.baseUrl);
+        const { zipPath } = options.signal ? await downloadBundle(source.baseUrl, undefined, undefined, undefined, options) : await downloadBundle(source.baseUrl);
 
         setLoadingMessage("Extracting bundle...");
         try {
@@ -299,7 +301,7 @@ async function loadSessionState(
   }
   const currentVersion = await getCurrentBundleVersion();
   if (!currentVersion || options.forceUpdate || source.type === 'directory') {
-    const acquired = await acquireBundle(source, progress);
+    const acquired = await acquireBundle(source, progress, options.signal ? { signal: options.signal } : {});
     checkCancelled(options.signal);
     if (acquired.warning) warn(acquired.warning);
     if (acquired.isNew) progress('Setting up new bundle version...');

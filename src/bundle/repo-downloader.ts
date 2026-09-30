@@ -19,6 +19,8 @@ export interface RepoDownloadOptions {
   forceUpdate?: boolean;
   /** GitHub personal access token for private repositories */
   token?: string;
+  /** Aborts the archive request (and its body) when the owning job is cancelled or draining. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -94,7 +96,7 @@ export async function downloadRepoArchive(
       headers['Authorization'] = `token ${options.token}`;
     }
 
-    const response = await fetch(archiveUrl, { headers });
+    const response = await fetch(archiveUrl, { headers, ...(options.signal ? { signal: options.signal } : {}) });
 
     if (!response.ok) {
       const message = buildDownloadError(response.status, response.statusText, source.repoUrl, archiveUrl);

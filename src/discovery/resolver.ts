@@ -123,7 +123,7 @@ export async function resolveDiscoverySkills(
           const sourceKey = bundleSourceKey(source.name);
           const bearer = await resolveDownloadBearer(accessToken, authSession, options?.signal);
           options?.signal?.throwIfAborted();
-          const { zipPath, version } = await downloadBundle(source.url, undefined, bearer, sourceKey);
+          const { zipPath, version } = await downloadBundle(source.url, undefined, bearer, sourceKey, ...(options?.signal ? [{ signal: options.signal }] : []));
           const result = await extractBundle(zipPath, { sourceKey, contentRoot: source.url });
           // Deliberately no setCurrentBundle here: the `current` symlink points
           // into the version-keyed cache, which a source-scoped extract never

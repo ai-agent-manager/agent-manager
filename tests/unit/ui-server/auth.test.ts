@@ -57,7 +57,7 @@ it('retries a cancelled initial login using the unpersisted source and exposes o
   expect((await session()).error).toBeUndefined();
   const retry = await api('/api/auth/login', 'POST'); expect(retry.status).toBe(202);
   await vi.waitFor(async () => expect((await currentJob()).phase).toBe('auth'));
-  expect(resolveStartupSource).toHaveBeenLastCalledWith(sourceUrl, { persist: false });
+  expect(resolveStartupSource).toHaveBeenLastCalledWith(sourceUrl, { persist: false, signal: expect.any(AbortSignal) });
   await ready();
   const status = await (await api('/api/auth')).json();
   expect(status).toMatchObject({ required: true, authenticated: true, backend: 'filesystem', discoveryBaseUrl: sourceUrl + '/' });

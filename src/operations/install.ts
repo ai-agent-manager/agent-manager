@@ -33,7 +33,11 @@ async function resolveInstallBearer(
   return bearerToken;
 }
 
-interface InstallGuard { beforeInstall?: () => Promise<void> }
+interface InstallGuard {
+  beforeInstall?: () => Promise<void>;
+  /** Aborts network acquisition when the owning job is cancelled or the server drains. */
+  signal?: AbortSignal;
+}
 
 export interface InstallFromRepoOpts extends InstallGuard {
   repoUrl: string;
@@ -98,7 +102,7 @@ export async function installFromRepo(opts: InstallFromRepoOpts): Promise<Instal
 
   const source = await resolveRepoSource(repoUrl, ref);
   const token = process.env.GITHUB_TOKEN;
-  const { extractDir } = await downloadRepoArchive(source, { forceUpdate, token });
+  const { extractDir } = await downloadRepoArchive(source, { forceUpdate, token, ...(opts.signal ? { signal: opts.signal } : {}) });
   const scanResult = await scanRepoForSkills(extractDir, source);
 
   const available = new Map(scanResult.skills.map((s) => [s.dirName, s]));
@@ -125,6 +129,7 @@ export async function installFromArtefact(opts: InstallFromArtefactOpts): Promis
   const download = await downloadArtefact(artefactSource, {
     forceUpdate,
     bearerToken: opts.bearerToken,
+    ...(opts.signal ? { signal: opts.signal } : {}),
   });
   const scanResult = await scanArtefactForSkills(download.extractDir, artefactSource);
 
@@ -176,7 +181,7 @@ export async function installFromBundle(opts: InstallFromBundleOpts): Promise<In
   if (source.baseUrl) {
     const sourceKey = sourceName ? bundleSourceKey(sourceName) : undefined;
     const bearer = await resolveInstallBearer(authSession, bearerToken);
-    const { zipPath } = await downloadBundle(source.baseUrl, requestedVersion, bearer, sourceKey);
+    const { zipPath } = await downloadBundle(source.baseUrl, requestedVersion, bearer, sourceKey, ...(opts.signal ? [{ signal: opts.signal }] : []));
     const extracted = await extractBundle(
       zipPath,
       sourceKey ? { sourceKey, contentRoot: source.baseUrl } : { contentRoot: source.baseUrl },
@@ -240,12 +245,13 @@ export async function acquireSource(
     bundleVersion?: string;
     forceUpdate?: boolean;
     bearerToken?: string;
+    signal?: AbortSignal;
     authSession?: AuthSession;
   } = {},
 ): Promise<AcquireResult> {
   if (isRepoSource(source)) {
     const token = process.env.GITHUB_TOKEN;
-    const { extractDir } = await downloadRepoArchive(source, { forceUpdate: opts.forceUpdate, token });
+    const { extractDir } = await downloadRepoArchive(source, { forceUpdate: opts.forceUpdate, token, ...(opts.signal ? { signal: opts.signal } : {}) });
     const scanResult = await scanRepoForSkills(extractDir, source);
     return {
       skills: scanResult.skills,
@@ -259,6 +265,7 @@ export async function acquireSource(
     const bearer = await resolveInstallBearer(opts.authSession, opts.bearerToken);
     const download = await downloadArtefact(artefactSource, {
       forceUpdate: opts.forceUpdate,
+      ...(opts.signal ? { signal: opts.signal } : {}),
       bearerToken: bearer,
     });
     const scanResult = await scanArtefactForSkills(download.extractDir, artefactSource);
@@ -281,6 +288,7 @@ export async function acquireSource(
       opts.bundleVersion,
       bearer,
       sourceKey,
+      ...(opts.signal ? [{ signal: opts.signal }] : []),
     );
     const extracted = await extractBundle(
       zipPath,

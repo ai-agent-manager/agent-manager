@@ -8,6 +8,21 @@ function barrier() {
   return { promise, release };
 }
 
+it('stop aborts jobs still resolving or downloading and leaves commit phases to finish', async () => {
+  const jobs = new JobRegistry({ concurrent: 3, queued: 3, finished: 3 });
+  const onAbort = (signal: AbortSignal) => new Promise<never>((_, reject) => signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true }));
+  const network = jobs.start('resolve', async (ctx) => { ctx.phase('resolving'); await onAbort(ctx.signal); return {}; });
+  const download = jobs.start('download', async (ctx) => { ctx.phase('download'); await onAbort(ctx.signal); return {}; });
+  const committed = barrier();
+  const commit = jobs.start('commit', async (ctx) => { ctx.phase('commit'); await committed.promise; return { done: true }; });
+  await vi.waitFor(() => expect(jobs.get(commit).phase).toBe('commit'));
+  const stopping = jobs.stop();
+  await vi.waitFor(() => { expect(jobs.get(network).state).toBe('cancelled'); expect(jobs.get(download).state).toBe('cancelled'); });
+  expect(jobs.get(commit).state).toBe('running');
+  committed.release(); await stopping;
+  expect(jobs.get(commit).state).toBe('succeeded');
+});
+
 it('queued cancellation never executes work; finished jobs are immutable and bounded', async () => {
   const jobs = new JobRegistry({ concurrent: 1, queued: 2, finished: 2 });
   const hold = barrier();
@@ -51,18 +66,20 @@ it('auth cancellation waits for cleanup and never enters a mutation phase', asyn
   expect(mutate).not.toHaveBeenCalled();
 });
 
-it('refuses cancellation during download and drains it on stop', async () => {
+it('refuses user cancellation during download; stop aborts the download but still drains the job', async () => {
   const jobs = new JobRegistry();
   const entered = barrier(), release = barrier();
-  const id = jobs.start('download', async (ctx) => { ctx.phase('download'); entered.release(); await release.promise; return {}; });
+  let signal: AbortSignal | undefined;
+  const id = jobs.start('download', async (ctx) => { signal = ctx.signal; ctx.phase('download'); entered.release(); await release.promise; return {}; });
   await entered.promise;
   await expect(jobs.cancel(id)).rejects.toMatchObject({ code: 'JOB_NOT_CANCELLABLE' });
   let stopped = false;
   const stop = jobs.stop().then(() => { stopped = true; });
   await Promise.resolve(); expect(stopped).toBe(false);
+  expect(signal?.aborted).toBe(true); // network work is told to stop…
   expect(() => jobs.start('late', async () => ({}))).toThrow('stopping');
-  release.release(); await stop;
-  expect(jobs.get(id).state).toBe('succeeded');
+  release.release(); await stop; // …but a job that keeps going is still awaited, never orphaned
+  expect(jobs.get(id).state).toBe('cancelled');
 });
 
 it('blocks unsafe authorization URLs and clears prompt URLs after completion', async () => {

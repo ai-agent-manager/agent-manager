@@ -119,10 +119,11 @@ export async function fetchBundleHash(
     contentRoot: string,
     version: string,
     bearerToken?: string,
+    options: { signal?: AbortSignal } = {},
 ): Promise<string | null> {
     const url = buildHashUrl(contentRoot, version);
 
-    const response = await fetch(url, authFetchOpts(bearerToken));
+    const response = await fetch(url, options.signal ? { ...authFetchOpts(bearerToken), signal: options.signal } : authFetchOpts(bearerToken));
 
     if (response.status === 404 || response.status === 403) {
         return null;
@@ -212,6 +213,7 @@ export async function downloadBundle(
     version?: string,
     bearerToken?: string,
     sourceKey?: string,
+    options: { signal?: AbortSignal } = {},
 ): Promise<DownloadResult> {
     const root = canonicaliseContentRoot(contentRoot);
     const requestType = version ? "specific" : "latest";
@@ -230,7 +232,7 @@ export async function downloadBundle(
 
     try {
         if (!version) {
-            const index = await fetchIndex(root, bearerToken);
+            const index = await fetchIndex(root, bearerToken, ...(options.signal ? [options] : []));
             targetVersion = getLatestVersion(index);
         }
 
@@ -242,7 +244,8 @@ export async function downloadBundle(
         // path.join before anything has verified the download.
         assertSafeCacheSegment(targetVersion, "Bundle version");
         const zipPath = path.join(tempDir, `${targetVersion}-${randomUUID()}${sourceKey ? `-${sourceKey}` : ""}.zip`);
-        const response = await fetch(url, authFetchOpts(bearerToken));
+        // The signal covers the body read too, so a stalled transfer stops with the job.
+        const response = await fetch(url, options.signal ? { ...authFetchOpts(bearerToken), signal: options.signal } : authFetchOpts(bearerToken));
         if (!response.ok) {
             throw new Error(`Failed to download bundle: ${response.status} ${response.statusText} from ${url}`);
         }
@@ -252,7 +255,7 @@ export async function downloadBundle(
         let sha256: string | null = null;
 
         try {
-            const expectedHash = await fetchBundleHash(root, targetVersion, bearerToken);
+            const expectedHash = await fetchBundleHash(root, targetVersion, bearerToken, ...(options.signal ? [options] : []));
 
             if (expectedHash) {
                 await verifyBundleHash(zipPath, expectedHash);

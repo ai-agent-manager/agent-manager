@@ -198,6 +198,8 @@ export interface ArtefactDownloadOptions {
   forceUpdate?: boolean;
   /** Bearer token for protected artefact and sidecar requests. */
   bearerToken?: string;
+  /** Aborts the artefact and sidecar requests when the owning job is cancelled or draining. */
+  signal?: AbortSignal;
 }
 
 const SEMVER_RE = /^v?\d+\.\d+\.\d+(?:[-+][\w.]+)?$/;
@@ -262,12 +264,14 @@ export function buildArtefactHashUrl(artefactUrl: string): string {
 export async function fetchArtefactHash(
   artefactUrl: string,
   bearerToken?: string,
+  options: { signal?: AbortSignal } = {},
 ): Promise<string | null> {
   const url = buildArtefactHashUrl(artefactUrl);
   enforceArtefactUrl(url);
 
   const response = await fetch(url, {
     redirect: 'error',
+    ...(options.signal ? { signal: options.signal } : {}),
     ...(bearerToken ? { headers: { Authorization: `Bearer ${bearerToken}` } } : {}),
   });
 
@@ -351,6 +355,7 @@ export async function downloadArtefact(
 
     // Download — reject redirects to prevent cross-scheme downgrade
     const response = await fetch(source.artefactUrl, {
+      ...(options.signal ? { signal: options.signal } : {}),
       headers: {
         'User-Agent': 'agentman',
         ...(options.bearerToken
@@ -390,7 +395,7 @@ export async function downloadArtefact(
     // Integrity verification: explicit pin takes precedence over the sidecar
     const expectedHash =
       source.sha256?.toLowerCase() ??
-      (await fetchArtefactHash(source.artefactUrl, options.bearerToken));
+      (await fetchArtefactHash(source.artefactUrl, options.bearerToken, ...(options.signal ? [{ signal: options.signal }] : [])));
     if (expectedHash) {
       try {
         await verifyBundleHash(zipPath, expectedHash);

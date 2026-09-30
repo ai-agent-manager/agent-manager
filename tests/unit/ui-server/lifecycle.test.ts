@@ -3,6 +3,7 @@ import { updateInstalled } from '../../../src/operations/manage.js';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import net from 'node:net';
+import { createServer, type Server } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { startUiServer } from '../../../src/ui-server/index.js';
@@ -176,6 +177,24 @@ it('gives a bad startup source an actionable error and settles membership loadin
   expect(session.error).toMatchObject({ code: 'SOURCE_LOAD_FAILED', message: expect.stringContaining('Sources') });
   expect(session.error!.message).not.toContain(cwd);
   expect(session.membership.state).toBe('not-required');
+});
+
+it('stop aborts a load that is stuck on the network instead of waiting for the remote', async () => {
+  // Desktop close and CLI Ctrl-C both drain through stop(); a remote that never answers must not hold them.
+  const sockets = new Set<net.Socket>();
+  const hang: Server = createServer(() => { /* never respond */ });
+  hang.on('connection', (socket) => sockets.add(socket));
+  await new Promise<void>((resolve) => hang.listen(0, '127.0.0.1', resolve));
+  try {
+    const { jobId } = await (await api('/api/session/load', { source: `http://127.0.0.1:${(hang.address() as net.AddressInfo).port}/` })).json();
+    await vi.waitFor(() => expect(sockets.size).toBeGreaterThan(0), { timeout: 10_000 });
+    expect((await (await api(`/api/jobs/${jobId}`)).json()).phase).toBe('resolving');
+    const started = Date.now();
+    await server.stop();
+    expect(Date.now() - started).toBeLessThan(3_000);
+    // The abort tears down the client connection; the remote observes the close shortly after.
+    await vi.waitFor(() => expect([...sockets].every((socket) => socket.destroyed)).toBe(true), { timeout: 5_000 });
+  } finally { for (const socket of sockets) socket.destroy(); await new Promise<void>((resolve) => hang.close(() => resolve())); }
 });
 
 it('activating a source that cannot be resolved fails the next load instead of silently reloading the previous source', async () => {

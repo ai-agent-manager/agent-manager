@@ -59,7 +59,7 @@ it('only the newest load publishes and persists its source when loads complete o
   expect((await readConfig()).activeSource?.value).toBe(`${base}/new`);
   expect((await readConfig()).sources).toEqual([{ kind: 'discovery', value: `${base}/new` }]);
   expect(changes.filter((dto) => dto.state === 'ready').map((dto) => dto.sessionRevision)).toEqual([2]);
-  expect(resolveStartupSource).toHaveBeenCalledWith(`${base}/slow`, { persist: false });
+  expect(resolveStartupSource).toHaveBeenCalledWith(`${base}/slow`, { persist: false, signal: expect.any(AbortSignal) });
 });
 
 it('membership failure never exposes or accepts an excluded skill', async () => {

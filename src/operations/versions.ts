@@ -55,7 +55,9 @@ export async function downloadBundleVersion(
     checkOperationCancelled(events.signal);
     events.onProgress?.(`Downloading bundle ${version}...`);
     const sourceKey = events.sourceName ? bundleSourceKey(events.sourceName) : undefined;
-    const { zipPath } = await downloadBundle(source.baseUrl, version, bearer, ...(sourceKey ? [sourceKey] : []));
+    const { zipPath } = events.signal
+      ? await downloadBundle(source.baseUrl, version, bearer, sourceKey, { signal: events.signal })
+      : await downloadBundle(source.baseUrl, version, bearer, ...(sourceKey ? [sourceKey] : []));
     checkOperationCancelled(events.signal);
     try {
       events.onProgress?.('Extracting bundle...');

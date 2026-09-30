@@ -77,7 +77,7 @@ export class SessionStore {
       const id = this.jobs.start(kind, async (ctx) => {
         try {
           ctx.phase('resolving');
-          const startup = await resolveStartupSource(input ? this.normaliseInput(input) : undefined, { persist: false }).catch((error: unknown) => {
+          const startup = await resolveStartupSource(input ? this.normaliseInput(input) : undefined, { persist: false, signal: ctx.signal }).catch((error: unknown) => {
             if (serialiseError(error).status !== 500) throw error;
             throw new HttpError(422, 'Could not load the selected source. Check that its directory exists or its URL is reachable, then correct it in Sources and reload.', 'SOURCE_LOAD_FAILED');
           });

@@ -14,6 +14,8 @@ export type AccessTokenProvider = (contentUrl: string) => Promise<string | undef
 /** Explicit repository context for callers that do not run inside the target repo. */
 export interface ManageOptions {
   repoRoot?: string;
+  /** Aborts an update's network acquisition; the commit section still completes. */
+  signal?: AbortSignal;
 }
 
 export interface InstalledSkillRecord {
@@ -192,6 +194,7 @@ export async function updateInstalled(
       repoRoot,
       forceUpdate: true,
       beforeInstall,
+      ...(opts?.signal ? { signal: opts.signal } : {}),
     });
     return opResult.result;
   }
@@ -207,6 +210,7 @@ export async function updateInstalled(
       repoRoot,
       forceUpdate: true,
       beforeInstall,
+      ...(opts?.signal ? { signal: opts.signal } : {}),
       bearerToken: await getAccessToken?.(sourcePin.artefactUrl),
     });
     return opResult.result;
@@ -240,6 +244,7 @@ export async function updateInstalled(
       repoRoot,
       forceUpdate: true,
       beforeInstall,
+      ...(opts?.signal ? { signal: opts.signal } : {}),
     });
     return opResult.result;
   }

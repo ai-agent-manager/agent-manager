@@ -32,7 +32,8 @@ before installing, so the preview respects repository pins.
 A second launch focuses the existing window; its command-line URLs/arguments are
 not consumed. Closing the window, Quit, and the OS quit command drain accepted
 work before exiting, including a quit requested during startup. While draining,
-the window title shows that operations are finishing. Startup
+the window title shows that operations are finishing; closing the window a second
+time while it is finishing forces the quit. Startup
 failures log their cause and exit non-zero after cleanup. There is no
 background tray mode. OAuth opens in the system browser and returns through the
 existing fixed callback port 19875. Other agentman login processes can still
