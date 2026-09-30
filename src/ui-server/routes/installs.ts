@@ -46,6 +46,9 @@ export function installRoutes(router: Router, sessions: SessionStore, jobs: JobR
     const captured = await sessions.candidate(revision, skillId, installKey, scope, repoRoot);
     const fingerprint = JSON.stringify(captured.skill);
     const id = jobs.start('install', async (ctx) => {
+      // Catalogue installs link or copy content the session already cached, so there is no
+      // download phase: phases describe work actually performed, and 'download' also means
+      // 'network, abortable on shutdown', which a filesystem commit must never be.
       ctx.phase('commit');
       return withMutation(async () => {
         const candidate = await sessions.candidate(revision, skillId, installKey, scope, repoRoot);
