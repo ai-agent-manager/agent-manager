@@ -178,6 +178,19 @@ it('gives a bad startup source an actionable error and settles membership loadin
   expect(session.membership.state).toBe('not-required');
 });
 
+it('activating a source that cannot be resolved fails the next load instead of silently reloading the previous source', async () => {
+  const missing = path.join(cwd, 'missing');
+  expect((await api('/api/sources', { value: missing, activate: true })).status).toBe(200);
+  const { jobId } = await (await api('/api/session/load', {})).json();
+  await vi.waitFor(async () => expect((await (await api(`/api/jobs/${jobId}`)).json()).state).toBe('failed'), { timeout: 10_000 });
+  const session: SessionDto = await (await api('/api/session')).json();
+  expect(session.state).toBe('error');
+  expect(session.error).toMatchObject({ code: 'SOURCE_LOAD_FAILED' });
+  expect(session.source).toBeUndefined();
+  // The user's choice stays active so it can be corrected in Sources; nothing is re-activated behind their back.
+  expect((await (await api('/api/sources')).json()).active.value).toBe(missing);
+});
+
 it('sign-out prevents an update in download from entering a later interactive auth phase', async () => {
   const actual = await vi.importActual<typeof import('../../../src/operations/install.js')>('../../../src/operations/install.js');
   vi.mocked(installResolvedSkills).mockImplementation(actual.installResolvedSkills);

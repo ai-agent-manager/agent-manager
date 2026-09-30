@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { addSource, setCurrentBundle, updateConfig } from '../bundle/cache.js';
+import { addSource, readConfig, setCurrentBundle, updateConfig } from '../bundle/cache.js';
 import { loadSession, resolveStartupSource, runStartupChecks, type Session } from '../operations/session.js';
 import { buildSessionCatalogue, buildRepositoryCatalogue, effectiveBundleVersion } from '../operations/catalogue.js';
 import { checkOperationCancelled } from '../operations/cancellation.js';
@@ -59,7 +59,11 @@ export class SessionStore {
         this.dto.source = undefined; this.dto.stored = undefined; this.dto.bundle = undefined;
         this.dto.bundleVersion = undefined; this.dto.warnings = []; this.dto.error = undefined;
         this.dto.startupNotices = [];
-        this.session = undefined; this.selectedInput = undefined; this.authSource = undefined; this.publish();
+        this.session = undefined; this.authSource = undefined; this.publish();
+        // The next load must target what the user just chose. Resolving the persisted
+        // list instead would skip an unresolvable choice and silently re-activate the
+        // next source that happens to work.
+        this.selectedInput = (await readConfig()).activeSource?.value;
       }
     }));
   }
