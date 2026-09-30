@@ -17,7 +17,7 @@ try {
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const identity = { discoveryBaseUrl: source, oidcDiscoveryUrl: auth.oidcDiscoveryUrl, clientId: auth.clientId };
   await writeFile(path.join(directory, `${tokenStorageKey(identity)}.json`), JSON.stringify({ bearerToken, oidcDiscoveryUrl: auth.oidcDiscoveryUrl, clientId: auth.clientId, expiresAt: new Date(Date.now() + 3600000).toISOString() }), { mode: 0o600 });
-  const ui = await startCli({ entry: path.resolve('dist/index.js'), cwd: home, source, port: 0, preload: path.resolve('tests/support/disable-keychain.mjs'),
+  const ui = await startCli({ exchange: true, entry: path.resolve('dist/index.js'), cwd: home, source, port: 0, preload: path.resolve('tests/support/disable-keychain.mjs'),
     env: { HOME: home, USERPROFILE: home, DO_NOT_TRACK: 'true', AGENTMAN_DISABLE_STARTUP_UPDATE_CHECKS: 'true' } });
   try { assert((await ready(ui, 30_000)).catalogue.length > 0); console.log('Imposter UI catalogue smoke passed.'); }
   finally { await ui.stop(); }
