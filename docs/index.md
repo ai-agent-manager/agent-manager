@@ -56,8 +56,3 @@ Copilot, Cursor, or Kiro — interactively on a laptop, or silently in CI.
 | [Bundle format](bundle-format.md) | Shape of `index.json` and `bundle.zip` |
 | [Telemetry](telemetry.md) | What is collected and how to turn it off |
 | [Publishing](publishing.md) | Release tags and npm publish (maintainers) |
-
-!!! tip "Preview locally"
-    Run `./scripts/docs.sh` to serve this site in Docker on
-    [http://localhost:8000](http://localhost:8000). See
-    [Previewing docs](docs-preview.md).

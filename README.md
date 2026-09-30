@@ -6,17 +6,23 @@ Your team has AI skills. This tool makes sure everyone's coding agent actually u
 
 Agent Manager pulls a versioned bundle of skills and Rovo agent configs from a URL you control, then installs them into Claude Code, Devin Desktop (formerly Windsurf), GitHub Copilot, or Cursor — interactively on a laptop, or silently in CI.
 
-**Docs:** [ai-agent-manager.github.io/agent-manager](https://ai-agent-manager.github.io/agent-manager/)
+📖 **Docs:** [ai-agent-manager.github.io/agent-manager](https://ai-agent-manager.github.io/agent-manager/)
 
 ---
 
 ## Quick Start
 
 ```bash
+# Git catalogue — looks for .agents/discovery.json in any repo
+npx @ai-agent-manager/cli@latest org/agent-skills
+# or: https://github.com/org/agent-skills
+# or: git@bitbucket.org:org/agent-skills.git (or other git repo)
+
+# HTTP catalogue — fetches <base>/.well-known/agents/discovery.json
 npx @ai-agent-manager/cli@latest https://your-bundle-server.com
 ```
 
-That's it. It fetches your team's discovery document, authenticates (if required), downloads the latest bundle, caches it at `~/.agentman/`, and opens an interactive menu.
+That's it. It fetches your team's agent discovery document, authenticates (if required), downloads the latest content, and opens an interactive menu.
 
 ---
 
@@ -24,14 +30,18 @@ That's it. It fetches your team's discovery document, authenticates (if required
 
 AI coding tools are only as useful as the skills they're given. Without a distribution mechanism, skills get shared in Slack, go stale, diverge per developer, and never make it into CI.
 
-Agent Manager gives you a single source of truth for your team's agent skills — versioned, cacheable, and deployable anywhere Node runs.
+Agent Manager gives you a single source of truth for your team's agent skills - versioned, cacheable, and deployable anywhere.
+
+You decide which agents and skills the team can install, so every laptop and every CI run uses the same approved set.
+
+Teams can pin versions per-repository or per-machine; and upgrade and roll back - this provides trust and consistency in the context being used by their agent harness.
 
 ---
 
 ## Requirements
 
 - Node.js 22+
-- Playwright _(optional — only needed for Rovo agent provisioning)_
+- An agent harness (Codex, Claude Code, GitHub Copilot, Kiro, OpenCode etc.)
 
 ---
 
