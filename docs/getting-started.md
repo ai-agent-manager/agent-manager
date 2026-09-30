@@ -5,7 +5,7 @@ Install Agent Manager and land skills in your coding tools in a few minutes.
 ## Requirements
 
 - Node.js 22+
-- Playwright _(optional — only needed for Rovo agent provisioning)_
+- An agent harness (Codex, Claude Code, GitHub Copilot, Kiro, OpenCode etc.)
 
 ## Quick start
 
@@ -17,11 +17,11 @@ That fetches your team's discovery document, authenticates if required,
 downloads the latest bundle, caches it at `~/.agentman/`, and opens an
 interactive menu.
 
-!!! note "Source types"
-    `<source>` can be a bundle URL, a GitHub repo (`owner/repo` or a full URL),
-    another git remote (`*.git` / `git@…`), or a local directory. HTTP bases
-    fetch `.well-known/agents/discovery.json`; git remotes look for
-    `.agents/discovery.json` first.
+> [!NOTE]
+> **Source types.** `<source>` can be a bundle URL, a GitHub repo
+> (`owner/repo` or a full URL), another git remote (`*.git` / `git@…`), or a
+> local directory. HTTP bases fetch `.well-known/agents/discovery.json`; git
+> remotes look for `.agents/discovery.json` first.
 
 ## Headless (CI)
 
@@ -50,10 +50,11 @@ artefact-sha256: <hex>  # optional — artefact sources only
 | `bundle-version` | No | Pin a bundle version, or omit to track latest |
 | `artefact-sha256` | No | Expected SHA-256 of an artefact zip |
 
-!!! warning "Ambiguous skill names"
-    If two sources ship the same skill id, use the fully-qualified name
-    (for example `github.com/example-org/example-repo/my-skill`). Ambiguous
-    bare names fail the run.
+> [!TIP]
+> **Ambiguous skill names.** If two sources ship the same skill id, use the
+> fully-qualified name (for example
+> `github.com/example-org/example-repo/my-skill`). Ambiguous bare names fail
+> the run.
 
 ### GitHub Actions example
 
@@ -92,7 +93,7 @@ AGENTMAN_ACCESS_TOKEN=... npx @ai-agent-manager/cli@latest https://your-bundle-s
   --config .github/ai-skills.yml
 ```
 
-See [Discovery](discovery.md) for the catalogue model and
+See [Agent Discovery File](discovery.md) for the catalogue model and
 [Authentication](authentication.md) for the full auth flow.
 
 ## Supported tools
@@ -106,13 +107,13 @@ See [Discovery](discovery.md) for the catalogue model and
 | Kiro | `~/.kiro/skills/<skill>/` | `<repo>/.kiro/skills/<skill>/` |
 | Devin Desktop (Windsurf) | `~/.codeium/windsurf/skills/<skill>/` | `<repo>/.windsurf/skills/<skill>/` |
 
-!!! tip "Windows symlinks"
-    If symlink creation fails, Agent Manager falls back to copying the skill
-    directory.
+> [!TIP]
+> **Windows symlinks.** If symlink creation fails, Agent Manager falls back to
+> copying the skill directory.
 
 ## Next steps
 
-- [Discovery](discovery.md) — publish a catalogue
+- [Agent Discovery File](discovery.md) — publish a catalogue
 - [Authentication](authentication.md) — OIDC and CI bearer tokens
 - [Artefact sources](artefact-sources.md) — third-party zip packaging
 - [Bundle format](bundle-format.md) — zip layout and integrity sidecars

@@ -22,15 +22,15 @@ hide:
 </div>
 
 <p class="am-hero__lead">
-Agent Manager pulls a versioned bundle of skills and Rovo agent configs from a
-URL you control, then installs them into Claude Code, Devin Desktop, GitHub
-Copilot, Cursor, or Kiro — interactively on a laptop, or silently in CI.
+Agent Manager pulls and installs agents, skills and Rovo agents from sources you control,
+compatible with Claude Code, Devin Desktop, GitHub Copilot, Cursor, Amazon Kiro, OpenCode,
+or Atlassian Jira — interactively on a laptop, or silently in CI.
 </p>
 
 <div class="am-hero__actions" markdown>
 
 [Get started](getting-started.md){ .md-button .md-button--primary }
-[Discovery guide](discovery.md){ .md-button }
+[Agent Discovery File](discovery.md){ .md-button }
 [GitHub](https://github.com/ai-agent-manager/agent-manager){ .md-button }
 
 </div>
@@ -39,25 +39,21 @@ Copilot, Cursor, or Kiro — interactively on a laptop, or silently in CI.
 
 ## What you can do
 
-- Point at a **bundle URL**, **GitHub repo**, **git remote**, or **local directory**
-- Install skills into the coding tools your team already uses
+- Aggregate across one or more **GitHub repos**, **HTTP URLs**, **git remotes**, or **local directories**
+- Install skills into the coding tools your team already uses, with broad compatibility
+- Install agents into platforms like Atlassian Jira/Confluence
 - Run headless installs from CI with a YAML config
-- Optionally authenticate with OIDC and provision Rovo agents
+- Optionally authenticate with OIDC and map teams to agents/skills
 
 ## Where to look next
 
 | Guide | When to read it |
 |-------|-----------------|
 | [Getting started](getting-started.md) | Install and first run |
-| [Discovery](discovery.md) | Publish a catalogue your team can trust |
+| [Agent Discovery File](discovery.md) | Publish a catalogue your team can trust |
 | [Authentication](authentication.md) | OIDC login and `AGENTMAN_ACCESS_TOKEN` |
 | [My Projects](projects.md) | Project-scoped installs |
 | [Artefact sources](artefact-sources.md) | Third-party zip packaging |
 | [Bundle format](bundle-format.md) | Shape of `index.json` and `bundle.zip` |
 | [Telemetry](telemetry.md) | What is collected and how to turn it off |
 | [Publishing](publishing.md) | Release tags and npm publish (maintainers) |
-
-!!! tip "Preview locally"
-    Run `./scripts/docs.sh` to serve this site in Docker on
-    [http://localhost:8000](http://localhost:8000). See
-    [Previewing docs](docs-preview.md).

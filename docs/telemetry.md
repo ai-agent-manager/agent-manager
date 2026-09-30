@@ -1,11 +1,24 @@
 # Telemetry
 
-Agent Manager can send operational usage events to help understand adoption and
-failures. Events contain an action, a per-process random session ID and selected
-metadata such as counts, tool/scope, versions and coarse error categories. Some
-source acquisition events include source endpoints or repository owner/name/ref;
-they do not send prompts or skill contents. Local-directory bundle endpoints are
-represented as `local-directory`.
+You can choose to have Agent Manager sends a small set of anonymous usage events to help you understand adoption and catch operational failures.
+
+> [!NOTE]
+> No prompts, skill content, codebase files or personal identifiers are sent. Source acquisition events may include
+> source endpoints or a repository's owner/name/ref, and local-directory endpoints are reported as `local-directory`.
+
+Agent Manager currently supports the following telemetry providers:
+
+- Matamo
+
+Events you can track include CLI start, skill/agent download outcomes, skill install/uninstall, update checks, and Rovo provisioning outcomes — plus coarse error categories for failures.
+
+Telemetry has to be enabled explicitly by you in your [agent discovery file](discovery.md).
+
+Even if configured with your telemetry endpoint, collection is also automatically disabled in CI and other non-interactive environments.
+
+## Set-up telemetry
+
+See the _Discovery Document Format_ section of the [agent discovery file](discovery.md) documentation.
 
 ## Event coverage
 
