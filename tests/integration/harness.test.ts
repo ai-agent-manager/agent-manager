@@ -43,7 +43,7 @@ it('fails if the real CLI ignores --no-open, without launching an OS browser', a
     // Negative control: remove the flag before the actual CLI parses arguments.
     // Everything down to openInBrowser runs normally; only the OS boundary is guarded.
     await writeFile(wrapper, `process.argv = process.argv.filter(arg => arg !== '--no-open');\nawait import(${JSON.stringify(pathToFileURL(path.join(checkout, 'src/index.tsx')).href)});\n`);
-    const ui = await startCli({ entry: wrapper, preload: createRequire(import.meta.url).resolve('tsx'), cwd: state.repo, source: state.source });
+    const ui = await startCli({ entry: wrapper, preload: createRequire(import.meta.url).resolve('tsx'), cwd: state.repo, source: state.source, exchange: true });
     try { await ready(ui); }
     finally { await expect(ui.stop()).rejects.toThrow('CLI attempted a browser launch despite --no-open'); }
   } finally { await state.close(); }

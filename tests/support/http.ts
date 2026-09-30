@@ -1,7 +1,21 @@
 import assert from 'node:assert/strict';
 import type { JobDto, SessionDto, SnapshotDto } from '../../src/ui-server/api-types.js';
 
-export interface Endpoint { url: string; token: string }
+export interface Endpoint {
+  url: string;
+  token: string;
+  /** CLI-launched endpoints learn the bearer from the page that spent the launch code (see exerciseUi). */
+  adoptBearerFrom?(page: { evaluate<T>(fn: () => T): Promise<T> }): Promise<void>;
+}
+/** Exchange a launch URL's single-use code for the session bearer, as the page does on load. */
+export async function exchangeLaunchCode(url: string): Promise<string> {
+  const target = new URL(url);
+  const code = target.searchParams.get('token');
+  assert(code, `Launch URL carries no code: ${url.replace(/token=[^\s&]+/g, 'token=[redacted]')}`);
+  const response = await fetch(new URL('/api/session/bootstrap', target.origin), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code }), signal: AbortSignal.timeout(15_000) });
+  assert.equal(response.status, 200, `Launch code exchange failed with ${response.status}`);
+  return ((await response.json()) as { token: string }).token;
+}
 export function api(endpoint: Endpoint, route: string, method = 'GET', body?: unknown) {
   return fetch(new URL(route, endpoint.url), { method, headers: { authorization: `Bearer ${endpoint.token}`,
     ...(method === 'GET' ? {} : { 'content-type': 'application/json' }) },

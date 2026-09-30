@@ -80,7 +80,7 @@ export function App({ client }: { client: ApiClient }) {
     <div className={styles.workspace}>
       <header className={styles.header}><div className="min-width"><small className="muted">ACTIVE SOURCE</small><div className={styles.source} title={session?.source?.value}>{session?.source?.value ?? 'No source selected'}</div></div><div className="row">{session?.bundleVersion && <span className="badge">{session.bundleVersion}</span>}<span className="badge">{auth?.authenticated ? 'Signed in' : auth?.required ? 'Sign-in required' : 'Local session'}</span>{auth?.required && <button disabled={busy || session?.state === 'loading'} onClick={() => void authAction()}>{auth.authenticated ? 'Sign out' : 'Sign in'}</button>}<button disabled={busy || session?.state === 'loading'} onClick={() => void reload()}>{session?.state === 'loading' ? 'Loading…' : 'Reload'}</button></div></header>
       <main id="main-content" className={styles.main} tabIndex={-1}>
-        <ErrorMessage message={connection === 'unauthorised' ? 'This tab is not authorized. Open the Web UI URL printed by Agent Manager.' : error || sessionError || session?.error?.message} />
+        <ErrorMessage message={connection === 'unauthorised' ? 'This tab is not authorized. Open the Web UI URL printed by Agent Manager; each launch URL works once, so start it again for a fresh one.' : error || sessionError || session?.error?.message} />
         {connection === 'reconnecting' && <Notice role="status">Connection lost. Reconnecting and refreshing activity…</Notice>}
         {session?.warnings.map((warning, index) => <Notice key={`${index}:${warning}`}>{warning}</Notice>)}
         {session?.startupNotices.map((notice, index) => <Notice key={`${index}:${notice.message}`}>{notice.message}</Notice>)}

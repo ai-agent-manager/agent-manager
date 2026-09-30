@@ -1,3 +1,4 @@
+import { exchangeLaunchCode } from '../support/http.js';
 import { expect, it, vi } from 'vitest';
 import { spawn } from 'node:child_process';
 import { mkdtemp, realpath, rm } from 'node:fs/promises';
@@ -17,7 +18,7 @@ it('launches the real UI command without a TTY and exits cleanly on SIGINT', asy
   try {
     await vi.waitFor(() => expect(output).toMatch(/Web UI: http:\/\/127\.0\.0\.1:\d+\/\?token=/), { timeout: 5000 });
     const url = new URL(output.match(/Web UI: (http:\S+)/)![1]!);
-    const token = url.searchParams.get('token');
+    const token = await exchangeLaunchCode(url.href);
     await vi.waitFor(async () => {
       const response = await fetch(`${url.origin}/api/session`, { headers: { authorization: `Bearer ${token}` } });
       expect((await response.json()).state).toBe('ready');

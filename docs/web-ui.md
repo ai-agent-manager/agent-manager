@@ -145,6 +145,13 @@ address exactly, and an Origin header must match when supplied. No CORS permissi
 is emitted. Every API route requires a fresh per-launch bearer token, including
 reads and SSE; only static assets and `/health` are public on that local origin.
 The launch URL grants access to local installation operations: keep it private.
+It carries a single-use launch code rather than the bearer itself: the page
+exchanges it through `POST /api/session/bootstrap` on first load, after which the
+code is spent (it also expires unused after five minutes). Reloading works from
+session storage; reopening the same URL in another tab does not. This matters
+because the URL is handed to the operating system's browser launcher and can
+appear in process listings — pass `--no-open` on shared hosts and paste the URL
+yourself if that is a concern.
 The browser strips the query token immediately, stores it in `sessionStorage`
 (and memory), and never stores it in `localStorage`. A new server has a new token;
 an old tab must open the newly printed URL.

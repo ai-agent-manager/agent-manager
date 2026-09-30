@@ -30,13 +30,17 @@ export function extractBearerToken(req: IncomingMessage): string | null {
 export function isAuthorised(req: IncomingMessage, expectedToken: string): boolean {
   const token = extractBearerToken(req);
   if (!token) return false;
+  return matchesToken(token, expectedToken);
+}
 
+/** Constant-time comparison of a presented secret against the expected one. */
+export function matchesToken(candidate: string, expected: string): boolean {
   // Both are UUIDs so should always be 36 chars, but guard against
   // variable-length inputs to avoid leaking length information.
-  if (token.length !== expectedToken.length) return false;
+  if (candidate.length !== expected.length) return false;
 
-  const a = Buffer.from(token, 'utf-8');
-  const b = Buffer.from(expectedToken, 'utf-8');
+  const a = Buffer.from(candidate, 'utf-8');
+  const b = Buffer.from(expected, 'utf-8');
   if (a.length !== b.length) return false;
   return timingSafeEqual(a, b);
 }

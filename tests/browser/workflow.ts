@@ -12,6 +12,7 @@ export async function exerciseUi(page: Page, endpoint: Endpoint, home: string, v
   await page.getByRole('heading', { name: 'Find your next skill' }).waitFor();
   assert.equal(new URL(page.url()).searchParams.has('token'), false);
   assert.equal(await page.evaluate(() => localStorage.getItem('agentman.token')), null);
+  await endpoint.adoptBearerFrom?.(page);
   await page.getByRole('link').filter({ has: page.getByRole('heading', { name: 'Test Skill', exact: true }) }).click();
   await page.getByRole('checkbox', { name: 'Claude Code' }).check();
   await page.getByRole('button', { name: 'Install to 1 tool' }).click();

@@ -2,11 +2,11 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { realpath } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { findRepoRoot } from '../lib/repo.js';
-import { generateToken, isAuthorised } from '../server/auth.js';
+import { generateToken, isAuthorised, matchesToken } from '../server/auth.js';
 import { checkHost, checkOrigin, requireJson, responseHeaders } from './guards.js';
 import { HttpError, ValidationError } from './errors.js';
 import { readJsonBody, sendError, sendJson } from './http.js';
-import { object, query } from './validate.js';
+import { object, query, string } from './validate.js';
 import { Router } from './router.js';
 import { JobRegistry } from './jobs.js';
 import { SseHub } from './sse.js';
@@ -24,6 +24,8 @@ import { jobRoutes } from './routes/jobs.js';
 export interface UiServerOptions {
   port?: number; cwd?: string; startupSource?: string; forceUpdate?: boolean; token?: string;
   staticDir?: string | null;
+  /** How long the launch URL's single-use code stays exchangeable. Tests shorten it. */
+  launchTtlMs?: number;
   /** Native shell feedback when any shutdown path starts draining. */
   onStopping?: () => void;
   /** Development middleware is injected by the launcher, never imported here. */
@@ -36,6 +38,10 @@ export async function startUiServer(options: UiServerOptions = {}) {
   const repoRoot = await findRepoRoot(cwd);
   const token = options.token ?? generateToken();
   if (!/^[\x21-\x7e]{16,256}$/.test(token)) throw new ValidationError('Invalid server token.');
+  // The URL carries a single-use launch code, never the bearer: the URL is handed to
+  // the OS browser launcher and shows up in process listings, so anything in it must
+  // be worthless once the page has loaded.
+  const launch = { code: generateToken(), issuedAt: Date.now(), used: false, ttlMs: options.launchTtlMs ?? 5 * 60_000 };
   const staticDir = options.staticDir === undefined ? fileURLToPath(new URL('../../assets/web-ui/', import.meta.url)) : options.staticDir;
   const jobs = new JobRegistry();
   const sessions = new SessionStore(jobs, cwd, (dto) => events.broadcast('session', dto));
@@ -59,6 +65,16 @@ export async function startUiServer(options: UiServerOptions = {}) {
       if (pathname === '/health') {
         if (req.method !== 'GET') throw new HttpError(405, 'Method not allowed.', 'METHOD_NOT_ALLOWED');
         sendJson(res, 200, { status: 'ok' }); return;
+      }
+      if (pathname === '/api/session/bootstrap') {
+        if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed.', 'METHOD_NOT_ALLOWED');
+        if (stopping) throw new HttpError(503, 'The server is stopping.', 'STOPPING');
+        requireJson(req);
+        const code = string(object(await readJsonBody(req), ['code']).code, 'code', 256);
+        const live = !launch.used && Date.now() - launch.issuedAt <= launch.ttlMs;
+        if (!matchesToken(code, launch.code) || !live) throw new HttpError(401, 'This launch link has already been used or has expired. Start Agent Manager again and open the new link.', 'LAUNCH_REJECTED');
+        launch.used = true;
+        sendJson(res, 200, { token }); return;
       }
       if (pathname === '/api' || pathname.startsWith('/api/')) {
         if (!isAuthorised(req, token)) throw new HttpError(401, 'Open the Web UI URL printed by Agent Manager to authorize this tab.', 'UNAUTHORISED');
@@ -112,5 +128,5 @@ export async function startUiServer(options: UiServerOptions = {}) {
   authority = `127.0.0.1:${port}`;
   try { await sessions.load(options.startupSource, options.forceUpdate); }
   catch (error) { await stop(); throw error; }
-  return { server, port, token, isActiveAuthorizationUrl: (url: string) => jobs.isActiveAuthorizationUrl(url), url: `http://${authority}/?token=${encodeURIComponent(token)}`, stop };
+  return { server, port, token, isActiveAuthorizationUrl: (url: string) => jobs.isActiveAuthorizationUrl(url), url: `http://${authority}/?token=${encodeURIComponent(launch.code)}`, stop };
 }

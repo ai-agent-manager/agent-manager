@@ -73,6 +73,7 @@ are listed separately from JSON bodies. Success is HTTP 200 unless stated.
 | `GET /api/jobs/:id` | None | `JobDto` |
 | `POST /api/jobs/:id/cancel` | `{}` | `{}` after cancellation cleanup; 409 if finished or not cancellable |
 | `GET /api/events` | None | SSE stream described below |
+| `POST /api/session/bootstrap` | `{ code }` from the launch URL | `{ token }`; no bearer required; 401 `LAUNCH_REJECTED` once used or after five minutes |
 | `POST /api/shutdown` | `{}` | `{}` acknowledged before graceful drain begins |
 
 Unfiltered installed reads include system and detected/explicit repository

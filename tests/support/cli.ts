@@ -3,11 +3,12 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { api, eventually } from './http.js';
+import { api, eventually, exchangeLaunchCode } from './http.js';
 import { deadline } from './lifecycle.js';
 
 /** Launch the actual entry point, with no shell or npm wrapper to orphan on Windows. */
-export async function startCli(options: { entry: string; cwd: string; source: string; env?: NodeJS.ProcessEnv; port?: number; preload?: string }) {
+/** `exchange: true` spends the launch code for API-only harnesses; by default the page spends it and the harness adopts the bearer afterwards. */
+export async function startCli(options: { entry: string; cwd: string; source: string; env?: NodeJS.ProcessEnv; port?: number; preload?: string; exchange?: boolean }) {
   const guardDirectory = await mkdtemp(path.join(os.tmpdir(), 'agentman-browser-guard-'));
   const sentinel = path.join(guardDirectory, 'attempts');
   const child = spawn(process.execPath, ['--import', new URL('./no-browser.mjs', import.meta.url).href,
@@ -37,15 +38,27 @@ export async function startCli(options: { entry: string; cwd: string; source: st
       if (!alive()) throw new Error(`CLI exited before serving its UI: ${output.replace(/token=[^\s&]+/g, 'token=[redacted]')}`);
       return output.match(/Web UI: (http:\S+)/)?.[1];
     }, (value) => !!value, 15_000);
-    const token = new URL(url!).searchParams.get('token')!;
+    // The launch URL's code is single-use and belongs to the page; the harness takes
+    // the bearer from the page afterwards rather than spending the code itself.
+    let bearer = options.exchange ? await exchangeLaunchCode(url!) : '';
     let stopping: Promise<void> | undefined;
-    return { url: url!, token, stop: () => stopping ??= (async () => {
-      try {
-        if (alive()) await deadline((async () => {
-          await api({ url: url!, token }, '/api/shutdown', 'POST');
-          await exited;
-        })(), 5_000, 'CLI shutdown exceeded 5s; forcing the test child to exit.');
-      } finally { await cleanup(); }
-    })() };
+    return {
+      url: url!,
+      get token(): string { if (!bearer) throw new Error('No bearer yet: load the page first (exerciseUi adopts it) or call adoptBearerFrom(page).'); return bearer; },
+      adoptBearerFrom: async (page: { evaluate<T>(fn: () => T): Promise<T> }) => {
+        const stored = await page.evaluate(() => sessionStorage.getItem('agentman.token'));
+        if (!stored) throw new Error('The page did not obtain a bearer from the launch URL.');
+        bearer = stored;
+      },
+      stop: () => stopping ??= (async () => {
+        try {
+          if (alive()) await deadline((async () => {
+            if (bearer) await api({ url: url!, token: bearer }, '/api/shutdown', 'POST');
+            else child.kill('SIGINT'); // the CLI drains on its first signal
+            await exited;
+          })(), 5_000, 'CLI shutdown exceeded 5s; forcing the test child to exit.');
+        } finally { await cleanup(); }
+      })(),
+    };
   } catch (error) { await cleanup(); throw error; }
 }

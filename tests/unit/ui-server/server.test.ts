@@ -109,6 +109,30 @@ it('loads a real bundle, installs a server-owned candidate, reads it and removes
   await expect(realpath(target)).rejects.toMatchObject({ code: 'ENOENT' });
 });
 
+it('exchanges the launch code once for the bearer and never accepts it again', async () => {
+  const code = new URL(server.url).searchParams.get('token')!;
+  expect(code).not.toBe(server.token); // the URL never carries the bearer
+  const bootstrap = (body: unknown, method = 'POST') => fetch(`${base}/api/session/bootstrap`, { method, headers: { 'content-type': 'application/json' }, ...(method === 'POST' ? { body: JSON.stringify(body) } : {}) });
+  expect((await bootstrap({ code: 'not-the-code-not-the-code-no' })).status).toBe(401);
+  expect((await bootstrap({ code }, 'GET')).status).toBe(405);
+  const exchanged = await bootstrap({ code });
+  expect(exchanged.status).toBe(200);
+  const { token } = await exchanged.json();
+  expect(token).toBe(server.token);
+  expect((await fetch(`${base}/api/session`, { headers: { authorization: `Bearer ${token}` } })).status).toBe(200);
+  const spent = await bootstrap({ code });
+  expect(spent.status).toBe(401);
+  expect((await spent.json()).error.code).toBe('LAUNCH_REJECTED');
+});
+it('lets an unused launch code expire', async () => {
+  const short = await startUiServer({ port: 0, cwd: directory, startupSource: fixture, staticDir: null, launchTtlMs: 10 });
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    const response = await fetch(`http://127.0.0.1:${short.port}/api/session/bootstrap`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: new URL(short.url).searchParams.get('token') }) });
+    expect(response.status).toBe(401);
+  } finally { await short.stop(); }
+});
+
 it('exposes repository-scope tool notes so the install form can state the right destination', async () => {
   const { tools } = await (await api('/api/context')).json();
   const agents = tools.find((tool: { id: string }) => tool.id === 'agents');
