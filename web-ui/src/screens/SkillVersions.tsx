@@ -13,7 +13,7 @@ function Selection({ client, record, session, refreshKey, onJob }: { client: Api
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   async function confirm() {
-    if (!pending?.bundleId) return;
+    if (!pending?.bundleId || busy) return;
     setBusy(true); setError('');
     try {
       const { jobId } = await client.request<{ jobId: string }>('/api/skill-versions', 'PUT', { sessionRevision: session!.sessionRevision,
@@ -24,7 +24,7 @@ function Selection({ client, record, session, refreshKey, onJob }: { client: Api
   }
   return <section className="panel" aria-label="Available skill versions"><h2>{record.skillId}</h2><p>{record.toolId} · {record.scope === 'repo' ? record.repoRoot : 'Personal'}</p><p className="break-word">{record.source?.value ?? 'Origin not recorded'}</p><ErrorMessage message={error || available.error} />
     {available.loading ? <Spinner /> : !available.data?.supported ? <p>{available.data?.reason ?? 'Versions are unavailable.'}</p> : !available.data.bundles.length ? <p>No compatible cached versions. Download a bundle from Versions first.</p> : <ul className="version-list">{available.data.bundles.map((bundle) => <li key={bundle.bundleId}><div><strong>{bundle.version}</strong>{bundle.isCurrent && <span className="badge succeeded">Current</span>}{bundle.reason && <p>{bundle.reason}</p>}</div><button disabled={busy || !bundle.canSelect || bundle.isCurrent || session?.state !== 'ready'} onClick={() => { setPending(bundle); setError(''); }}>Use version {bundle.version}</button></li>)}</ul>}
-    {pending && <Dialog label="Change installed skill version" onClose={() => { if (!busy) setPending(undefined); }}><h2>Use {pending.version} for {record.skillId}?</h2><p>Only this installation changes: {record.toolId} · {record.scope === 'repo' ? record.repoRoot : 'Personal'}.</p><ErrorMessage message={error} /><div className="row"><button disabled={busy} onClick={() => setPending(undefined)}>Cancel</button><button className="primary" disabled={busy || session?.state !== 'ready'} onClick={() => void confirm()}>Confirm version</button></div></Dialog>}
+    {pending && <Dialog label="Change installed skill version" onClose={() => { if (!busy) setPending(undefined); }}><h2>Use {pending.version} for {record.skillId}?</h2><p>Only this installation changes: {record.toolId} · {record.scope === 'repo' ? record.repoRoot : 'Personal'}.</p><ErrorMessage message={error} /><div className="row"><button disabled={busy} onClick={() => setPending(undefined)}>Cancel</button><button className="primary" disabled={session?.state !== 'ready'} aria-busy={busy} onClick={() => void confirm()}>Confirm version</button></div></Dialog>}
   </section>;
 }
 export function SkillVersions({ client, session, context, refreshKey, onJob }: { client: ApiClient; session?: SessionDto; context?: ContextDto; refreshKey: string; onJob(id: string): void }) {

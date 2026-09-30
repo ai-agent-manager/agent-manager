@@ -20,9 +20,11 @@ export function Dialog({ label, onClose, children }: { label: string; onClose():
         else if (!event.shiftKey && (index < 0 || index === items.length - 1)) { event.preventDefault(); items[0]!.focus(); }
       }
     };
-    panel.addEventListener('keydown', keydown);
+    // Bound to the document: a control that re-renders while focused can drop focus to <body>,
+    // and Escape must still close the dialog from there.
+    document.addEventListener('keydown', keydown);
     return () => {
-      panel.removeEventListener('keydown', keydown);
+      document.removeEventListener('keydown', keydown);
       if (previous?.isConnected) previous.focus();
       else document.getElementById('main-content')?.focus();
     };

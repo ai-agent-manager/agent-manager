@@ -21,7 +21,7 @@ export function Installed({ client, context, refreshKey, onJob, onToast }: { cli
   const records = useResource<{ records: InstalledRecordDto[] }>(client, `/api/installs?${query}`, refreshKey);
   const shown = records.data?.records.filter((record) => tool === 'all' || record.toolId === tool) ?? [];
   async function remove() {
-    if (!selected) return;
+    if (!selected || busy) return;
     setBusy(true); setError('');
     try {
       const { result } = await client.request<{ result: { errors: Array<{ error: string }> } }>(`/api/installs/${encodeURIComponent(selected.installKey)}?${instanceQuery(selected)}`, 'DELETE');
@@ -36,6 +36,7 @@ export function Installed({ client, context, refreshKey, onJob, onToast }: { cli
     finally { setBusy(false); }
   }
   async function update(record: InstalledRecordDto) {
+    if (busy) return;
     setBusy(true); setError('');
     try {
       const { jobId } = await client.request<{ jobId: string }>(`/api/installs/${encodeURIComponent(record.installKey)}/update`, 'POST', {
@@ -51,11 +52,11 @@ export function Installed({ client, context, refreshKey, onJob, onToast }: { cli
     <ErrorMessage message={error || records.error} />
     {records.loading ? <Spinner /> : !shown.length ? <EmptyState title="No installed skills">Install a skill from the <a href="#/">catalogue</a>, or change your filters.</EmptyState> : <div className="table-wrap"><table><thead><tr><th>Skill</th><th>Tool / scope</th><th>Version</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{shown.map((record) => <tr key={`${record.installKey}-${record.toolId}-${record.scope}-${record.repoRoot}`}>
       <td><strong>{record.skillId}</strong><small>{record.installKey}</small></td><td>{context?.tools.find((tool) => tool.id === record.toolId)?.name ?? record.toolId}<small>{record.scope === 'system' ? 'Personal' : record.repoRoot ?? 'Repository'}</small></td><td><code>{record.version || 'Unknown'}</code></td>
-      <td className="actions"><button aria-label={`Info ${record.skillId} for ${record.toolId} (${record.scope}${record.repoRoot ? `: ${record.repoRoot}` : ''})`} onClick={() => { setSelected(record); setConfirmRemove(false); setError(''); }}>Info</button><button aria-label={`Update ${record.skillId} for ${record.toolId} (${record.scope}${record.repoRoot ? `: ${record.repoRoot}` : ''})`} disabled={busy || !record.updatable} title={record.updatable ? undefined : 'Installed from a local directory; reload that source and reinstall to pick up changes.'} onClick={() => void update(record)}>Update</button><button aria-label={`Remove ${record.skillId} for ${record.toolId} (${record.scope}${record.repoRoot ? `: ${record.repoRoot}` : ''})`} className="danger" onClick={() => { setSelected(record); setConfirmRemove(true); setError(''); }}>Remove</button></td>
+      <td className="actions"><button aria-label={`Info ${record.skillId} for ${record.toolId} (${record.scope}${record.repoRoot ? `: ${record.repoRoot}` : ''})`} onClick={() => { setSelected(record); setConfirmRemove(false); setError(''); }}>Info</button><button aria-label={`Update ${record.skillId} for ${record.toolId} (${record.scope}${record.repoRoot ? `: ${record.repoRoot}` : ''})`} disabled={!record.updatable} aria-busy={busy} title={record.updatable ? undefined : 'Installed from a local directory; reload that source and reinstall to pick up changes.'} onClick={() => void update(record)}>Update</button><button aria-label={`Remove ${record.skillId} for ${record.toolId} (${record.scope}${record.repoRoot ? `: ${record.repoRoot}` : ''})`} className="danger" onClick={() => { setSelected(record); setConfirmRemove(true); setError(''); }}>Remove</button></td>
     </tr>)}</tbody></table></div>}
     {selected && <Dialog label={confirmRemove ? 'Confirm removal' : 'Installation details'} onClose={() => { if (!busy) setSelected(undefined); }}><div className="row spread"><h2>{confirmRemove ? `Remove ${selected.skillId}?` : selected.skillId}</h2><button onClick={() => setSelected(undefined)} disabled={busy}>Close</button></div>
       <dl><dt>Tool</dt><dd>{selected.toolId}</dd><dt>Scope</dt><dd>{selected.scope === 'system' ? 'Personal' : selected.repoRoot}</dd><dt>Version</dt><dd>{selected.version || 'Unknown'}</dd><dt>Source</dt><dd>{selected.source?.value ?? 'Not recorded'}</dd><dt>Installed</dt><dd>{selected.installedAt}</dd><dt>Method</dt><dd>{selected.method}</dd></dl>
-      {confirmRemove && <><p>This removes the skill from this tool and scope.</p><button className="danger" disabled={busy} onClick={() => void remove()}>{busy ? 'Removing…' : 'Confirm removal'}</button></>}
+      {confirmRemove && <><p>This removes the skill from this tool and scope.</p><button className="danger" aria-busy={busy} onClick={() => void remove()}>{busy ? 'Removing…' : 'Confirm removal'}</button></>}
       <ErrorMessage message={error} />
     </Dialog>}
   </>;

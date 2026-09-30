@@ -41,7 +41,9 @@ export function SkillDetail({ client, skillId, session, context, jobs, onJob }: 
   // The stated destination must match the selected scope.
   const toolNote = (tool: ContextDto['tools'][number]) => scope === 'repo' ? tool.repoNote ?? tool.note : tool.note;
   async function install(event: FormEvent) {
-    event.preventDefault(); setBusy(true); setError(''); setInstalled(undefined);
+    event.preventDefault();
+    if (busy || pendingJobId) return;
+    setBusy(true); setError(''); setInstalled(undefined);
     try {
       const { jobId } = await client.request<{ jobId: string }>('/api/installs', 'POST', { sessionRevision: session!.sessionRevision, skillId,
         installKey: candidate, scope, ...(scope === 'repo' ? { repoRoot: appliedRoot } : {}), toolIds: tools });
@@ -60,7 +62,7 @@ export function SkillDetail({ client, skillId, session, context, jobs, onJob }: 
         {scope === 'repo' && <div><DirectoryField label="Repository root" value={repoRoot} onChange={setRepoRoot} placeholder="Absolute path to a Git repository" required />{repoRoot !== appliedRoot && <button type="button" onClick={() => setAppliedRoot(repoRoot)}>Load repository catalogue</button>}</div>}
         <fieldset><legend>Tools</legend>{context?.tools.map((tool) => <label className="check-row" key={tool.id}><input type="checkbox" checked={tools.includes(tool.id)} onChange={(event) => setTools((current) => event.target.checked ? [...current, tool.id] : current.filter((id) => id !== tool.id))} /><span>{tool.name}{toolNote(tool) && <small>{toolNote(tool)}</small>}</span></label>)}</fieldset>
         <ErrorMessage message={error || detail.error} />
-        <button className="primary" type="submit" disabled={busy || !!pendingJobId || !!installed || !detail.data || !candidate || !tools.length || session.state !== 'ready' || scope === 'repo' && repoRoot !== appliedRoot}>
+        <button className="primary" type="submit" aria-busy={busy || !!pendingJobId} disabled={!!installed || !detail.data || !candidate || !tools.length || session.state !== 'ready' || scope === 'repo' && repoRoot !== appliedRoot}>
           {busy ? 'Starting…' : pendingJobId ? 'Installing…' : installed ? `Installed ${installed.installed.length} skill${installed.installed.length === 1 ? '' : 's'}` : `Install${tools.length ? ` to ${tools.length} tool${tools.length === 1 ? '' : 's'}` : ' skill'}`}
         </button>
         <small className="muted">Existing installations for these tools will be replaced.</small>

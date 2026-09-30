@@ -74,6 +74,19 @@ it('reports a failed uninstall via toast and keeps the inline error visible', as
   await waitFor(() => expect(onToast).toHaveBeenCalledWith('Uninstall skill', 'error', expect.stringContaining('File is locked')));
   expect(screen.getAllByRole('alert').some((alert) => alert.textContent?.includes('File is locked'))).toBe(true);
 });
+it('keeps keyboard focus inside a dialog while a removal runs and lets Escape close it after a failure', async () => {
+  const record: InstalledRecordDto = { installKey: 'test-skill', skillId: 'test-skill', toolId: 'claude-code', scope: 'system', version: '1.0.0', installedAt: '2026-01-01', method: 'symlink', linkName: 'test-skill', updatable: true };
+  const { client } = mockApi((path, options) => options.method === 'DELETE' ? { result: { removed: [], errors: [{ name: 'test-skill', error: 'File is locked' }] } } : { records: [record] });
+  render(<Installed client={client} context={context} refreshKey="" onJob={vi.fn()} onToast={vi.fn()} />);
+  await userEvent.click(await screen.findByRole('button', { name: /^Remove test-skill/ }));
+  const dialog = screen.getByRole('dialog');
+  const confirm = screen.getByRole('button', { name: 'Confirm removal' });
+  confirm.focus(); await userEvent.keyboard('{Enter}');
+  await waitFor(() => expect(screen.getAllByRole('alert').some((alert) => alert.textContent?.includes('File is locked'))).toBe(true));
+  expect(dialog.contains(document.activeElement)).toBe(true);
+  await userEvent.keyboard('{Escape}');
+  expect(screen.queryByRole('dialog')).toBeNull();
+});
 it('disables Update for installs that have no remote origin and explains why', async () => {
   const record: InstalledRecordDto = { installKey: 'test-skill', skillId: 'test-skill', toolId: 'claude-code', scope: 'system', version: '1.0.0', installedAt: '2026-01-01', method: 'symlink', linkName: 'test-skill', updatable: false, source: { type: 'bundle', value: '/example/source' } };
   const { client } = mockApi(() => ({ records: [record] }));
