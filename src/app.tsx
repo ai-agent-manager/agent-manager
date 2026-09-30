@@ -362,7 +362,11 @@ export function App({ source, directInstallSource, forceUpdate, sourceError }: A
 
     const handleAuthOpen = useCallback(() => {
         if (authorizeUrl) {
-            openInBrowser(authorizeUrl);
+            try {
+                openInBrowser(authorizeUrl);
+            } catch (openError) {
+                setError(openError instanceof Error ? openError.message : String(openError));
+            }
         }
     }, [authorizeUrl]);
 

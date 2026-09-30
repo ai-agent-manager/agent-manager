@@ -376,23 +376,60 @@ function toStoredTokens(
 }
 
 /**
+ * Reject anything that isn't a well-formed http(s) URL before it reaches a
+ * launcher. Authorization endpoints come from a remote OIDC discovery
+ * document (see fetchOidcConfiguration), which only checks that the field is
+ * a nonempty string — a hostile endpoint could otherwise smuggle shell
+ * metacharacters into the browser-launch command.
+ */
+function assertSafeBrowserUrl(url: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new AuthFlowError(`Refusing to open malformed authorization URL: ${url}`);
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new AuthFlowError(
+      `Refusing to open authorization URL with unsupported scheme '${parsed.protocol}'`,
+    );
+  }
+}
+
+/**
  * Open a URL in the user's default browser.
  */
 export function openInBrowser(url: string): void {
+  assertSafeBrowserUrl(url);
+
   const platform = getPlatform();
 
   if (platform === 'windows') {
-    // `start` is a cmd.exe builtin, not an executable, so it must be invoked
-    // via cmd /c. The empty "" title arg prevents `start` from treating the
-    // URL itself as the window title. windowsVerbatimArguments + manual
-    // quoting is required because OAuth URLs contain `&`, which cmd.exe
-    // treats as a command separator unless the argument is quoted — Node's
-    // default Windows quoting only quotes args containing spaces, so an
-    // unquoted URL gets truncated at the first `&`.
-    execFile('cmd', ['/c', 'start', '""', `"${url}"`], {
-      shell: false,
-      windowsVerbatimArguments: true,
-    });
+    // Route through PowerShell's -EncodedCommand (Base64 UTF-16LE) instead of
+    // `cmd /c start`. cmd.exe treats `&`, `|`, `^`, and even quoted `"` as
+    // command separators / escapes it re-parses, so no amount of manual
+    // quoting of the URL argument is safe — a URL containing a stray `"`
+    // could close the argument and inject arbitrary commands. PowerShell's
+    // encoded-command channel carries the URL as opaque data with no shell
+    // re-interpretation, so it cannot be split or escaped regardless of its
+    // contents. The URL is embedded as a single-quoted PowerShell string
+    // literal, where the only metacharacter is `'` itself (escaped by
+    // doubling it) — unlike double-quoted strings, single-quoted ones do not
+    // expand `$variables` or backtick escapes. windowsVerbatimArguments is
+    // required so Node does not re-quote the already-safe -EncodedCommand
+    // argument. -ExecutionPolicy is deliberately omitted: it only restricts
+    // loading .ps1 script files, not -EncodedCommand/-Command invocations.
+    const systemRoot = process.env.SystemRoot || process.env.windir || 'C:\\Windows';
+    const powershell = `${systemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
+    const psLiteral = `'${url.replace(/'/g, "''")}'`;
+    const encodedCommand = Buffer.from(`Start-Process ${psLiteral}`, 'utf16le').toString('base64');
+
+    execFile(
+      powershell,
+      ['-NoProfile', '-NonInteractive', '-EncodedCommand', encodedCommand],
+      { shell: false, windowsVerbatimArguments: true },
+    );
     return;
   }
 
