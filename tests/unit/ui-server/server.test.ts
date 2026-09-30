@@ -109,6 +109,19 @@ it('loads a real bundle, installs a server-owned candidate, reads it and removes
   await expect(realpath(target)).rejects.toMatchObject({ code: 'ENOENT' });
 });
 
+it('never serves dot-prefixed paths from the asset root', async () => {
+  const assets = await mkdtemp(path.join(os.tmpdir(), 'agentman-assets-'));
+  await writeFile(path.join(assets, 'index.html'), '<!doctype html><title>ok</title>');
+  await writeFile(path.join(assets, '.hidden.json'), '{"dot":1}');
+  await mkdir(path.join(assets, '.vite')); await writeFile(path.join(assets, '.vite', 'manifest.json'), '{}');
+  const served = await startUiServer({ port: 0, cwd: directory, startupSource: fixture, staticDir: assets });
+  try {
+    const origin = `http://127.0.0.1:${served.port}`;
+    expect((await fetch(`${origin}/`)).status).toBe(200);
+    expect((await fetch(`${origin}/.hidden.json`)).status).toBe(400);
+    expect((await fetch(`${origin}/.vite/manifest.json`)).status).toBe(400);
+  } finally { await served.stop(); await rm(assets, { recursive: true, force: true }); }
+});
 it('exchanges the launch code once for the bearer and never accepts it again', async () => {
   const code = new URL(server.url).searchParams.get('token')!;
   expect(code).not.toBe(server.token); // the URL never carries the bearer

@@ -13,7 +13,8 @@ export async function serveStatic(req: IncomingMessage, res: ServerResponse, roo
   let pathname: string;
   try { pathname = decodeURIComponent((req.url ?? '/').split('?')[0]!); }
   catch { throw new ValidationError('Invalid URL encoding.'); }
-  if (!pathname.startsWith('/') || pathname.includes('\\') || pathname.includes('\0') || pathname.split('/').some((part) => part === '..' || part === '.')) throw new ValidationError('Invalid asset path.');
+  // Dot segments are never assets: they would expose build metadata such as a Vite manifest.
+  if (!pathname.startsWith('/') || pathname.includes('\\') || pathname.includes('\0') || pathname.split('/').some((part) => part.startsWith('.'))) throw new ValidationError('Invalid asset path.');
   if (!root) throw new HttpError(503, 'Web UI assets are unavailable. Build or install the web UI assets.', 'ASSETS_UNAVAILABLE');
   let canonical: string;
   try { canonical = await realpath(root); }

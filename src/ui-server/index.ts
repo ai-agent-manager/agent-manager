@@ -85,7 +85,9 @@ export async function startUiServer(options: UiServerOptions = {}) {
       else await serveStatic(req, res, staticDir);
     } catch (error) { sendError(res, error); }
   };
-  const server = createServer((req, res) => {
+  // Node enforces requestTimeout/headersTimeout only on this interval (default 30 s); a
+  // client holding an unfinished body must not be able to delay the drain that long.
+  const server = createServer({ connectionsCheckingInterval: 1_000 }, (req, res) => {
     const pending = handle(req, res);
     requests.add(pending);
     void pending.finally(() => requests.delete(pending));
@@ -103,6 +105,7 @@ export async function startUiServer(options: UiServerOptions = {}) {
         // drain already accepted synchronous mutations alongside running jobs.
         await Promise.all([jobs.stop(), ...requests]);
         events.close(); unsubscribe();
+        server.closeIdleConnections();
         await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
       })();
     }

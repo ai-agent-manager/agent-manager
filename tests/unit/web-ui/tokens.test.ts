@@ -17,7 +17,7 @@ function luminance(hex: string) {
 }
 const contrast = (a: string, b: string) => { const [x, y] = [luminance(a), luminance(b)]; return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
 
-it.each([[':root {', 'light'], [':root[data-theme="dark"]', 'dark']])('%s tokens give controls and focus rings at least 3:1 contrast (%s)', (prefix) => {
+it.each([[':root {', 'light'], [':root[data-theme="dark"]', 'dark'], ['@media (prefers-color-scheme: dark)', 'system dark']])('%s tokens give controls and focus rings at least 3:1 contrast (%s)', (prefix) => {
   const t = tokens(prefix);
   for (const surface of ['surface', 'background']) expect(contrast(t['control-border']!, t[surface]!), `control-border vs ${surface}`).toBeGreaterThanOrEqual(3);
   for (const surface of ['surface', 'background', 'accent-soft']) expect(contrast(t.focus!, t[surface]!), `focus vs ${surface}`).toBeGreaterThanOrEqual(3);
