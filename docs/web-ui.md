@@ -301,7 +301,7 @@ can reconnect; evicted results require a resource refresh. See the
    and superseded results. Add focused server tests for authorization, malformed
    input, stale revisions and the affected mutation invariant. Add browser tests
    when behavior crosses controls, HTTP and persisted state. Use isolated test
-   homes and owned listeners; see the [test guide](../tests/e2e/README.md).
+   homes and owned listeners; see the [test guide](https://github.com/ai-agent-manager/agent-manager/blob/main/tests/e2e/README.md).
 
 ## Validation
 
@@ -334,7 +334,7 @@ limits; fixture teardown is bounded, restores HOME and retries busy-file removal
 The auth fixture probes the fixed callback port before starting a flow.
 
 The Ubuntu/Windows CI matrix runs these suites and retains failure screenshots,
-traces and HTML reports. See [the test guide](../tests/e2e/README.md) for test
+traces and HTML reports. See [the test guide](https://github.com/ai-agent-manager/agent-manager/blob/main/tests/e2e/README.md) for test
 boundaries, browser setup, temporary-state isolation and focused commands. Root
 auth tests and browser OAuth tests run sequentially because callback port 19875 is
 fixed. Browser binaries stay in the development/CI cache.

@@ -29,7 +29,7 @@ installers; see [desktop signing and CI](desktop.md#signing-and-ci).
 
 ## Builds and verification
 
-The [CI workflow](../.github/workflows/ci.yml) requires Ubuntu/Windows verification
+The [CI workflow](https://github.com/ai-agent-manager/agent-manager/blob/main/.github/workflows/ci.yml) requires Ubuntu/Windows verification
 and the Git importer smoke before either registry publish job. Verification builds
 and tests the web UI, runs root and integration typechecks, root tests, the CLI
 build and Playwright browser/tarball tests, then desktop typechecks, unit tests

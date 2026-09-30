@@ -136,7 +136,7 @@ use that variable to add custom certificate authorities.
 
 ## Signing and CI
 
-[desktop.yml](../.github/workflows/desktop.yml) builds on macOS and Windows. The
+[desktop.yml](https://github.com/ai-agent-manager/agent-manager/blob/main/.github/workflows/desktop.yml) builds on macOS and Windows. The
 main CI calls it after the stable GitHub Release job completes; this avoids
 relying on a release event created with `GITHUB_TOKEN` to trigger another workflow.
 It can also be dispatched manually. The build always uses `--publish never`;

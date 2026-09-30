@@ -3,9 +3,9 @@
 This is the local browser API implemented by `src/ui-server/`. It is separate
 from the Chrome extension bridge in `src/server/`. See [the web UI guide](web-ui.md)
 for launch, security, lifecycle and contributor guidance. The type-only response
-contract is primarily [api-types.ts](../src/ui-server/api-types.ts); small inline
+contract is primarily [api-types.ts](https://github.com/ai-agent-manager/agent-manager/blob/main/src/ui-server/api-types.ts); small inline
 responses, such as DELETE-install results, are described in the route table. Request validation lives
-in [validate.ts](../src/ui-server/validate.ts) and the route handlers.
+in [validate.ts](https://github.com/ai-agent-manager/agent-manager/blob/main/src/ui-server/validate.ts) and the route handlers.
 
 ## Request conventions
 
