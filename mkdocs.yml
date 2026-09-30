@@ -106,6 +106,7 @@ markdown_extensions:
   - attr_list
   - def_list
   - footnotes
+  - github-callouts
   - md_in_html
   - tables
   - toc:
@@ -144,7 +145,7 @@ nav:
   - Home: index.md
   - Getting started: getting-started.md
   - Guides:
-      - Discovery: discovery.md
+      - Agent Discovery File: discovery.md
       - Authentication: authentication.md
       - My Projects: projects.md
       - Artefact sources: artefact-sources.md

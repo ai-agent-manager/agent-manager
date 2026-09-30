@@ -2,12 +2,12 @@
 
 You can choose to have Agent Manager sends a small set of anonymous usage events to help you understand adoption and catch operational failures.
 
+> [!NOTE]
+> No prompts, skill content, repo names, file paths, codebase files or personal identifiers are ever sent.
+
 Agent Manager currently supports the following telemetry providers:
 
 - Matamo
-
-> [!NOTE]
-> No prompts, skill content, repo names, file paths, codebase files or personal identifiers are ever sent.
 
 Events you can track include CLI start, skill/agent download outcomes, skill install/uninstall, update checks, and Rovo provisioning outcomes — plus coarse error categories for failures.
 
@@ -17,7 +17,7 @@ Even if configured with your telemetry endpoint, collection is also automaticall
 
 ## Set-up telemetry
 
-See the _Discovery Document Format_* section of the [agent discovery file](discovery.md) documentation.
+See the _Discovery Document Format_ section of the [agent discovery file](discovery.md) documentation.
 
 ## Disable telemetry
 

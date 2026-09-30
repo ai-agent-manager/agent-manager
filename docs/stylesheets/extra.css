@@ -174,6 +174,28 @@
   border-color: #e0af68;
 }
 
+/* GitHub alert [!IMPORTANT] — Material has no built-in important type */
+:root {
+  --md-admonition-icon--important: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm1 15h-2v-2h2Zm0-4h-2V7h2Z"/></svg>');
+}
+
+.md-typeset .admonition.important,
+.md-typeset details.important {
+  border-color: #bb9af7;
+}
+
+.md-typeset .important > .admonition-title,
+.md-typeset .important > summary {
+  background-color: rgba(187, 154, 247, 0.1);
+}
+
+.md-typeset .important > .admonition-title::before,
+.md-typeset .important > summary::before {
+  background-color: #bb9af7;
+  -webkit-mask-image: var(--md-admonition-icon--important);
+          mask-image: var(--md-admonition-icon--important);
+}
+
 /* Footer */
 .md-footer {
   border-top: 1px solid var(--am-border);
