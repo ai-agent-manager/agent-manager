@@ -48,7 +48,7 @@ it('sends only the selected candidate, revision, scope and tools; README stays t
   expect(JSON.parse(request[1]!.body as string)).toEqual({ sessionRevision: 7, skillId: 'test-skill', installKey: 'bundle/test/test-skill', scope: 'repo', repoRoot: '/example/repo', toolIds: ['claude-code'] });
 });
 it('manages the exact namespaced installation and confirms removal', async () => {
-  const record: InstalledRecordDto = { installKey: 'bundle/test/test-skill', skillId: 'test-skill', toolId: 'claude-code', scope: 'repo', repoRoot: '/example/repo', version: '1.0.0', installedAt: '2026-01-01', method: 'symlink', linkName: 'test-skill' };
+  const record: InstalledRecordDto = { installKey: 'bundle/test/test-skill', skillId: 'test-skill', toolId: 'claude-code', scope: 'repo', repoRoot: '/example/repo', version: '1.0.0', installedAt: '2026-01-01', method: 'symlink', linkName: 'test-skill', updatable: true };
   const onJob = vi.fn();
   const onToast = vi.fn();
   const { client, fetcher } = mockApi((_path, options) => options.method === 'POST' ? { jobId: 'update-job' } : options.method === 'DELETE' ? { result: { errors: [] } } : { records: [record] });
@@ -65,7 +65,7 @@ it('manages the exact namespaced installation and confirms removal', async () =>
   expect(onToast).toHaveBeenCalledWith('Uninstall skill', 'success', expect.stringContaining('test-skill'));
 });
 it('reports a failed uninstall via toast and keeps the inline error visible', async () => {
-  const record: InstalledRecordDto = { installKey: 'test-skill', skillId: 'test-skill', toolId: 'claude-code', scope: 'system', version: '1.0.0', installedAt: '2026-01-01', method: 'symlink', linkName: 'test-skill' };
+  const record: InstalledRecordDto = { installKey: 'test-skill', skillId: 'test-skill', toolId: 'claude-code', scope: 'system', version: '1.0.0', installedAt: '2026-01-01', method: 'symlink', linkName: 'test-skill', updatable: true };
   const onToast = vi.fn();
   const { client } = mockApi((_path, options) => options.method === 'DELETE' ? { result: { errors: [{ name: 'test-skill', error: 'File is locked' }] } } : { records: [record] });
   render(<Installed client={client} context={context} refreshKey="" onJob={vi.fn()} onToast={onToast} />);
@@ -73,6 +73,14 @@ it('reports a failed uninstall via toast and keeps the inline error visible', as
   await userEvent.click(screen.getByRole('button', { name: 'Confirm removal' }));
   await waitFor(() => expect(onToast).toHaveBeenCalledWith('Uninstall skill', 'error', expect.stringContaining('File is locked')));
   expect(screen.getAllByRole('alert').some((alert) => alert.textContent?.includes('File is locked'))).toBe(true);
+});
+it('disables Update for installs that have no remote origin and explains why', async () => {
+  const record: InstalledRecordDto = { installKey: 'test-skill', skillId: 'test-skill', toolId: 'claude-code', scope: 'system', version: '1.0.0', installedAt: '2026-01-01', method: 'symlink', linkName: 'test-skill', updatable: false, source: { type: 'bundle', value: '/example/source' } };
+  const { client } = mockApi(() => ({ records: [record] }));
+  render(<Installed client={client} context={context} refreshKey="" onJob={vi.fn()} onToast={vi.fn()} />);
+  const update = await screen.findByRole('button', { name: /^Update test-skill/ }) as HTMLButtonElement;
+  expect(update.disabled).toBe(true);
+  expect(update.title).toContain('local directory');
 });
 it('shows "Installed N skill(s)" and disables submit until a form field changes', async () => {
   const onJob = vi.fn();
@@ -155,7 +163,7 @@ it.each([
   expect(!!screen.queryByRole('link', { name: /Open sign-in page/ })).toBe(allowed);
 });
 it('focuses confirmation controls, traps Tab, and restores the trigger on Escape', async () => {
-  const record: InstalledRecordDto = { installKey: 'test-skill', skillId: 'test-skill', toolId: 'claude-code', scope: 'system', version: '1.0.0', installedAt: '', method: 'symlink', linkName: 'test-skill' };
+  const record: InstalledRecordDto = { installKey: 'test-skill', skillId: 'test-skill', toolId: 'claude-code', scope: 'system', version: '1.0.0', installedAt: '', method: 'symlink', linkName: 'test-skill', updatable: true };
   const { client } = mockApi(() => ({ records: [record] }));
   render(<Installed client={client} context={context} refreshKey="" onJob={vi.fn()} onToast={vi.fn()} />);
   const trigger = await screen.findByRole('button', { name: /^Remove test-skill/ });

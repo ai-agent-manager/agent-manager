@@ -98,6 +98,11 @@ export abstract class SkillProvisioner implements Provisioner {
     return undefined;
   }
 
+  /** Optional note for repository-scope installs; callers fall back to getNote(). */
+  getRepoNote(): string | undefined {
+    return undefined;
+  }
+
   /** Resolve the effective skills directory based on scope */
   getEffectiveSkillsDir(): string {
     if (this.scope === 'repo' && this.repoRoot) {

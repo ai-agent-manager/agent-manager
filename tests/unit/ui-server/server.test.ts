@@ -109,6 +109,13 @@ it('loads a real bundle, installs a server-owned candidate, reads it and removes
   await expect(realpath(target)).rejects.toMatchObject({ code: 'ENOENT' });
 });
 
+it('exposes repository-scope tool notes so the install form can state the right destination', async () => {
+  const { tools } = await (await api('/api/context')).json();
+  const agents = tools.find((tool: { id: string }) => tool.id === 'agents');
+  expect(agents.note).toContain('~/.agents/skills');
+  expect(agents.repoNote).toContain('<repo>/.agents/skills');
+});
+
 it('rejects forged candidates, stale revisions, invalid tools, and non-root repositories', async () => {
   const session = await load();
   const body = { sessionRevision: session.sessionRevision, skillId: 'test-skill', installKey: 'test-skill', scope: 'system', toolIds: ['claude-code'] };

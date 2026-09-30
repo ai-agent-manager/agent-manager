@@ -176,7 +176,7 @@ export async function updateInstalled(
   };
 
   if (!sourcePin) {
-    throw new Error(
+    throw new OperationConflictError(
       `Cannot update '${id}': no source pin recorded. ` +
       `Re-install the skill with the current version of Agent Manager.`,
     );
@@ -215,8 +215,8 @@ export async function updateInstalled(
   if (sourcePin.sourceType === 'bundle') {
     const pinnedUrl = sourcePin.bundleBaseUrl;
     if (!pinnedUrl) {
-      throw new Error(
-        `Cannot update '${id}': bundle source has no URL (local directory installs cannot be updated).`,
+      throw new OperationConflictError(
+        `Cannot update '${id}': it was installed from a local directory, which has no update source. Reload that directory as a source and reinstall to pick up changes.`,
       );
     }
     // Every pin written since content-root addressing carries the marker, so its

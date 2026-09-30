@@ -41,7 +41,7 @@ it('shows unsupported cache reasons and downloads an observed remote ID without 
   expect(fetcher.mock.calls.some(([path]) => path === '/api/bundles/current')).toBe(false);
 });
 it('preserves namespaced skill identity and repository root on both read and write', async () => {
-  const record: InstalledRecordDto = { installKey: 'bundle/named/test-skill', skillId: 'test-skill', toolId: 'claude-code', scope: 'repo', repoRoot: '/example/repo', version: '1.0.0', installedAt: '', method: 'symlink', linkName: 'test-skill' };
+  const record: InstalledRecordDto = { installKey: 'bundle/named/test-skill', skillId: 'test-skill', toolId: 'claude-code', scope: 'repo', repoRoot: '/example/repo', version: '1.0.0', installedAt: '', method: 'symlink', linkName: 'test-skill', updatable: true };
   const onJob = vi.fn();
   const { client, fetcher } = api((path, options) => options.method === 'PUT' ? { jobId: 'version-job' } : path.includes('/available') ? { bundles: [bundle], supported: true } : { instances: [record] });
   render(<SkillVersions client={client} session={session} context={context} refreshKey="" onJob={onJob} />);

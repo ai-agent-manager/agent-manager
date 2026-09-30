@@ -34,10 +34,12 @@ export function catalogueDto(entries: CatalogueEntry[]): CatalogueEntryDto[] {
 export function installedDto(record: InstalledSkillRecord): InstalledRecordDto {
   const pin = record.sourcePin;
   const value = pin?.repoUrl ?? pin?.bundleBaseUrl ?? pin?.bundleDirectory ?? pin?.artefactUrl;
+  // Mirrors updateInstalled(): only pins that record a remote origin can be re-pulled.
+  const updatable = pin?.sourceType === 'repo' ? !!pin.repoUrl : pin?.sourceType === 'artefact' ? !!pin.artefactUrl : pin?.sourceType === 'bundle' ? !!pin.bundleBaseUrl : false;
   return {
     installKey: record.installKey, skillId: record.skillId, toolId: record.toolId, scope: record.scope,
     repoRoot: record.repoRoot, version: record.version, installedAt: record.installedAt,
-    method: record.method, linkName: record.linkName,
+    method: record.method, linkName: record.linkName, updatable,
     source: pin ? { type: pin.sourceType, value: value ? safeUrl(value) : undefined } : undefined,
   };
 }

@@ -51,6 +51,8 @@ export interface InstalledRecordDto {
   installKey: string; skillId: string; toolId: string; scope: InstallScope;
   repoRoot?: string; version: string; installedAt: string;
   method: 'symlink' | 'copy'; linkName: string;
+  /** False for installs with no remote origin (local directories, legacy records). */
+  updatable: boolean;
   source?: { type: 'repo' | 'bundle' | 'artefact'; value?: string };
 }
 export interface InstallResultDto {
