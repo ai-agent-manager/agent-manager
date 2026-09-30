@@ -197,6 +197,20 @@ it('stop aborts a load that is stuck on the network instead of waiting for the r
   } finally { for (const socket of sockets) socket.destroy(); await new Promise<void>((resolve) => hang.close(() => resolve())); }
 });
 
+it('a newer load aborts a superseded load that is stuck on the network', async () => {
+  const hang: Server = createServer(() => { /* never respond */ });
+  await new Promise<void>((resolve) => hang.listen(0, '127.0.0.1', resolve));
+  try {
+    const { jobId: stuck } = await (await api('/api/session/load', { source: `http://127.0.0.1:${(hang.address() as net.AddressInfo).port}/` })).json();
+    await vi.waitFor(async () => expect((await (await api(`/api/jobs/${stuck}`)).json()).phase).toBe('resolving'));
+    const { jobId: fresh } = await (await api('/api/session/load', { source: fixture })).json();
+    await vi.waitFor(async () => expect((await (await api(`/api/jobs/${fresh}`)).json()).state).toBe('succeeded'), { timeout: 10_000 });
+    // Without an abort the stuck job would sit in download holding a concurrency slot until the remote gave up.
+    await vi.waitFor(async () => expect((await (await api(`/api/jobs/${stuck}`)).json()).state).toBe('cancelled'), { timeout: 5_000 });
+    expect(((await (await api('/api/session')).json()) as SessionDto).state).toBe('ready');
+  } finally { hang.closeAllConnections(); await new Promise<void>((resolve) => hang.close(() => resolve())); }
+});
+
 it('activating a source that cannot be resolved fails the next load instead of silently reloading the previous source', async () => {
   const missing = path.join(cwd, 'missing');
   expect((await api('/api/sources', { value: missing, activate: true })).status).toBe(200);

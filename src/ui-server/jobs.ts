@@ -64,6 +64,13 @@ export class JobRegistry {
     // Acknowledgement means callback listeners and token exchange have settled.
     await job.done;
   }
+  /** Abort a job the caller has already superseded (its work is persist:false), whatever its phase. */
+  abort(id: string): void {
+    const job = this.jobs.get(id);
+    if (!job || terminal(job.dto)) return;
+    job.controller.abort();
+    if (job.dto.state === 'queued') this.complete(job, 'cancelled');
+  }
   async cancelAndWait(predicate: (job: JobDto) => boolean): Promise<void> {
     const selected = [...this.jobs.values()].filter((job) => !terminal(job.dto) && predicate(job.dto));
     await Promise.all(selected.map(async (job) => {

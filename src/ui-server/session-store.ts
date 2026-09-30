@@ -135,9 +135,15 @@ export class SessionStore {
         catalogue: [], warnings: [], startupNotices: [], error: undefined,
         auth: { required: false, authenticated: false }, membership: { state: 'loading' } };
       this.publish();
+      // A load cancelled while still queued never runs its own failure handler.
+      void this.jobs.wait(id).then(() => this.exclusive(() => {
+        if (revision !== this.dto.sessionRevision || this.dto.state !== 'loading') return;
+        this.dto.state = 'idle'; this.dto.membership = { state: 'not-required' }; this.publish();
+      })).catch(() => {});
       if (oldJobId) {
-        try { if (this.jobs.get(oldJobId).canCancel) void this.jobs.cancel(oldJobId).catch(() => {}); }
-        catch { /* A retained job may already have been evicted. */ }
+        // The superseded load persists nothing, so abort it even mid-download rather than
+        // letting it run to completion only to be rejected at commit.
+        this.jobs.abort(oldJobId);
       }
       return id;
     });

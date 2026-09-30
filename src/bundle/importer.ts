@@ -6,7 +6,7 @@ import { assertBundleVersion, assertCacheDestination, readBundleIdentity } from 
 import { withMutation } from '../lib/mutation.js';
 import { cp, mkdir, readFile, rm, stat, writeFile, realpath, rename } from 'node:fs/promises';
 import path from 'node:path';
-import { getBundleVersionDir } from '../config/paths.js';
+import { getBundleVersionDir, getTempDir } from '../config/paths.js';
 import { parseManifest, type BundleManifest } from './manifest.js';
 
 export interface ImportResult {
@@ -67,7 +67,9 @@ export async function importLocalBundle(dirPath: string): Promise<ImportResult> 
     const directory = await realpath(dirPath);
 
     // Copy directory contents into cache
-    const staged = `${targetDir}.stage-${randomUUID()}`;
+    // Staged under ~/.agentman/tmp (same volume, so the final rename stays atomic): a
+    // stage directory inside bundles/ would be listed as a cached version after a crash.
+    const staged = path.join(getTempDir(), `import-${manifest.version}-${randomUUID()}`);
     await mkdir(staged, { recursive: true });
     try {
       await cp(dirPath, staged, { recursive: true });
@@ -107,6 +109,7 @@ export async function importLocalBundle(dirPath: string): Promise<ImportResult> 
       // A copied source marker is never evidence of origin.
       await rm(path.join(staged, '.source.json'), { recursive: true, force: true });
       await writeFile(path.join(staged, '.source.json'), JSON.stringify({ directory, trackedReferences: true }));
+      await mkdir(path.dirname(targetDir), { recursive: true });
       await rename(staged, targetDir);
       return { manifest, bundleDir: targetDir, isNew: true, warning };
     } finally {

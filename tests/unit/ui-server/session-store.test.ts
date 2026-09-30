@@ -55,7 +55,8 @@ it('only the newest load publishes and persists its source when loads complete o
   const newer = await store.load(`${base}/new`); await jobs.wait(newer);
   expect(store.snapshot()).toMatchObject({ state: 'ready', sessionRevision: 2, stored: { value: `${base}/new` } });
   slow.release(); await jobs.wait(older);
-  expect(jobs.get(older)).toMatchObject({ state: 'failed', error: { code: 'STALE_SESSION' } });
+  // The newer load aborts the superseded one; if its resolver ignores the signal it still cannot commit.
+  expect(jobs.get(older).state).toBe('cancelled');
   expect((await readConfig()).activeSource?.value).toBe(`${base}/new`);
   expect((await readConfig()).sources).toEqual([{ kind: 'discovery', value: `${base}/new` }]);
   expect(changes.filter((dto) => dto.state === 'ready').map((dto) => dto.sessionRevision)).toEqual([2]);

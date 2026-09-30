@@ -3,7 +3,9 @@ import { listBundles, listRemoteVersions, downloadBundleVersion, selectBundle, r
   listSkillVersionInstances, listInstalledSkillVersions, switchInstalledSkillVersion,
   type ManagedBundle, type InstalledInstance } from '../../operations/versions.js';
 import { loadBundleVersion, type Session } from '../../operations/session.js';
+import path from 'node:path';
 import { getBundleVersionDir } from '../../config/paths.js';
+import { assertBundleUnreferenced } from '../../bundle/references.js';
 import { getCurrentBundleVersion } from '../../bundle/cache.js';
 import { canonicaliseContentRoot } from '../../bundle/downloader.js';
 import { buildPinForDirectorySource, buildSourcePin } from '../../bundle/skill-source.js';
@@ -64,6 +66,8 @@ export function versionRoutes(router: Router, sessions: SessionStore, jobs: JobR
       dto.canSelect = !dto.reason;
       dto.canRemove = !!entry.removalId && !entry.isCurrent && !sessions.usesBundle(entry.bundleDir);
       dto.removalReason = sessions.usesBundle(entry.bundleDir) ? 'This bundle serves the live catalogue. Load another source before removing it.' : entry.isCurrent ? 'Cannot remove the currently active bundle.' : undefined;
+      // Same read-only check the removal applies under the lease, so the UI never offers a delete that will 409.
+      if (dto.canRemove) await assertBundleUnreferenced(path.basename(entry.bundleDir), entry.bundleDir).catch((error: Error) => { dto.canRemove = false; dto.removalReason = error.message; });
       return dto;
     }));
     if (revision !== sessions.snapshot().sessionRevision) throw new ConflictError('Session changed. Refresh the versions.', 'STALE_SESSION');
