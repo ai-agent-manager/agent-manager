@@ -30,11 +30,12 @@ That's it. It fetches your team's agent discovery document, authenticates (if re
 
 AI coding tools are only as useful as the skills they're given. Without a distribution mechanism, skills get shared in Slack, go stale, diverge per developer, and never make it into CI.
 
-Agent Manager gives you a single source of truth for your team's agent skills - versioned, cacheable, and deployable anywhere.
+Agent Manager gives you:
 
-You decide which agents and skills the team can install, so every laptop and every CI run uses the same approved set.
-
-Teams can pin versions per-repository or per-machine; and upgrade and roll back - this provides trust and consistency in the context being used by their agent harness.
+- a single source of truth for your team's agent skills - aggregated, versioned, and deployable anywhere.
+- control over which agents and skills the team can install, so every laptop and every CI run uses the same approved set.
+- version pinning, upgrade and roll back - providing trust and consistency in the context being used by your teams' agent harness.
+- optional analytics/telemetry so you can understand events to help you improve your agents and skills.
 
 ---
 
