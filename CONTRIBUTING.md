@@ -23,6 +23,7 @@ npm run typecheck                               # type check
 npm test                                        # run tests once
 npm run test:watch                              # watch mode
 npm run build                                   # compile to dist/
+./scripts/docs.sh                               # docs site preview (Docker)
 ```
 
 ## Browser UI development and boundaries
@@ -58,6 +59,8 @@ for launch/security contracts and instructions for adding routes and DTOs.
   reuses the local server; see [desktop development/testing](docs/desktop.md).
 - `npm pack` swaps in `scripts/README.npm.md`. Update both READMEs when launch
   instructions change, and build CLI/browser assets before packing.
+Documentation is built with MkDocs Material and published to GitHub Pages on
+push to `main`. Preview locally with `./scripts/docs.sh` (requires Docker).
 
 ## Commit messages
 

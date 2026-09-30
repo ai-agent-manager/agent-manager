@@ -39,7 +39,9 @@
     "test:integration": "vitest run tests/integration",
     "test:e2e": "playwright test --config playwright.config.ts",
     "test:e2e:pack": "playwright test --config playwright.config.ts packaged.spec.ts",
-    "typecheck:integration": "tsc --project tsconfig.tests.json"
+    "typecheck:integration": "tsc --project tsconfig.tests.json",
+    "docs": "./scripts/docs.sh",
+    "docs:build": "./scripts/docs.sh build"
   },
   "keywords": [
     "agent",

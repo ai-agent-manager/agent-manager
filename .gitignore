@@ -48,3 +48,8 @@ playwright-report/
 # Desktop packaging output and generated platform icons
 desktop/release/
 desktop/build/
+# ── MkDocs build output ───────────────────────────────────────────────────────
+site/
+
+# Brand assets copied into docs/ at build/serve time (see scripts/docs.sh)
+docs/assets/
