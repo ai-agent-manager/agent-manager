@@ -4,7 +4,7 @@ import { randomBytes } from 'node:crypto';
 import { crc32, deflateRawSync } from 'node:zlib';
 import path from 'node:path';
 import os from 'node:os';
-import { extractZip } from '../../../src/bundle/zip.js';
+import { extractZip, isOutsideRoot } from '../../../src/bundle/zip.js';
 
 // ── Zip builder ───────────────────────────────────────────────────────────────
 
@@ -180,6 +180,45 @@ describe('extractZip', () => {
     expect(await readdir(outside)).toEqual([]);
   });
 
+  it.skipIf(isWindows)('creates no directories outside the target before rejecting', async () => {
+    const outside = path.join(tmpDir, 'outside');
+    await mkdir(outside);
+    await expect(
+      extract([
+        { name: 'escape', data: outside, mode: LINK | 0o777 },
+        { name: 'escape/a/b/pwned.txt', data: 'x' },
+      ]),
+    ).rejects.toThrow(/Out of bound path/);
+    expect(await readdir(outside)).toEqual([]);
+  });
+
+  it.skipIf(isWindows)('rejects nested directory entries under an escaping symlink', async () => {
+    const outside = path.join(tmpDir, 'outside');
+    await mkdir(outside);
+    await expect(
+      extract([
+        { name: 'escape', data: outside, mode: LINK | 0o777 },
+        { name: 'escape/a/b/', mode: DIR | 0o755 },
+      ]),
+    ).rejects.toThrow(/Out of bound path/);
+    expect(await readdir(outside)).toEqual([]);
+  });
+
+  it.skipIf(isWindows)('never writes a file entry through an earlier symlink of the same name', async () => {
+    const victim = path.join(tmpDir, 'victim.txt');
+    await writeFile(victim, 'original');
+
+    await extract([
+      { name: 'link', data: victim, mode: LINK | 0o777 },
+      { name: 'link', data: 'payload', mode: FILE | 0o644 },
+    ]);
+
+    expect(await readFile(victim, 'utf-8')).toBe('original');
+    const extracted = path.join(outDir, 'link');
+    expect((await lstat(extracted)).isFile()).toBe(true);
+    expect(await readFile(extracted, 'utf-8')).toBe('payload');
+  });
+
   it('keeps the last copy when an entry name is repeated', async () => {
     await extract([
       { name: 'SKILL.md', data: 'first' },
@@ -202,5 +241,33 @@ describe('extractZip', () => {
   it('rejects a relative target directory', async () => {
     await writeFile(zipPath, buildZip([{ name: 'a.txt', data: 'a' }]));
     await expect(extractZip(zipPath, 'relative/out')).rejects.toThrow(/absolute/);
+  });
+});
+
+describe('isOutsideRoot', () => {
+  it.each([
+    ['C:\\out\\repo', false],
+    ['C:\\out', false],
+    ['C:\\other', true],
+    ['C:\\out-sibling', true],
+    // Another drive or a UNC share has no relative path from the root, so
+    // path.win32.relative() returns it absolute, with no '..' segment.
+    ['D:\\out\\repo', true],
+    ['\\\\server\\share\\repo', true],
+  ])('win32: %s → %s', (target, outside) => {
+    expect(isOutsideRoot('C:\\out', target, path.win32)).toBe(outside);
+  });
+
+  it.each([
+    ['/tmp/out/repo', false],
+    ['/tmp/out', false],
+    ['/tmp/other', true],
+    ['/tmp/out-sibling', true],
+  ])('posix: %s → %s', (target, outside) => {
+    expect(isOutsideRoot('/tmp/out', target, path.posix)).toBe(outside);
+  });
+
+  it('treats a directory merely named with dots as inside', () => {
+    expect(isOutsideRoot('/tmp/out', '/tmp/out/..hidden', path.posix)).toBe(false);
   });
 });

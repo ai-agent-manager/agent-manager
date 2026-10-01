@@ -1,5 +1,5 @@
 import { createWriteStream } from 'node:fs';
-import { mkdir, realpath, symlink } from 'node:fs/promises';
+import { mkdir, realpath, rm, symlink } from 'node:fs/promises';
 import path from 'node:path';
 import type { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -24,6 +24,9 @@ const DEFAULT_FILE_MODE = 0o644;
  *   archive records none;
  * - symlink entries are recreated as symlinks — callers that must not trust
  *   them run removeEscapingSymlinks() afterwards.
+ *
+ * One deliberate difference: a file entry is never written through a symlink
+ * extracted earlier under the same name (extract-zip followed the link).
  */
 export async function extractZip(zipPath: string, dir: string): Promise<void> {
   if (!path.isAbsolute(dir)) {
@@ -46,6 +49,30 @@ export async function extractZip(zipPath: string, dir: string): Promise<void> {
     });
   } finally {
     zipfile.close();
+  }
+}
+
+/**
+ * Whether `target` (a real path) lies outside `root`. On Windows a target on
+ * another drive or UNC share has no relative path from `root`, so
+ * path.relative() returns it absolute with no `..` segment — that case must be
+ * caught explicitly. `pathApi` is injectable so tests can check win32
+ * semantics on any platform.
+ */
+export function isOutsideRoot(root: string, target: string, pathApi: path.PlatformPath = path): boolean {
+  const relative = pathApi.relative(root, target);
+  return pathApi.isAbsolute(relative) || relative.split(pathApi.sep).includes('..');
+}
+
+/** Real path of `p`, or of its nearest ancestor that exists. */
+async function realpathOfDeepestExisting(p: string): Promise<string> {
+  for (let current = p; ; current = path.dirname(current)) {
+    try {
+      return await realpath(current);
+    } catch (err) {
+      const atFilesystemRoot = path.dirname(current) === current;
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT' || atFilesystemRoot) throw err;
+    }
   }
 }
 
@@ -72,9 +99,15 @@ async function extractEntry(zipfile: yauzl.ZipFile, entry: yauzl.Entry, root: st
 
   const dest = path.join(root, entry.fileName);
   const parentDir = path.dirname(dest);
+  // Checked before mkdir as well as after: a recursive mkdir follows a
+  // symlink extracted earlier (`link -> /outside`, then `link/a/b/file`) and
+  // would create the missing directories outside the root before the
+  // post-mkdir check could reject the entry.
+  if (isOutsideRoot(root, await realpathOfDeepestExisting(parentDir))) {
+    throw new Error(`Out of bound path found while processing file ${entry.fileName}`);
+  }
   await mkdir(parentDir, { recursive: true });
-  const relativeParent = path.relative(root, await realpath(parentDir));
-  if (relativeParent.split(path.sep).includes('..')) {
+  if (isOutsideRoot(root, await realpath(parentDir))) {
     throw new Error(`Out of bound path found while processing file ${entry.fileName}`);
   }
 
@@ -92,6 +125,12 @@ async function extractEntry(zipfile: yauzl.ZipFile, entry: yauzl.Entry, root: st
     return;
   }
 
+  // An archive can list a name twice: first as a symlink pointing outside the
+  // target, then as a file. Writing the second through the first would replace
+  // whatever the link points at, and the parent-directory check above cannot
+  // see it. Remove anything already at the path (the last entry still wins,
+  // as before) and create exclusively — 'wx' never follows a symlink.
+  await rm(dest, { force: true });
   const stream = await openReadStream(zipfile, entry);
   if (isSymlink) {
     const chunks: Buffer[] = [];
@@ -99,5 +138,5 @@ async function extractEntry(zipfile: yauzl.ZipFile, entry: yauzl.Entry, root: st
     await symlink(Buffer.concat(chunks).toString('utf-8'), dest);
     return;
   }
-  await pipeline(stream, createWriteStream(dest, { mode: permissions }));
+  await pipeline(stream, createWriteStream(dest, { flags: 'wx', mode: permissions }));
 }
