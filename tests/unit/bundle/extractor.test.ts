@@ -10,14 +10,14 @@ vi.mock('../../../src/lib/platform.js', () => ({
   isWindows: () => false,
 }));
 
-// extract-zip is replaced by a copy of a prepared directory, so these tests
+// Zip extraction is replaced by a copy of a prepared directory, so these tests
 // exercise the caching and provenance logic rather than zip decoding.
 let zipContents: Record<string, string> = {};
-vi.mock('extract-zip', () => ({
-  default: async (_zipPath: string, opts: { dir: string }) => {
-    await mkdir(opts.dir, { recursive: true });
+vi.mock('../../../src/bundle/zip.js', () => ({
+  extractZip: async (_zipPath: string, dir: string) => {
+    await mkdir(dir, { recursive: true });
     for (const [name, body] of Object.entries(zipContents)) {
-      const target = path.join(opts.dir, name);
+      const target = path.join(dir, name);
       await mkdir(path.dirname(target), { recursive: true });
       await writeFile(target, body, 'utf-8');
     }
