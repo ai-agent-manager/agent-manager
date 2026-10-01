@@ -67,6 +67,8 @@ describe('getConfigLockPath', () => {
 describe('getTempDir', () => {
   it('returns a tmp path under agentman dir', () => {
     const tmp = getTempDir();
+    // Always use ~/.agentman/tmp to avoid cross-drive rename issues
+    // (system temp on Windows can be on a different drive than the cache)
     expect(tmp).toBe(path.join(home, '.agentman', 'tmp'));
   });
 });

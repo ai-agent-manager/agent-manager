@@ -4,6 +4,7 @@ import path from "node:path";
 import { getTempDir } from "../config/paths.js";
 import { assertSafeCacheSegment } from "../lib/path-segment.js";
 import { getBundleEndpointTelemetryValue, trackTelemetryError, trackTelemetryEvent } from "../telemetry.js";
+import { enhanceWindowsError } from "../lib/windows-errors.js";
 
 export interface IndexEntry {
     version: string;
@@ -285,6 +286,6 @@ export async function downloadBundle(
             request: requestType,
             version: targetVersion,
         });
-        throw error;
+        throw enhanceWindowsError(error, "bundle download");
     }
 }
