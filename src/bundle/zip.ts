@@ -10,8 +10,8 @@ import { extract } from 'zip-lib';
  * - `__MACOSX/` resource-fork entries are skipped.
  * - Entries that would land outside `dir`, including through a symlink
  *   extracted earlier, reject the archive.
- * - Symlink entries are recreated as symlinks. Callers that must not trust
- *   them run removeEscapingSymlinks() afterwards.
+ * - Symlinks whose target leaves `dir` reject the archive.
+ * - Symlinks that stay inside `dir` are recreated as symlinks.
  */
 export async function extractZip(zipPath: string, dir: string): Promise<void> {
   if (!path.isAbsolute(dir)) {
@@ -23,6 +23,9 @@ export async function extractZip(zipPath: string, dir: string): Promise<void> {
   const root = await realpath(dir);
 
   await extract(zipPath, root, {
+    // Without this, a directory entry under an escaping symlink
+    // (`link -> /outside`, then `link/a/b/`) creates folders outside the root.
+    safeSymlinksOnly: true,
     symlinkAsFileOnWindows: false,
     onEntry: (event) => {
       if (event.entryName.startsWith('__MACOSX/')) event.preventDefault();

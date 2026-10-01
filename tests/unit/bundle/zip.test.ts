@@ -75,7 +75,7 @@ const FILE = 0o100000;
 const DIR = 0o040000;
 const LINK = 0o120000;
 const isWindows = process.platform === 'win32';
-const ESCAPE_REJECTED = /Refuse to write file outside/;
+const ESCAPE_REJECTED = /Refuse to write file outside|Dangerous link path was refused/;
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
@@ -193,6 +193,18 @@ describe('extractZip', () => {
     expect(await readdir(outside)).toEqual([]);
   });
 
+  it.skipIf(isWindows)('rejects nested directory entries under an escaping symlink', async () => {
+    const outside = path.join(tmpDir, 'outside');
+    await mkdir(outside);
+    await expect(
+      extract([
+        { name: 'escape', data: outside, mode: LINK | 0o777 },
+        { name: 'escape/a/b/', mode: DIR | 0o755 },
+      ]),
+    ).rejects.toThrow(ESCAPE_REJECTED);
+    expect(await readdir(outside)).toEqual([]);
+  });
+
   it.skipIf(isWindows)('never writes a file entry through an earlier symlink of the same name', async () => {
     const victim = path.join(tmpDir, 'victim.txt');
     await writeFile(victim, 'original');
@@ -204,6 +216,13 @@ describe('extractZip', () => {
       ]),
     ).rejects.toThrow(ESCAPE_REJECTED);
     expect(await readFile(victim, 'utf-8')).toBe('original');
+  });
+
+  it.skipIf(isWindows)('rejects a symlink whose target leaves the extract directory', async () => {
+    await expect(extract([{ name: 'escape', data: '/etc/passwd', mode: LINK | 0o777 }])).rejects.toThrow(
+      ESCAPE_REJECTED,
+    );
+    await expect(lstat(path.join(outDir, 'escape'))).rejects.toThrow();
   });
 
   it.skipIf(isWindows)('keeps symlinks that point elsewhere inside the target', async () => {
