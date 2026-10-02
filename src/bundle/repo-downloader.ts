@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import { withMutation } from '../lib/mutation.js';
 import { mkdir, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import extractZip from 'extract-zip';
@@ -17,6 +19,8 @@ export interface RepoDownloadOptions {
   forceUpdate?: boolean;
   /** GitHub personal access token for private repositories */
   token?: string;
+  /** Aborts the archive request (and its body) when the owning job is cancelled or draining. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -83,7 +87,7 @@ export async function downloadRepoArchive(
   const tempDir = getTempDir();
   await mkdir(tempDir, { recursive: true });
   const zipPath = path.join(tempDir, `${owner}-${repo}-${ref}.zip`);
-  const tempExtractDir = path.join(tempDir, `extract-${owner}-${repo}-${ref}-${Date.now()}`);
+  const tempExtractDir = path.join(tempDir, `extract-${owner}-${repo}-${ref}-${randomUUID()}`);
 
   try {
     // Download archive
@@ -92,7 +96,7 @@ export async function downloadRepoArchive(
       headers['Authorization'] = `token ${options.token}`;
     }
 
-    const response = await fetch(archiveUrl, { headers });
+    const response = await fetch(archiveUrl, { headers, ...(options.signal ? { signal: options.signal } : {}) });
 
     if (!response.ok) {
       const message = buildDownloadError(response.status, response.statusText, source.repoUrl, archiveUrl);
@@ -117,9 +121,11 @@ export async function downloadRepoArchive(
     const innerDir = path.join(tempExtractDir, dirs[0].name);
 
     // Move to permanent cache location (remove stale cache first if force-updating)
-    await rm(cacheDir, { recursive: true, force: true });
-    await mkdir(path.dirname(cacheDir), { recursive: true });
-    await rename(innerDir, cacheDir);
+    await withMutation(async () => {
+      await rm(cacheDir, { recursive: true, force: true });
+      await mkdir(path.dirname(cacheDir), { recursive: true });
+      await rename(innerDir, cacheDir);
+    });
 
     trackTelemetryEvent({
       action: 'repo_download_succeeded',

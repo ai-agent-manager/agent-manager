@@ -6,6 +6,7 @@
  */
 
 import { execFile } from 'node:child_process';
+import { withAuthCoordinator } from './coordinator.js';
 import { fetchOidcConfiguration, type OidcConfiguration } from './oidc.js';
 import { generateCodeVerifier, generateCodeChallenge, generateState } from './pkce.js';
 import { waitForCallback, REDIRECT_URI } from './callback-server.js';
@@ -115,6 +116,19 @@ async function resolveBearerToken(
   auth: DiscoveryAuth,
   options: GetValidBearerTokenOptions = {},
 ): Promise<AuthResult> {
+  try {
+    return await withAuthCoordinator(() => resolveBearerTokenUnlocked(baseUrl, auth, options), options.signal);
+  } catch (error) {
+    if (options.signal?.aborted) throw new AuthCancelledError();
+    throw error;
+  }
+}
+
+async function resolveBearerTokenUnlocked(
+  baseUrl: string,
+  auth: DiscoveryAuth,
+  options: GetValidBearerTokenOptions = {},
+): Promise<AuthResult> {
   requireAuthConfig(auth);
 
   const { onPrompt, allowInteractive = false, forceRefresh = false, signal } = options;
@@ -160,7 +174,8 @@ async function resolveBearerToken(
     }
 
     if (allowInteractive && onPrompt) {
-      return interactiveLogin(baseUrl, auth, oidcConfig, onPrompt, signal);
+      // Await here so callback/token-exchange rejections reach the normalizer.
+      return await interactiveLogin(baseUrl, auth, oidcConfig, onPrompt, signal);
     }
 
     throw new AuthFlowError(
@@ -365,14 +380,17 @@ function toStoredTokens(
 /**
  * Open a URL in the user's default browser.
  */
-export function openInBrowser(url: string): void {
+export function openInBrowser(url: string): Promise<void> {
   const platform = getPlatform();
   const cmd =
     platform === 'macos'
       ? 'open'
       : platform === 'windows'
-        ? 'start'
+        ? 'rundll32'
         : 'xdg-open';
 
-  execFile(cmd, [url], { shell: false });
+  const args = platform === 'windows' ? ['url.dll,FileProtocolHandler', url] : [url];
+  return new Promise((resolve, reject) => {
+    execFile(cmd, args, { shell: false }, (error) => error ? reject(error) : resolve());
+  });
 }
