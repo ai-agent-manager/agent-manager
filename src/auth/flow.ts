@@ -175,6 +175,11 @@ function resolveEnvBearerToken(
   assertInteractiveEnvTokenConfigured();
   const allowed = getInteractiveTokenHosts()!;
   const checkUrl = options.requestUrl ?? baseUrl;
+  // SSH (and other non-HTTP) catalogue identities are not bearer destinations.
+  // Require the allowlist, but defer host matching until an HTTP(S) request.
+  if (!hostKeyFromHttpUrl(checkUrl)) {
+    return { bearerToken: envToken, fromCache: true, fromEnv: true };
+  }
   if (!isHostAllowedForInteractiveEnvToken(checkUrl, allowed)) {
     const host = hostKeyFromHttpUrl(checkUrl) ?? checkUrl;
     throw new AuthFlowError(
@@ -193,6 +198,8 @@ async function resolveBearerToken(
   auth: DiscoveryAuth,
   options: GetValidBearerTokenOptions = {},
 ): Promise<AuthResult> {
+  if (options.signal?.aborted) throw new AuthCancelledError();
+
   const envResult = resolveEnvBearerToken(baseUrl, {
     interactiveMode: options.interactiveMode,
     requestUrl: options.requestUrl,
@@ -204,8 +211,6 @@ async function resolveBearerToken(
   requireAuthConfig(auth);
 
   const { onPrompt, allowInteractive = false, forceRefresh = false, signal } = options;
-
-  if (signal?.aborted) throw new AuthCancelledError();
 
   const identity = tokenIdentity(baseUrl, auth);
   let cached = await loadTokens(identity);

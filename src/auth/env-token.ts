@@ -62,6 +62,18 @@ function normalizeHostEntry(entry: string): string | null {
   return trimmed.toLowerCase();
 }
 
+function defaultPortForProtocol(protocol: string): string | undefined {
+  if (protocol === 'https:') return '443';
+  if (protocol === 'http:') return '80';
+  return undefined;
+}
+
+/** Strip `:<defaultPort>` so `host:443` matches WHATWG `https://host:443` (`host`). */
+function stripDefaultPort(host: string, defaultPort: string): string {
+  const suffix = `:${defaultPort}`;
+  return host.endsWith(suffix) ? host.slice(0, -suffix.length) : host;
+}
+
 /** Extract the `host` key from an HTTP(S) URL, or undefined when not applicable. */
 export function hostKeyFromHttpUrl(url: string): string | undefined {
   try {
@@ -78,7 +90,20 @@ export function isHostAllowedForInteractiveEnvToken(
   url: string,
   allowedHosts: string[],
 ): boolean {
-  const host = hostKeyFromHttpUrl(url);
-  if (!host) return false;
-  return allowedHosts.includes(host);
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+
+  const requestKey = parsed.host.toLowerCase();
+  const defaultPort = defaultPortForProtocol(parsed.protocol);
+  return allowedHosts.some((entry) => {
+    const allowedKey = defaultPort
+      ? stripDefaultPort(entry.toLowerCase(), defaultPort)
+      : entry.toLowerCase();
+    return allowedKey === requestKey;
+  });
 }

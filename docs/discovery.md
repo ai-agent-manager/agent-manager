@@ -81,8 +81,8 @@ Here is a simple example:
 | `projects.exclusiveSource` | boolean | No | When `true` (default `false`), Search & Install and headless installs are limited to skills/agents permitted by at least one project the caller belongs to |
 | `auth` | object | No | Authentication configuration — see [Authentication](authentication.md) |
 | `auth.required` | boolean | Yes (if auth present) | Whether authentication is needed to access skills |
-| `auth.oidcDiscoveryUrl` | string (URI) | No | URL to the standard OIDC discovery document. Required for browser login; omit when clients authenticate only via `AGENTMAN_ACCESS_TOKEN` |
-| `auth.clientId` | string | No | OAuth2 client ID for agent-manager to use. Required for browser login; omit when clients authenticate only via `AGENTMAN_ACCESS_TOKEN` |
+| `auth.oidcDiscoveryUrl` | string (URI) | No | URL to the standard OIDC discovery document. Required for browser login together with `clientId`; omit both when clients authenticate only via `AGENTMAN_ACCESS_TOKEN` |
+| `auth.clientId` | string | No | OAuth2 client ID for agent-manager to use. Required for browser login together with `oidcDiscoveryUrl`; omit both when clients authenticate only via `AGENTMAN_ACCESS_TOKEN` |
 | `auth.scopes` | string[] | No | OAuth2 scopes to request (defaults to `["openid"]`) |
 | `telemetry` | object | No | Telemetry configuration (omit to leave unconfigured) |
 | `telemetry.url` | string (URI) | Yes (if telemetry present) | Base URL of the telemetry endpoint |

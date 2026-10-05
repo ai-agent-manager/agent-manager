@@ -107,4 +107,30 @@ describe('isHostAllowedForInteractiveEnvToken', () => {
       isHostAllowedForInteractiveEnvToken('https://cdn.example.com/skills.zip', allowed),
     ).toBe(false);
   });
+
+  it('treats explicit HTTPS default port 443 as matching URL.host', () => {
+    expect(
+      isHostAllowedForInteractiveEnvToken('https://cdn.example.com:443/review.zip', [
+        'cdn.example.com:443',
+      ]),
+    ).toBe(true);
+  });
+
+  it('treats explicit HTTP default port 80 as matching URL.host', () => {
+    expect(
+      isHostAllowedForInteractiveEnvToken('http://cdn.example.com:80/review.zip', [
+        'cdn.example.com:80',
+      ]),
+    ).toBe(true);
+  });
+
+  it('does not treat :443 as matching HTTP :80 or a non-default HTTPS port', () => {
+    const allowed443 = ['cdn.example.com:443'];
+    expect(
+      isHostAllowedForInteractiveEnvToken('http://cdn.example.com:80/review.zip', allowed443),
+    ).toBe(false);
+    expect(
+      isHostAllowedForInteractiveEnvToken('https://cdn.example.com:8443/review.zip', allowed443),
+    ).toBe(false);
+  });
 });

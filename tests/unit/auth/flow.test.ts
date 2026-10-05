@@ -60,6 +60,8 @@ const oidcConfig = {
 describe('getValidBearerToken', () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
+    vi.stubEnv('AGENTMAN_ACCESS_TOKEN', '');
+    vi.stubEnv('AGENTMAN_INTERACTIVE_TOKEN_HOSTS', '');
     loadTokens.mockReset();
     saveTokens.mockReset();
     deleteTokens.mockReset();
@@ -288,6 +290,8 @@ describe('getValidBearerToken', () => {
 describe('authenticate', () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
+    vi.stubEnv('AGENTMAN_ACCESS_TOKEN', '');
+    vi.stubEnv('AGENTMAN_INTERACTIVE_TOKEN_HOSTS', '');
     loadTokens.mockReset();
     isTokenExpired.mockReset();
     fetchOidcConfiguration.mockReset();
@@ -313,6 +317,8 @@ describe('authenticate', () => {
 describe('authenticate cancellation', () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
+    vi.stubEnv('AGENTMAN_ACCESS_TOKEN', '');
+    vi.stubEnv('AGENTMAN_INTERACTIVE_TOKEN_HOSTS', '');
     loadTokens.mockReset();
     saveTokens.mockReset();
     deleteTokens.mockReset();
@@ -334,6 +340,21 @@ describe('authenticate cancellation', () => {
       }),
     ).rejects.toBeInstanceOf(AuthCancelledError);
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('throws AuthCancelledError before returning the env token when the signal is aborted', async () => {
+    vi.stubEnv('AGENTMAN_ACCESS_TOKEN', 'env-bearer');
+    vi.stubEnv('AGENTMAN_INTERACTIVE_TOKEN_HOSTS', 'discovery.example.com');
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      authenticate(baseUrl, auth, () => {}, {
+        signal: controller.signal,
+        interactiveMode: true,
+        requestUrl: baseUrl,
+      }),
+    ).rejects.toBeInstanceOf(AuthCancelledError);
   });
 
   it('normalizes a refresh aborted mid-flight and never falls through to interactive login', async () => {
@@ -391,6 +412,8 @@ describe('bearerOptionsFromSession', () => {
 describe('AGENTMAN_ACCESS_TOKEN', () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
+    vi.stubEnv('AGENTMAN_ACCESS_TOKEN', '');
+    vi.stubEnv('AGENTMAN_INTERACTIVE_TOKEN_HOSTS', '');
     loadTokens.mockReset();
     fetchOidcConfiguration.mockReset();
     mockFetch.mockReset();
@@ -398,6 +421,8 @@ describe('AGENTMAN_ACCESS_TOKEN', () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.stubEnv('AGENTMAN_ACCESS_TOKEN', '');
+    vi.stubEnv('AGENTMAN_INTERACTIVE_TOKEN_HOSTS', '');
   });
 
   it('returns the env token without OIDC or store lookup in headless mode', async () => {
@@ -459,5 +484,41 @@ describe('AGENTMAN_ACCESS_TOKEN', () => {
     ).rejects.toThrow(/Refusing to send AGENTMAN_ACCESS_TOKEN to evil.example.com/);
     expect(onPrompt).not.toHaveBeenCalled();
     expect(loadTokens).not.toHaveBeenCalled();
+  });
+
+  it('does not treat an SSH catalogue identity as a bearer destination', async () => {
+    vi.stubEnv('AGENTMAN_ACCESS_TOKEN', 'env-bearer');
+    vi.stubEnv(
+      'AGENTMAN_INTERACTIVE_TOKEN_HOSTS',
+      'git.example.com:2222,cdn.example.com,api.example.com',
+    );
+
+    const result = await authenticate(
+      'ssh://git@git.example.com:2222/team/catalogue.git',
+      { required: true },
+      vi.fn(),
+      {
+        interactiveMode: true,
+        requestUrl: 'ssh://git@git.example.com:2222/team/catalogue.git',
+      },
+    );
+
+    expect(result.fromEnv).toBe(true);
+    expect(result.bearerToken).toBe('env-bearer');
+  });
+
+  it('still refuses an unlisted HTTP content host after SSH catalogue startup', async () => {
+    vi.stubEnv('AGENTMAN_ACCESS_TOKEN', 'env-bearer');
+    vi.stubEnv(
+      'AGENTMAN_INTERACTIVE_TOKEN_HOSTS',
+      'git.example.com:2222,cdn.example.com,api.example.com',
+    );
+
+    await expect(
+      getValidBearerToken('ssh://git@git.example.com:2222/team/catalogue.git', { required: true }, {
+        interactiveMode: true,
+        requestUrl: 'https://evil.example.com/skills',
+      }),
+    ).rejects.toThrow(/Refusing to send AGENTMAN_ACCESS_TOKEN to evil.example.com/);
   });
 });
