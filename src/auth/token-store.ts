@@ -149,7 +149,8 @@ function tryKeychainDelete(identity: TokenStoreIdentity): void {
   try {
     entry.deletePassword();
   } catch {
-    // Ignore — entry may not exist
+    // A missing entry returns false; this only catches store failures (locked,
+    // access denied). Ignored so mismatch cleanup in auth/flow.ts cannot block login.
   }
 }
 
