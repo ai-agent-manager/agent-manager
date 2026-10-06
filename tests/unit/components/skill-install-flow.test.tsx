@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render } from 'ink-testing-library';
+import { press, waitForFrame } from '../../helpers/ink-input.js';
 import { buildCatalogue, buildUnifiedCatalogue } from '../../../src/discovery/catalogue.js';
 import type { ResolvedSkill } from '../../../src/discovery/resolver.js';
 import type { RovoAgentInfo, RovoAgentConfig } from '../../../src/bundle/scanner.js';
@@ -71,9 +72,17 @@ async function flushInkInput(): Promise<void> {
 
 type Stdin = { write: (input: string) => void };
 
-async function press(stdin: Stdin, input: string): Promise<void> {
-  stdin.write(input);
-  await flushInkInput();
+async function walkToInstallResult(stdin: Stdin, lastFrame: () => string | undefined): Promise<void> {
+  await waitForFrame(lastFrame, 'Browse agents and skills');
+  await press(stdin, ENTER);
+  await waitForFrame(lastFrame, 'Where do you want to install skills?');
+  await press(stdin, ENTER);
+  await waitForFrame(lastFrame, 'Which tool do you want to install skills for?');
+  await press(stdin, SPACE);
+  await waitForFrame(lastFrame, '[✓] Claude Code');
+  await press(stdin, ENTER);
+  await waitForFrame(lastFrame, 'Confirm install');
+  await press(stdin, ENTER);
 }
 
 beforeEach(() => {
@@ -140,24 +149,11 @@ describe('SkillInstallFlow', () => {
       <SkillInstallFlow entries={entries} bundleVersion="1.0.0" onSelectRovoAgent={() => {}} onBack={() => {}} />,
     );
 
-    await vi.waitFor(() => {
-      expect(lastFrame()).toContain('Browse agents and skills');
-    });
-    await flushInkInput();
-
-    for (const key of [ENTER, ENTER, SPACE, ENTER, ENTER]) {
-      await press(stdin, key);
-      await flushInkInput();
-    }
-    await vi.waitFor(() => {
-      expect(lastFrame()).toContain('Install another skill');
-    });
-    await flushInkInput();
+    await walkToInstallResult(stdin, lastFrame);
+    await waitForFrame(lastFrame, 'Install another skill');
 
     await press(stdin, ENTER);
-    await vi.waitFor(() => {
-      expect(lastFrame()).toContain('Browse agents and skills');
-    });
+    await waitForFrame(lastFrame, 'Browse agents and skills');
   });
 
   it('surfaces install errors on the result screen', async () => {
@@ -166,18 +162,8 @@ describe('SkillInstallFlow', () => {
       <SkillInstallFlow entries={entries} bundleVersion="1.0.0" onSelectRovoAgent={() => {}} onBack={() => {}} />,
     );
 
-    await vi.waitFor(() => {
-      expect(lastFrame()).toContain('Browse agents and skills');
-    });
-    await flushInkInput();
-
-    for (const key of [ENTER, ENTER, SPACE, ENTER, ENTER]) {
-      await press(stdin, key);
-      await flushInkInput();
-    }
-    await vi.waitFor(() => {
-      expect(lastFrame()).toContain('✗ disk full');
-    });
+    await walkToInstallResult(stdin, lastFrame);
+    await waitForFrame(lastFrame, '✗ disk full');
   });
 
   it('dispatches a picked rovo agent out of the flow instead of installing', async () => {
@@ -219,19 +205,8 @@ describe('SkillInstallFlow', () => {
       <SkillInstallFlow entries={entries} bundleVersion="1.0.0" onSelectRovoAgent={() => {}} onBack={onBack} />,
     );
 
-    await vi.waitFor(() => {
-      expect(lastFrame()).toContain('Browse agents and skills');
-    });
-    await flushInkInput();
-
-    for (const key of [ENTER, ENTER, SPACE, ENTER, ENTER]) {
-      await press(stdin, key);
-      await flushInkInput();
-    }
-    await vi.waitFor(() => {
-      expect(lastFrame()).toContain('Install another skill');
-    });
-    await flushInkInput();
+    await walkToInstallResult(stdin, lastFrame);
+    await waitForFrame(lastFrame, 'Install another skill');
 
     await press(stdin, DOWN);
     await press(stdin, ENTER);

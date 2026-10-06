@@ -1,6 +1,7 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render } from "ink-testing-library";
+import { press } from "../../helpers/ink-input.js";
 import { SkillVersionManager } from "../../../src/components/SkillVersionManager.js";
 
 // Mock dependencies
@@ -56,13 +57,8 @@ async function waitForFrameText(lastFrame: () => string | undefined, text: strin
 
 async function selectSystemWideScope(stdin: { write: (input: string) => void }, lastFrame: () => string | undefined): Promise<void> {
   await waitForFrameText(lastFrame, "Which skills do you want to manage?");
-  stdin.write("\r");
-  await flushInkInput();
+  await press(stdin, "\r");
   await waitForFrameText(lastFrame, "Select a skill to change its version");
-}
-
-async function flushInkInput(): Promise<void> {
-  await new Promise<void>((resolve) => setImmediate(resolve));
 }
 
 describe("SkillVersionManager", () => {
@@ -105,13 +101,11 @@ describe("SkillVersionManager", () => {
 
     const { lastFrame, stdin } = render(<SkillVersionManager onBack={mockOnBack} />);
 
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await waitForFrameText(lastFrame, "Which skills do you want to manage?");
 
     // Select "System-wide" (first item)
-    stdin.write("\r");
-    await new Promise((resolve) => setTimeout(resolve, 50));
-
-    expect(lastFrame()).toContain("No skills installed system-wide");
+    await press(stdin, "\r");
+    await waitForFrameText(lastFrame, "No skills installed system-wide");
     expect(lastFrame()).toContain("Install skills first");
   });
 
@@ -139,11 +133,11 @@ describe("SkillVersionManager", () => {
 
     const { lastFrame, stdin } = render(<SkillVersionManager onBack={mockOnBack} />);
 
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await waitForFrameText(lastFrame, "Which skills do you want to manage?");
 
     // Select "System-wide"
-    stdin.write("\r");
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await press(stdin, "\r");
+    await waitForFrameText(lastFrame, "Manage Skill Versions — System-wide");
 
     expect(lastFrame()).toContain("Manage Skill Versions");
     expect(lastFrame()).toContain("hello-world-skill");
@@ -178,11 +172,11 @@ describe("SkillVersionManager", () => {
 
     const { lastFrame, stdin } = render(<SkillVersionManager onBack={mockOnBack} />);
 
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await waitForFrameText(lastFrame, "Which skills do you want to manage?");
 
     // Select "System-wide"
-    stdin.write("\r");
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await press(stdin, "\r");
+    await waitForFrameText(lastFrame, "Manage Skill Versions — System-wide");
 
     expect(lastFrame()).toContain("hello-world-skill");
     expect(lastFrame()).toContain("Claude Code");
@@ -215,11 +209,11 @@ describe("SkillVersionManager", () => {
 
     const { lastFrame, stdin } = render(<SkillVersionManager onBack={mockOnBack} />);
 
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await waitForFrameText(lastFrame, "Which skills do you want to manage?");
 
     // Select "System-wide"
-    stdin.write("\r");
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await press(stdin, "\r");
+    await waitForFrameText(lastFrame, "Manage Skill Versions — System-wide");
 
     expect(lastFrame()).toContain("skill-a");
     expect(lastFrame()).toContain("Claude Code");
@@ -249,19 +243,17 @@ describe("SkillVersionManager", () => {
 
     const { lastFrame, stdin } = render(<SkillVersionManager onBack={mockOnBack} />);
 
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await waitForFrameText(lastFrame, "Which skills do you want to manage?");
 
     // Select "System-wide"
-    stdin.write("\r");
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await press(stdin, "\r");
+    await waitForFrameText(lastFrame, "Manage Skill Versions — System-wide");
 
     expect(lastFrame()).toContain("Manage Skill Versions");
 
     // Select "Change hello-world-skill" (first item in skill list)
-    stdin.write("\r");
-    await new Promise((resolve) => setTimeout(resolve, 50));
-
-    expect(lastFrame()).toContain("Scanning bundle versions...");
+    await press(stdin, "\r");
+    await waitForFrameText(lastFrame, "Scanning bundle versions...");
   });
 
   it("shows error icon when updateSkillVersion fails", async () => {
@@ -290,13 +282,11 @@ describe("SkillVersionManager", () => {
     await selectSystemWideScope(stdin, lastFrame);
 
     // Select "Change hello-world-skill" → scanning → select-version screen
-    stdin.write("\r");
-    await flushInkInput();
+    await press(stdin, "\r");
     await waitForFrameText(lastFrame, "Select a version to install");
 
     // Select version 2.0.0
-    stdin.write("\r");
-    await flushInkInput();
+    await press(stdin, "\r");
     await waitForFrameText(lastFrame, "Permission denied");
 
     // Should show error icon (✘ U+2718), not success icon (✔ U+2714)
@@ -339,8 +329,7 @@ describe("SkillVersionManager", () => {
 
     await selectSystemWideScope(stdin, lastFrame);
 
-    stdin.write("\r");
-    await flushInkInput();
+    await press(stdin, "\r");
     await waitForFrameText(lastFrame, "Select a version to install");
 
     expect(lastFrame()).toContain("1.3.0");
@@ -348,11 +337,9 @@ describe("SkillVersionManager", () => {
     expect(lastFrame()).toContain("not in bundle");
     expect(lastFrame()).toContain("cannot be selected");
 
-    stdin.write("\u001B[B");
-    await flushInkInput();
+    await press(stdin, "\u001B[B");
     await waitForFrameText(lastFrame, "1.1.0");
-    stdin.write("\r");
-    await flushInkInput();
+    await press(stdin, "\r");
     await waitForFrameText(lastFrame, "Selected skill not in bundle 1.1.0");
 
     expect(lastFrame()).toContain("Selected skill not in bundle 1.1.0");
@@ -368,14 +355,11 @@ describe("SkillVersionManager", () => {
     await waitForFrameText(lastFrame, "Which skills do you want to manage?");
 
     // Navigate to "← Back" (3rd item: System-wide, This repository, ← Back)
-    stdin.write("\u001B[B"); // arrow down
-    await flushInkInput();
+    await press(stdin, "\u001B[B"); // arrow down
     await waitForFrameText(lastFrame, "This repository");
-    stdin.write("\u001B[B"); // arrow down
-    await flushInkInput();
+    await press(stdin, "\u001B[B"); // arrow down
     await waitForFrameText(lastFrame, "← Back");
-    stdin.write("\r");
-    await flushInkInput();
+    await press(stdin, "\r");
 
     await vi.waitFor(() => {
       expect(mockOnBack).toHaveBeenCalledOnce();
@@ -406,11 +390,11 @@ describe("SkillVersionManager", () => {
 
     const { lastFrame, stdin } = render(<SkillVersionManager onBack={mockOnBack} />);
 
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await waitForFrameText(lastFrame, "Which skills do you want to manage?");
 
     // Select "System-wide"
-    stdin.write("\r");
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await press(stdin, "\r");
+    await waitForFrameText(lastFrame, "Manage Skill Versions — System-wide");
 
     const frame = lastFrame();
     expect(frame).toContain("Skills are on different versions");
@@ -440,11 +424,11 @@ describe("SkillVersionManager", () => {
 
     const { lastFrame, stdin } = render(<SkillVersionManager onBack={mockOnBack} />);
 
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await waitForFrameText(lastFrame, "Which skills do you want to manage?");
 
     // Select "System-wide"
-    stdin.write("\r");
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await press(stdin, "\r");
+    await waitForFrameText(lastFrame, "Manage Skill Versions — System-wide");
 
     const frame = lastFrame();
     expect(frame).not.toContain("Skills are on different versions");
