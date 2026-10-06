@@ -1,4 +1,4 @@
-import chalk from 'chalk';
+import { styleText } from 'node:util';
 
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const INTERVAL_MS = 80;
@@ -9,7 +9,7 @@ export interface ConsoleSpinner {
 }
 
 function buildLine(frame: string, message: string): string {
-  return `  ${chalk.cyan(frame)} ${message}`;
+  return `  ${styleText('cyan', frame)} ${message}`;
 }
 
 export function startConsoleSpinner(initialMessage: string): ConsoleSpinner {
