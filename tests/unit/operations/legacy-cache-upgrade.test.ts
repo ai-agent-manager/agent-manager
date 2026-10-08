@@ -3,7 +3,7 @@ import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile
 import path from 'node:path';
 import os from 'node:os';
 import { createHash } from 'node:crypto';
-import extractZip from 'extract-zip';
+import { extractZip } from '../../../src/bundle/zip.js';
 import { acquireBundle, loadSession } from '../../../src/operations/session.js';
 import { downloadBundleVersion, listBundles, listInstalledSkillVersions, switchBundleVersion, switchInstalledSkillVersion } from '../../../src/operations/versions.js';
 import { updateInstalled, removeInstalled } from '../../../src/operations/manage.js';
@@ -32,7 +32,7 @@ beforeEach(async () => {
   archive = await readFile(zip);
   // The release's flat extractor publishes the archive unchanged and writes no
   // .source.json. Use real archive extraction, not a mocked modern extractor.
-  await extractZip(zip, { dir: cache });
+  await extractZip(zip, cache);
   await mkdir(path.join(home, '.claude', 'skills'), { recursive: true });
   await symlink(path.join(cache, skill), path.join(home, '.claude', 'skills', skill), process.platform === 'win32' ? 'junction' : 'dir');
   await symlink(cache, path.join(home, '.agentman', 'current'), process.platform === 'win32' ? 'junction' : 'dir');
