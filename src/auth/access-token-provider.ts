@@ -50,6 +50,9 @@ export function createDiscoveryAccessTokenProvider(
 
     const result = await authenticate(context.baseUrl, context.document.auth, onAuthPrompt, {
       signal,
+      // This provider is TUI-only: env tokens must pass the host allowlist.
+      interactiveMode: true,
+      requestUrl: contentUrl,
     });
     return result.bearerToken;
   };
