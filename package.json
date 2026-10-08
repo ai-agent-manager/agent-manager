@@ -1,6 +1,6 @@
 {
   "name": "@ai-agent-manager/cli",
-  "version": "1.23.0",
+  "version": "1.23.1",
   "description": "Agent Manager - install and manage AI agent skills and Rovo agents",
   "type": "module",
   "bin": {
@@ -75,7 +75,6 @@
     "ajv": "^8.18.0",
     "ajv-formats": "^3.0.1",
     "chalk": "^5.4.1",
-    "extract-zip": "^2.0.1",
     "ink": "^5.1.0",
     "ink-select-input": "^6.0.0",
     "ink-spinner": "^5.0.0",
@@ -83,12 +82,13 @@
     "meow": "^13.2.0",
     "react": "^18.3.1",
     "yaml": "^2.7.1",
-    "yauzl": "2.10.0"
+    "yauzl": "3.4.0",
+    "zip-lib": "1.4.0"
   },
   "devDependencies": {
     "@types/node": "^22",
     "@types/react": "^18.3.18",
-    "@types/yauzl": "2.10.3",
+    "@types/yauzl": "3.4.0",
     "@vitest/coverage-v8": "^3.2.7",
     "ink-testing-library": "^4.0.0",
     "oxlint": "^1.71.0",

@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
     verify:
-        name: Verify (${{ matrix.os }})
+        name: Verify (${{ matrix.os }}, Node ${{ matrix.node }})
         runs-on: ${{ matrix.os }}
         timeout-minutes: 20
 
@@ -22,6 +22,10 @@ jobs:
             fail-fast: false
             matrix:
                 os: [ubuntu-latest, windows-latest]
+                # 22 is the minimum supported line (.nvmrc, engines); "latest"
+                # catches breakage from new Node releases before users hit it,
+                # as with the extract-zip hang on Node 26.
+                node: ["22", "24", "latest"]
 
         steps:
             - name: Checkout code
@@ -30,7 +34,7 @@ jobs:
             - name: Setup Node.js
               uses: actions/setup-node@v6
               with:
-                  node-version-file: ".nvmrc"
+                  node-version: ${{ matrix.node }}
                   cache: "npm"
                   cache-dependency-path: |
                       package-lock.json
@@ -47,7 +51,7 @@ jobs:
               run: npm run typecheck && npm run typecheck:integration
 
             - name: Lint
-              if: runner.os == 'Linux'
+              if: runner.os == 'Linux' && matrix.node == '22'
               run: npm run lint
 
             - name: Run tests

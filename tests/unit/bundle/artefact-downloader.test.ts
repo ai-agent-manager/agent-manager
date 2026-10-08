@@ -45,9 +45,11 @@ vi.mock('../../../src/config/paths.js', () => ({
     path.join(mockArtefactsDir, name, version),
 }));
 
-// ── extract-zip mock ──────────────────────────────────────────────────────────
+// ── zip extraction mock ──────────────────────────────────────────────────────────
 
-vi.mock('extract-zip', () => ({ default: mockExtractZip }));
+vi.mock('../../../src/bundle/zip.js', () => ({
+  extractZip: (zipPath: string, dir: string) => mockExtractZip(zipPath, { dir }),
+}));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

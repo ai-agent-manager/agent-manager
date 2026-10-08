@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { createHash } from 'node:crypto';
 import { lstat, mkdir, readdir, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import extractZip from 'extract-zip';
+import { extractZip } from './zip.js';
 import yauzl from 'yauzl';
 import { getArtefactCacheDir, getTempDir } from '../config/paths.js';
 import { trackTelemetryError, trackTelemetryEvent } from '../telemetry.js';
@@ -418,7 +418,7 @@ export async function downloadArtefact(
 
     // Extract
     await mkdir(tempExtractDir, { recursive: true });
-    await extractZip(zipPath, { dir: tempExtractDir });
+    await extractZip(zipPath, tempExtractDir);
 
     // Security: remove symlinks that escape the extract directory
     const escapingLinks = await removeEscapingSymlinks(tempExtractDir);

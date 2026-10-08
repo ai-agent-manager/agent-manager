@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { OperationConflictError } from '../lib/mutation.js';
 import { assertBundleUnreferenced } from './references.js';
 import { mkdir, readFile, rm, rename, writeFile } from 'node:fs/promises';
-import extractZip from 'extract-zip';
+import { extractZip } from './zip.js';
 import path from 'node:path';
 import { getBundlesDir, getBundleVersionDir, getTempDir } from '../config/paths.js';
 import { assertSafeCacheSegment } from '../lib/path-segment.js';
@@ -84,7 +84,7 @@ export async function extractBundle(zipPath: string, options: ExtractBundleOptio
   await mkdir(tempExtractDir, { recursive: true });
 
   try {
-    await extractZip(zipPath, { dir: tempExtractDir });
+    await extractZip(zipPath, tempExtractDir);
 
     // Read manifest
     const manifestRaw = await readFile(`${tempExtractDir}/manifest.json`, 'utf-8');
