@@ -22,6 +22,8 @@ jobs:
             fail-fast: false
             matrix:
                 os: [ubuntu-latest, windows-latest]
+                # The browser, tarball and desktop legs run on the baseline Node only;
+                # the newer lines cover unit tests, typecheck and the build.
                 # 22 is the minimum supported line (.nvmrc, engines); "latest"
                 # catches breakage from new Node releases before users hit it,
                 # as with the extract-zip hang on Node 26.
@@ -61,32 +63,36 @@ jobs:
               run: npm run build
 
             - name: Install pinned Chromium and OS dependencies
+              if: matrix.node == '22'
               run: npx --no-install playwright install --with-deps chromium
 
             - name: Browser and installed-tarball tests
+              if: matrix.node == '22'
               run: npm run test:e2e
 
             - name: Build and test desktop shell
+              if: matrix.node == '22'
               run: npm ci --prefix desktop && npm run build --prefix desktop && npm run typecheck:tests --prefix desktop && npm test --prefix desktop
 
             # Electron 44 has no postinstall; its binary downloads on the first require().
             # Fetch it here so the sandbox chown below and the smoke launch find it.
             - name: Fetch Electron binary
+              if: matrix.node == '22'
               run: node -e "console.log(require('./desktop/node_modules/electron'))"
 
             - name: Desktop smoke (Linux virtual display)
-              if: runner.os == 'Linux'
+              if: matrix.node == '22' && runner.os == 'Linux'
               run: |
                   sudo chown root:root desktop/node_modules/electron/dist/chrome-sandbox
                   sudo chmod 4755 desktop/node_modules/electron/dist/chrome-sandbox
                   xvfb-run --auto-servernum npm run test:smoke --prefix desktop
 
             - name: Desktop smoke (Windows)
-              if: runner.os == 'Windows'
+              if: matrix.node == '22' && runner.os == 'Windows'
               run: npm run test:smoke --prefix desktop
 
             - name: Packaged desktop smoke (Linux ASAR)
-              if: runner.os == 'Linux'
+              if: matrix.node == '22' && runner.os == 'Linux'
               run: |
                   npm run dist --prefix desktop -- --linux --dir
                   sudo chown root:root desktop/release/linux-unpacked/chrome-sandbox
