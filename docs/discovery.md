@@ -7,6 +7,11 @@ Agent Manager uses an **agent discovery document** to locate skills and determin
 You can host a discovery document in git or on an HTTP(S) server:
 
 **HTTP path:** `<base_url>/.well-known/agents/discovery.json`
+When a user provides an HTTP startup URL to the TUI or web UI, agent-manager
+fetches the discovery document from this path. These modes have no fallback;
+the document must exist. Headless `--config` mode alone treats a discovery 404
+as a legacy bundle source and reads `<content-root>/index.json`; other discovery
+errors still fail.
 
 **git path:** `.agents/discovery.json` at the repository root
 
@@ -43,6 +48,7 @@ An HTTP catalogue, hosted on a server you control. Agent Manager fetches `<base>
 ```bash
 npx @ai-agent-manager/cli@latest https://your-bundle-server.com
 ```
+
 
 ## Discovery Document Format
 

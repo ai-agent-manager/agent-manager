@@ -1,0 +1,71 @@
+import { desktopBridge } from '../desktop.js';
+import { DirectoryField } from '../components/DirectoryField.js';
+import { useEffect, useState, type FormEvent } from 'react';
+import type { CatalogueEntryDto, ContextDto, InstallResultDto, JobDto, SessionDto } from '@api-types';
+import type { ApiClient } from '../api/client.js';
+import { useResource } from '../api/hooks.js';
+import { ErrorMessage, Spinner } from '../components/Feedback.js';
+
+export function SkillDetail({ client, skillId, session, context, jobs, onJob }: { client: ApiClient; skillId: string; session?: SessionDto; context?: ContextDto; jobs: JobDto[]; onJob(id: string): void }) {
+  const [candidate, setCandidate] = useState('');
+  const [scope, setScope] = useState<'system' | 'repo'>('system');
+  const [repoRoot, setRepoRoot] = useState(context?.repoRoot ?? '');
+  const [appliedRoot, setAppliedRoot] = useState('');
+  const query = scope === 'repo' ? `?${new URLSearchParams({ scope, repoRoot: appliedRoot })}` : '';
+  const detail = useResource<{ entry: CatalogueEntryDto; readme?: string }>(client, scope === 'repo' && !appliedRoot ? null : `/api/catalogue/skills/${encodeURIComponent(skillId)}${query}`, session?.sessionRevision);
+  const [tools, setTools] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [pendingJobId, setPendingJobId] = useState<string>();
+  const [installed, setInstalled] = useState<InstallResultDto>();
+  useEffect(() => { setCandidate(detail.data?.entry.candidates.length === 1 ? detail.data.entry.candidates[0]!.installKey : ''); }, [detail.data]);
+  useEffect(() => { setRepoRoot(context?.repoRoot ?? ''); }, [context?.repoRoot]);
+  // Any change to the install form's inputs clears the "Installed" success state so the button re-enables.
+  useEffect(() => { setInstalled(undefined); }, [candidate, scope, repoRoot, appliedRoot, tools.join(',')]);
+  useEffect(() => {
+    if (!pendingJobId) return;
+    const job = jobs.find((job) => job.id === pendingJobId);
+    if (!job || (job.state !== 'succeeded' && job.state !== 'failed' && job.state !== 'cancelled')) return;
+    setPendingJobId(undefined);
+    if (job.state !== 'succeeded' || !job.result || !('result' in job.result)) return;
+    const result = job.result.result;
+    // Per-tool failures arrive inside a succeeded job; keep the form retryable instead of latching success.
+    const attempted = result.installed.length + result.errors.length;
+    if (result.errors.length) setError(`Installed for ${result.installed.length} of ${attempted} tool${attempted === 1 ? '' : 's'}. Review the errors in Activity before trying again.`);
+    else setInstalled(result);
+  }, [jobs, pendingJobId]);
+  if (!session) return <Spinner>Loading skill…</Spinner>;
+  const entry = detail.data?.entry ?? session.catalogue.find((entry) => entry.skillId === skillId);
+  const readme = detail.data?.readme;
+  if (!entry) return <ErrorMessage message={detail.error || 'Skill unavailable. Return to the catalogue and select it again.'} />;
+  // The stated destination must match the selected scope.
+  const toolNote = (tool: ContextDto['tools'][number]) => scope === 'repo' ? tool.repoNote ?? tool.note : tool.note;
+  async function install(event: FormEvent) {
+    event.preventDefault();
+    if (busy || pendingJobId) return;
+    setBusy(true); setError(''); setInstalled(undefined);
+    try {
+      const { jobId } = await client.request<{ jobId: string }>('/api/installs', 'POST', { sessionRevision: session!.sessionRevision, skillId,
+        installKey: candidate, scope, ...(scope === 'repo' ? { repoRoot: appliedRoot } : {}), toolIds: tools });
+      onJob(jobId);
+      setPendingJobId(jobId);
+    } catch (error) { setError((error as Error).message); }
+    finally { setBusy(false); }
+  }
+  return <>
+    <a className="back" href="#/">← All skills</a>
+    <div className="page-heading"><div><p className="eyebrow">SKILL</p><h1>{entry.displayName}</h1><p className="muted">{entry.description}</p></div></div>
+    <div className="detail-grid"><section className="panel"><h2>About this skill</h2>{detail.loading ? <Spinner>Loading skill details…</Spinner> : readme ? <pre className="readme">{readme}</pre> : <p className="muted">{entry.description || 'No README is available.'}</p>}</section>
+      <form className="panel install-form" onSubmit={(event) => void install(event)}><h2>Install skill</h2>
+        <label>Source<select value={candidate} onChange={(event) => setCandidate(event.target.value)} required><option value="" disabled>Select a source</option>{entry.candidates.map((item, index) => <option key={`${item.installKey}-${index}`} value={item.installKey}>{item.sourceName}{item.sourceStatus ? ` · ${item.sourceStatus}` : ''}{item.version ? ` · ${item.version}` : ''}</option>)}</select></label>
+        <label>Install scope<select value={scope} onChange={(event) => { setScope(event.target.value as 'system' | 'repo'); setAppliedRoot(repoRoot); }}><option value="system">Personal · all your projects</option><option value="repo" disabled={!context?.repoRoot && !desktopBridge()}>Repository · {context?.repoName ?? (desktopBridge() ? 'choose a repository' : 'no repository detected')}</option></select></label>
+        {scope === 'repo' && <div><DirectoryField label="Repository root" value={repoRoot} onChange={setRepoRoot} placeholder="Absolute path to a Git repository" required />{repoRoot !== appliedRoot && <button type="button" onClick={() => setAppliedRoot(repoRoot)}>Load repository catalogue</button>}</div>}
+        <fieldset><legend>Tools</legend>{context?.tools.map((tool) => <label className="check-row" key={tool.id}><input type="checkbox" checked={tools.includes(tool.id)} onChange={(event) => setTools((current) => event.target.checked ? [...current, tool.id] : current.filter((id) => id !== tool.id))} /><span>{tool.name}{toolNote(tool) && <small>{toolNote(tool)}</small>}</span></label>)}</fieldset>
+        <ErrorMessage message={error || detail.error} />
+        <button className="primary" type="submit" aria-busy={busy || !!pendingJobId} disabled={!!installed || !detail.data || !candidate || !tools.length || session.state !== 'ready' || scope === 'repo' && repoRoot !== appliedRoot}>
+          {busy ? 'Starting…' : pendingJobId ? 'Installing…' : installed ? `Installed ${installed.installed.length} skill${installed.installed.length === 1 ? '' : 's'}` : `Install${tools.length ? ` to ${tools.length} tool${tools.length === 1 ? '' : 's'}` : ' skill'}`}
+        </button>
+        <small className="muted">Existing installations for these tools will be replaced.</small>
+      </form></div>
+  </>;
+}
