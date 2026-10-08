@@ -87,12 +87,16 @@ async function flushInkInput(): Promise<void> {
 
 type Stdin = { write: (input: string) => void };
 
+// A screen that has just appeared in lastFrame() attaches its useInput handler in an
+// effect one tick later; writing before that tick drops the keystroke on a busy runner.
 async function press(stdin: Stdin, input: string): Promise<void> {
+  await flushInkInput();
   stdin.write(input);
   await flushInkInput();
 }
 
 async function type(stdin: Stdin, text: string): Promise<void> {
+  await flushInkInput();
   for (const char of text) {
     stdin.write(char);
     await flushInkInput();
