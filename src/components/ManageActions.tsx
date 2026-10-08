@@ -110,7 +110,15 @@ export function ManageActions({ record, onBack, onDone, getAccessToken }: Manage
       <Box flexDirection="column" marginLeft={2}>
         <AuthPrompt
           authorizeUrl={authorizeUrl}
-          onOpen={() => openInBrowser(authorizeUrl)}
+          onOpen={() => {
+            try {
+              openInBrowser(authorizeUrl);
+            } catch (openError) {
+              setResultMessage(openError instanceof Error ? openError.message : String(openError));
+              setResultOk(false);
+              setScreen('result');
+            }
+          }}
           onCancel={() => controllerRef.current?.abort()}
         />
       </Box>
