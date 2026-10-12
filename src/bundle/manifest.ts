@@ -43,6 +43,17 @@ export interface AgentManifestEntry {
   phases?: string[];
   /** Video entries from README frontmatter. */
   videos?: ManifestVideoEntry[];
+  /**
+   * Asset kind: skill, agent, or rovo-agent.
+   * Optional for backward compatibility — when absent, the scanner infers
+   * the kind from directory contents (AGENT.md, SKILL.md, rovo-agent.yaml).
+   */
+  kind?: 'skill' | 'agent' | 'rovo-agent';
+  /**
+   * For agents: the tool IDs this agent supports (e.g., ['claude-code', 'cursor']).
+   * Detected from subdirectory presence at bundle time.
+   */
+  tools?: string[];
 }
 
 /** Written by agent-bundler as manifest.json at the root of every agents zip. */

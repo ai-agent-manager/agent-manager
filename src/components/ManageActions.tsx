@@ -70,9 +70,10 @@ export function ManageActions({ record, onBack, onDone, getAccessToken }: Manage
 
   useEscapeBack(onBack, screen === 'menu');
 
+  const isAgent = record.kind === 'agent';
   const items: Array<{ label: string; value: Action }> = [
-    { label: 'Update    Re-pull from pinned source', value: 'update' },
-    { label: 'Remove    Remove this skill', value: 'remove' },
+    ...(isAgent ? [] : [{ label: 'Update    Re-pull from pinned source', value: 'update' as Action }]),
+    { label: `Remove    Remove this ${isAgent ? 'agent' : 'skill'}`, value: 'remove' },
     { label: 'Info      View full metadata', value: 'info' },
     { label: '← Back', value: 'back' },
   ];

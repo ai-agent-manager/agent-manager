@@ -6,7 +6,7 @@
  * helpers here, rather than re-implementing allowlist filters inline.
  */
 
-import type { RovoAgentInfo, SkillInfo } from '../bundle/scanner.js';
+import type { RovoAgentInfo, SkillInfo, AgentInfo } from '../bundle/scanner.js';
 import type { Project } from '../api/types.js';
 import {
   isAgentAllowed,
@@ -15,7 +15,7 @@ import {
   filterSkillsForProject,
 } from '../api/project-restrictions.js';
 import {
-  buildUnifiedCatalogue,
+  buildUnifiedCatalogueWithAgents,
   type CatalogueEntry,
 } from '../discovery/catalogue.js';
 import type { ResolvedSkill } from '../discovery/resolver.js';
@@ -29,6 +29,8 @@ export type CatalogueScope =
 export interface ScopedAssets<TSkill extends SkillInfo = SkillInfo> {
   skills: TSkill[];
   agents: RovoAgentInfo[];
+  /** Harness agents (AGENT.md-based) permitted under the scope. */
+  harnessAgents: AgentInfo[];
   /** Projects whose names annotate catalogue rows; empty when unrestricted. */
   annotationProjects: readonly Project[];
 }
@@ -141,22 +143,38 @@ export function partitionSkillsByScope<TSkill extends SkillInfo>(
   return { permitted, excluded };
 }
 
+/** Harness agents (AGENT.md-based) permitted under the given scope. */
+export function scopeHarnessAgents(
+  agents: readonly AgentInfo[],
+  scope: CatalogueScope,
+): AgentInfo[] {
+  if (scope.kind === 'unrestricted') {
+    return [...agents];
+  }
+  if (scope.kind === 'project') {
+    return filterAgentsForProject([...agents], scope.project);
+  }
+  return agents.filter((agent) => isAgentPermitted(scope, agent.dirName));
+}
+
 /** Filter skills and agents together, with projects used for row annotation. */
 export function scopeCatalogueAssets<TSkill extends SkillInfo>(
   skills: readonly TSkill[],
   agents: readonly RovoAgentInfo[],
   scope: CatalogueScope,
+  harnessAgents: readonly AgentInfo[] = [],
 ): ScopedAssets<TSkill> {
   return {
     skills: scopeSkills(skills, scope),
     agents: scopeAgents(agents, scope),
+    harnessAgents: scopeHarnessAgents(harnessAgents, scope),
     annotationProjects: annotationProjectsFor(scope),
   };
 }
 
 function projectNamesAllowingAsset(
   projects: readonly Project[],
-  kind: 'skill' | 'rovo-agent',
+  kind: 'skill' | 'rovo-agent' | 'agent',
   assetId: string,
 ): string[] {
   return projects
@@ -189,9 +207,10 @@ export function buildScopedCatalogue(
   skills: readonly ResolvedSkill[],
   agents: readonly RovoAgentInfo[],
   scope: CatalogueScope,
+  harnessAgents: readonly AgentInfo[] = [],
 ): CatalogueEntry[] {
-  const { skills: scopedSkills, agents: scopedAgents, annotationProjects } =
-    scopeCatalogueAssets(skills, agents, scope);
-  const entries = buildUnifiedCatalogue(scopedSkills, scopedAgents);
+  const { skills: scopedSkills, agents: scopedAgents, harnessAgents: scopedHarnessAgents, annotationProjects } =
+    scopeCatalogueAssets(skills, agents, scope, harnessAgents);
+  const entries = buildUnifiedCatalogueWithAgents(scopedSkills, scopedAgents, scopedHarnessAgents);
   return annotateCatalogueWithProjects(entries, annotationProjects);
 }

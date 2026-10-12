@@ -1,8 +1,8 @@
-import type { SkillInfo } from '../bundle/scanner.js';
+import type { SkillInfo, AgentInfo } from '../bundle/scanner.js';
 import type { InstallScope } from '../config/scopes.js';
 import type { SkillSourcePin } from '../bundle/skill-source.js';
 
-export type ProvisionerType = 'skill' | 'rovo-agent';
+export type ProvisionerType = 'skill' | 'rovo-agent' | 'agent';
 
 export interface InstalledSkill {
   name: string;
@@ -45,6 +45,38 @@ export interface Provisioner {
 
   /** Uninstall previously installed skills */
   uninstall(names: string[]): Promise<UninstallResult>;
+}
+
+/**
+ * Provisioner interface for harness agents (AGENT.md-based).
+ * Agents install to tool-specific agents directories, not skills directories.
+ */
+export interface AgentProvisionerInterface {
+  readonly id: string;
+  readonly name: string;
+  readonly type: 'agent';
+
+  /** Get the system-wide agents directory for this tool */
+  getAgentsDir(): string;
+
+  /** Get the repo-scoped agents directory for this tool */
+  getRepoAgentsDir(repoRoot: string): string;
+
+  /** Check if this provisioner can operate */
+  detect(): Promise<{ available: boolean; reason?: string }>;
+
+  /** List currently installed agents with their bundle versions */
+  getInstalled(): Promise<InstalledSkill[]>;
+
+  /** Install agents from the specified source */
+  installAgents(
+    agents: AgentInfo[],
+    bundleVersion: string,
+    sourcePin?: SkillSourcePin,
+  ): Promise<InstallResult>;
+
+  /** Uninstall previously installed agents */
+  uninstallAgents(names: string[]): Promise<UninstallResult>;
 }
 
 /** Progress callback for long-running operations (e.g., Rovo provisioning) */

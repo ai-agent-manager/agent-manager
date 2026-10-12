@@ -15,10 +15,11 @@ import { downloadRepoArchive } from '../bundle/repo-downloader.js';
 import { scanRepoForSkills } from '../bundle/repo-scanner.js';
 import { downloadArtefact } from '../bundle/artefact-downloader.js';
 import { scanArtefactForSkills } from '../bundle/artefact-scanner.js';
-import type { SkillInfo } from '../bundle/scanner.js';
+import type { SkillInfo, AgentInfo } from '../bundle/scanner.js';
 import type { InstallScope } from '../config/scopes.js';
 import type { InstallResult } from '../provisioners/types.js';
 import { createSkillProvisioner } from '../provisioners/registry.js';
+import { createAgentProvisioner } from '../provisioners/agent-registry.js';
 import { findRepoRoot } from '../lib/repo.js';
 import { getValidBearerToken, type AuthSession } from '../auth/index.js';
 
@@ -212,6 +213,25 @@ export async function installResolvedSkills(opts: InstallResolvedSkillsOpts): Pr
   const repoRoot = await resolveRepoRoot(scope, opts.repoRoot);
   const provisioner = createSkillProvisioner(toolId, scope, repoRoot);
   return provisioner.install(skills, bundleVersion ?? '');
+}
+
+/**
+ * Install already-acquired harness agents (e.g. resolved from a discovery
+ * document) for one tool.
+ */
+export interface InstallResolvedAgentsOpts {
+  agents: AgentInfo[];
+  toolId: string;
+  scope: InstallScope;
+  repoRoot?: string;
+  bundleVersion?: string;
+}
+
+export async function installResolvedAgents(opts: InstallResolvedAgentsOpts): Promise<InstallResult> {
+  const { agents, toolId, scope, bundleVersion } = opts;
+  const repoRoot = await resolveRepoRoot(scope, opts.repoRoot);
+  const provisioner = createAgentProvisioner(toolId, scope, repoRoot);
+  return provisioner.installAgents(agents, bundleVersion ?? '');
 }
 
 /**

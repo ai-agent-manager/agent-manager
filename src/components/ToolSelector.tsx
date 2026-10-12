@@ -6,12 +6,17 @@ import type { InstallScope } from '../config/scopes.js';
 interface ToolSelectorProps {
   scope: InstallScope;
   repoRoot: string | null;
+  /** When set, only these tool IDs are shown (e.g. tools an agent package supports). */
+  supportedTools?: string[];
   onSelect: (toolIds: string[]) => void;
   onBack: () => void;
 }
 
-export function ToolSelector({ scope, repoRoot, onSelect, onBack }: ToolSelectorProps) {
-  const tools = getSkillTools();
+export function ToolSelector({ scope, repoRoot, supportedTools, onSelect, onBack }: ToolSelectorProps) {
+  const allTools = getSkillTools();
+  const tools = supportedTools && supportedTools.length > 0
+    ? allTools.filter((tool) => supportedTools.includes(tool.id))
+    : allTools;
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [cursor, setCursor] = useState(0);
 

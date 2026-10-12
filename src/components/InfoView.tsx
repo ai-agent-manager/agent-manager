@@ -16,10 +16,10 @@ export function InfoView({ record, onBack }: InfoViewProps) {
 
   return (
     <Box flexDirection="column" marginLeft={2}>
-      <Text bold>Skill info</Text>
+      <Text bold>{record.kind === 'agent' ? 'Agent info' : 'Skill info'}</Text>
       <Text> </Text>
-      <Row label="Skill key">{record.installKey}</Row>
-      <Row label="Skill ID">{record.skillId}</Row>
+      <Row label="Key">{record.installKey}</Row>
+      <Row label="ID">{record.skillId}</Row>
       <Row label="Tool">{record.toolId}</Row>
       <Row label="Scope">{record.scope === 'system' ? 'local' : record.scope}</Row>
       {record.repoRoot && <Row label="Repo root">{record.repoRoot}</Row>}
