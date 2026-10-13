@@ -69,7 +69,7 @@ describe('ManageList', () => {
     });
     expect(lastFrame()).toContain('repo@main');
     expect(lastFrame()).toContain('local');
-    expect(lastFrame()).toContain('claude-code');
+    expect(lastFrame()).toContain('claude-co');
     expect(lastFrame()).toContain('bundle@0.9.0 (legacy)');
     expect(lastFrame()).toContain('windsurf');
   });
@@ -111,7 +111,7 @@ describe('ManageList', () => {
     const { lastFrame } = render(<ManageList onSelect={() => {}} onBack={() => {}} />);
 
     await vi.waitFor(() => {
-      expect(lastFrame()).toContain('No skills installed.');
+      expect(lastFrame()).toContain('No skills or agents installed.');
     });
   });
 
