@@ -6,7 +6,7 @@
  * to merge root AGENT.md with tool adapter frontmatter and body.
  */
 
-import { readdir, readFile, rm, stat, copyFile } from 'node:fs/promises';
+import { readdir, rm, copyFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { AgentInfo } from '../bundle/scanner.js';
 import type { InstallScope } from '../config/scopes.js';
@@ -193,15 +193,6 @@ export abstract class AgentProvisioner implements AgentProvisionerInterface {
     const result: UninstallResult = { removed: [], errors: [] };
 
     const stateKey = `${this.id}-agents`;
-    let installRecords: Record<string, AgentInstallRecord> = {};
-
-    if (this.scope === 'repo' && this.repoRoot) {
-      const repoConfig = await readRepoConfig(this.repoRoot);
-      installRecords = repoConfig?.installations[stateKey] ?? {};
-    } else {
-      const config = await readConfig();
-      installRecords = config.installations[stateKey] ?? {};
-    }
 
     for (const name of names) {
       const agentPath = path.join(agentsDir, name);
