@@ -9,10 +9,11 @@
 import { readdir, rm, copyFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { AgentInfo } from '../bundle/scanner.js';
+import type { AgentDependencies } from '../bundle/manifest.js';
 import type { InstallScope } from '../config/scopes.js';
 import type { SkillSourcePin } from '../bundle/skill-source.js';
 import type {
-  InstalledSkill,
+  InstalledAgent,
   InstallResult,
   UninstallResult,
   AgentProvisionerInterface,
@@ -21,6 +22,7 @@ import { composeAgent } from '../lib/agent-composer.js';
 import { ensureDir, pathExists, writeFileAtomic } from '../lib/fs.js';
 import { recordInstall, removeInstallRecord, readConfig } from '../bundle/cache.js';
 import { recordRepoInstall, removeRepoInstallRecord, readRepoConfig } from '../bundle/repo-config.js';
+import { getHomeDir } from '../lib/platform.js';
 
 type AgentInstallRecord = {
   bundleVersion?: string;
@@ -73,7 +75,7 @@ export abstract class AgentProvisioner implements AgentProvisionerInterface {
     return { available: true };
   }
 
-  async getInstalled(): Promise<InstalledSkill[]> {
+  async getInstalled(): Promise<InstalledAgent[]> {
     const agentsDir = this.getEffectiveAgentsDir();
     if (!(await pathExists(agentsDir))) return [];
 
@@ -89,7 +91,7 @@ export abstract class AgentProvisioner implements AgentProvisionerInterface {
       installRecords = config.installations[stateKey] ?? {};
     }
 
-    const installed: InstalledSkill[] = [];
+    const installed: InstalledAgent[] = [];
     const coveredAgents = new Set<string>();
 
     // Check tracked installs
@@ -99,11 +101,13 @@ export abstract class AgentProvisioner implements AgentProvisionerInterface {
 
       coveredAgents.add(agentName);
       installed.push({
+        kind: 'agent',
         name: agentName,
         bundleVersion: record.bundleVersion ?? 'unknown',
         installedAt: record.installedAt ?? 'unknown',
         method: 'copy',
         path: agentPath,
+        tools: [this.id], // Agent is installed for this tool
       });
     }
 
@@ -115,11 +119,13 @@ export abstract class AgentProvisioner implements AgentProvisionerInterface {
 
       const agentPath = path.join(agentsDir, entry.name);
       installed.push({
+        kind: 'agent',
         name: entry.name,
         bundleVersion: 'unknown',
         installedAt: 'unknown',
         method: 'copy',
         path: agentPath,
+        tools: [this.id],
       });
     }
 
@@ -186,6 +192,37 @@ export abstract class AgentProvisioner implements AgentProvisionerInterface {
     }
 
     return result;
+  }
+
+  /**
+   * Check which skills from dependencies are already installed.
+   * Returns a report of installed vs missing skills.
+   */
+  async checkDependencies(
+    dependencies: AgentDependencies,
+  ): Promise<{ installed: string[]; missing: string[] }> {
+    const installed: string[] = [];
+    const missing: string[] = [];
+    const skillsDir = this.getSkillsDir();
+
+    for (const skill of dependencies.skills) {
+      const skillPath = path.join(skillsDir, skill);
+      if (await pathExists(skillPath)) {
+        installed.push(skill);
+      } else {
+        missing.push(skill);
+      }
+    }
+
+    return { installed, missing };
+  }
+
+  /** Get the skills directory for this tool (where dependencies are checked). */
+  private getSkillsDir(): string {
+    if (this.scope === 'repo' && this.repoRoot) {
+      return path.join(this.repoRoot, `.${this.id}`, 'skills');
+    }
+    return path.join(getHomeDir(), `.${this.id}`, 'skills');
   }
 
   async uninstallAgents(names: string[]): Promise<UninstallResult> {

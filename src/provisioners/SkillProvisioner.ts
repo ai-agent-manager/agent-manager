@@ -138,6 +138,7 @@ export abstract class SkillProvisioner implements Provisioner {
       const recordVer = record ? getRecordVersion(record) : undefined;
 
       installed.push({
+        kind: 'skill',
         name: key,
         bundleVersion: (version ?? (recordVer || undefined) ?? pinnedVersion) || 'unknown',
         installedAt: record?.installedAt ?? 'unknown',
@@ -156,6 +157,7 @@ export abstract class SkillProvisioner implements Provisioner {
       const version = await resolveSkillVersion(skillPath);
 
       installed.push({
+        kind: 'skill',
         name: entry.name,
         bundleVersion: version ?? 'unknown',
         installedAt: 'unknown',

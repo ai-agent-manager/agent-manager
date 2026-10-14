@@ -63,6 +63,7 @@ export function SkillInstallFlow({ entries, bundleVersion, onSelectRovoAgent, on
                 scope,
                 repoRoot: repoRoot ?? undefined,
                 bundleVersion: candidate.sourceType === 'http' ? bundleVersion : '',
+                bundleUrl: candidate.skill.sourcePin?.bundleBaseUrl,
               })
             : installResolvedSkills({
                 skills: [candidate.skill],

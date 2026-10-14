@@ -6,7 +6,7 @@ import { parse as parseYaml } from 'yaml';
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import type { ErrorObject } from 'ajv/dist/2020.js';
 import { parseFrontmatter, type AssetConfig } from '../lib/frontmatter.js';
-import type { AgentManifestEntry } from './manifest.js';
+import type { AgentManifestEntry, AgentDependencies } from './manifest.js';
 import type { SkillSourcePin } from './skill-source.js';
 
 // ---------------------------------------------------------------------------
@@ -215,6 +215,8 @@ export interface AgentInfo {
   tools: string[];
   /** Metadata from README.md frontmatter, if available */
   meta: AssetConfig | null;
+  /** Skill dependencies (for orchestrator agents). */
+  dependencies?: AgentDependencies;
 }
 
 export interface BundleContents {
@@ -500,12 +502,16 @@ export async function scanBundle(
       // Detect tool subdirectories
       const tools = await detectAgentTools(dirPath);
 
+      // Get manifest entry for dependencies
+      const manifestEntry = manifestMap.get(entry.name);
+
       agents.push({
         dirName: entry.name,
         dirPath,
         agentMdPath,
         tools,
         meta,
+        dependencies: manifestEntry?.dependencies,
       });
       continue;
     }

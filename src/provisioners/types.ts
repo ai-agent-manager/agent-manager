@@ -1,16 +1,33 @@
 import type { SkillInfo, AgentInfo } from '../bundle/scanner.js';
+import type { AgentDependencies } from '../bundle/manifest.js';
 import type { InstallScope } from '../config/scopes.js';
 import type { SkillSourcePin } from '../bundle/skill-source.js';
 
 export type ProvisionerType = 'skill' | 'rovo-agent' | 'agent';
 
-export interface InstalledSkill {
+/** Common fields for all installed assets */
+interface InstalledAssetBase {
   name: string;
   bundleVersion: string;
   installedAt: string;
   method: 'symlink' | 'copy';
   path: string;
 }
+
+/** An installed skill (SKILL.md-based) */
+export interface InstalledSkill extends InstalledAssetBase {
+  kind: 'skill';
+}
+
+/** An installed harness agent (AGENT.md-based) */
+export interface InstalledAgent extends InstalledAssetBase {
+  kind: 'agent';
+  /** Tool IDs this agent supports (e.g., ['claude-code', 'cursor']) */
+  tools: string[];
+}
+
+/** Union type for any installed asset */
+export type InstalledItem = InstalledSkill | InstalledAgent;
 
 export interface InstallResult {
   installed: Array<{ name: string; method: 'symlink' | 'copy'; path: string }>;
@@ -66,7 +83,7 @@ export interface AgentProvisionerInterface {
   detect(): Promise<{ available: boolean; reason?: string }>;
 
   /** List currently installed agents with their bundle versions */
-  getInstalled(): Promise<InstalledSkill[]>;
+  getInstalled(): Promise<InstalledAgent[]>;
 
   /** Install agents from the specified source */
   installAgents(
@@ -77,6 +94,11 @@ export interface AgentProvisionerInterface {
 
   /** Uninstall previously installed agents */
   uninstallAgents(names: string[]): Promise<UninstallResult>;
+
+  /** Check which skills from dependencies are installed */
+  checkDependencies(
+    dependencies: AgentDependencies,
+  ): Promise<{ installed: string[]; missing: string[] }>;
 }
 
 /** Progress callback for long-running operations (e.g., Rovo provisioning) */
