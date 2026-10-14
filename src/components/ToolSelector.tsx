@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { getSkillTools } from '../config/tools.js';
+import { getAgentTools } from '../provisioners/agent-registry.js';
 import type { InstallScope } from '../config/scopes.js';
 
 interface ToolSelectorProps {
@@ -8,12 +9,14 @@ interface ToolSelectorProps {
   repoRoot: string | null;
   /** When set, only these tool IDs are shown (e.g. tools an agent package supports). */
   supportedTools?: string[];
+  /** Whether installing skills or agents. */
+  kind?: 'skill' | 'agent';
   onSelect: (toolIds: string[]) => void;
   onBack: () => void;
 }
 
-export function ToolSelector({ scope, repoRoot, supportedTools, onSelect, onBack }: ToolSelectorProps) {
-  const allTools = getSkillTools();
+export function ToolSelector({ scope, repoRoot, supportedTools, kind = 'skill', onSelect, onBack }: ToolSelectorProps) {
+  const allTools = kind === 'agent' ? getAgentTools() : getSkillTools();
   const tools = supportedTools && supportedTools.length > 0
     ? allTools.filter((tool) => supportedTools.includes(tool.id))
     : allTools;
@@ -65,13 +68,21 @@ export function ToolSelector({ scope, repoRoot, supportedTools, onSelect, onBack
   });
 
   const scopeLabel = scope === 'repo' ? 'this repository' : 'system-wide';
+  const kindLabel = kind === 'agent' ? 'agents' : 'skills';
 
   return (
     <Box flexDirection="column" marginLeft={2}>
-      <Text bold>Which tool do you want to install skills for? <Text dimColor>({scopeLabel})</Text></Text>
+      <Text bold>Which tool do you want to install {kindLabel} for? <Text dimColor>({scopeLabel})</Text></Text>
       <Text> </Text>
       {tools.map((tool, index) => {
-        const dir = scope === 'repo' && repoRoot ? tool.getRepoSkillsDir(repoRoot) : tool.getSkillsDir();
+        // TypeScript can't narrow the union type based on 'kind', but we know the method exists at runtime
+        const dir = scope === 'repo' && repoRoot
+          ? kind === 'agent'
+            ? (tool as any).getRepoAgentsDir(repoRoot)
+            : (tool as any).getRepoSkillsDir(repoRoot)
+          : kind === 'agent'
+            ? (tool as any).getAgentsDir()
+            : (tool as any).getSkillsDir();
 
         // For display: show repo-relative path for repo scope, home-relative for system
         const displayDir = scope === 'repo' && repoRoot

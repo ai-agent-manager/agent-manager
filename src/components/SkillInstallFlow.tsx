@@ -119,6 +119,7 @@ export function SkillInstallFlow({ entries, bundleVersion, onSelectRovoAgent, on
       <ToolSelector
         scope={scope}
         repoRoot={repoRoot}
+        kind={entry?.kind === 'agent' ? 'agent' : 'skill'}
         supportedTools={entry?.kind === 'agent' ? entry.agent.tools : undefined}
         onSelect={(selectedToolId) => void runInstall(selectedToolId)}
         onBack={() => setScreen('scope-selector')}
@@ -131,7 +132,7 @@ export function SkillInstallFlow({ entries, bundleVersion, onSelectRovoAgent, on
       <Box flexDirection="column" marginLeft={2}>
         <Text bold>Confirm install</Text>
         <Text> </Text>
-        <Row label="Skill">{entry.displayName}</Row>
+        <Row label={entry?.kind === 'agent' ? 'Agent' : 'Skill'}>{entry.displayName}</Row>
         <Row label="Source">
           {candidate.sourceName} <Text dimColor>({candidate.sourceType})</Text>
           {candidate.sourceStatus && (
@@ -182,7 +183,7 @@ export function SkillInstallFlow({ entries, bundleVersion, onSelectRovoAgent, on
         <Text> </Text>
         <SelectInput
           items={[
-            { label: 'Install another skill', value: 'again' },
+            { label: `Install another ${entry?.kind === 'agent' ? 'agent' : 'skill'}`, value: 'again' },
             { label: '← Back to menu', value: 'menu' },
           ]}
           onSelect={(item) => {
