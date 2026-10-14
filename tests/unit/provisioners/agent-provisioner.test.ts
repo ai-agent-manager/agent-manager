@@ -6,16 +6,13 @@ import { homedir } from "node:os";
 import { ClaudeCodeAgentProvisioner } from "../../../src/provisioners/ClaudeCodeAgentProvisioner.js";
 import { CopilotAgentProvisioner } from "../../../src/provisioners/CopilotAgentProvisioner.js";
 import { CursorAgentProvisioner } from "../../../src/provisioners/CursorAgentProvisioner.js";
-import type { AgentInfo } from "../../../src/bundle/scanner.js";
 
 describe("AgentProvisioner", () => {
   let tempDir: string;
-  let provisioner: ClaudeCodeAgentProvisioner;
 
   beforeEach(async () => {
     tempDir = join(tmpdir(), `agent-provisioner-test-${Date.now()}`);
     await mkdir(tempDir, { recursive: true });
-    provisioner = new ClaudeCodeAgentProvisioner({ scope: "system" });
   });
 
   afterEach(async () => {
