@@ -114,6 +114,8 @@ export function ManageActions({ record, onBack, onDone, getAccessToken }: Manage
             try {
               openInBrowser(authorizeUrl);
             } catch (openError) {
+              // Abort the in-flight operation and show error
+              controllerRef.current?.abort();
               setResultMessage(openError instanceof Error ? openError.message : String(openError));
               setResultOk(false);
               setScreen('result');

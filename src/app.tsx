@@ -365,7 +365,10 @@ export function App({ source, directInstallSource, forceUpdate, sourceError }: A
             try {
                 openInBrowser(authorizeUrl);
             } catch (openError) {
+                // Show error and return to main menu - browser launch failed
                 setError(openError instanceof Error ? openError.message : String(openError));
+                setAuthorizeUrl(null);
+                setScreen("main-menu");
             }
         }
     }, [authorizeUrl]);
