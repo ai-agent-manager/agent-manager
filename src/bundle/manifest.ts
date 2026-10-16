@@ -23,6 +23,14 @@ export interface ManifestVideoEntry {
   src: string;
 }
 
+/** Skill dependencies for an orchestrator agent. */
+export interface AgentDependencies {
+  /** "self" = same bundle as the agent, or a full URL for cross-bundle deps. */
+  bundle: string;
+  /** Skill IDs required by this agent. */
+  skills: string[];
+}
+
 /** Metadata for a single agent, as stored in the manifest by agent-bundler. */
 export interface AgentManifestEntry {
   /** Directory name (used as the agent ID). */
@@ -43,6 +51,19 @@ export interface AgentManifestEntry {
   phases?: string[];
   /** Video entries from README frontmatter. */
   videos?: ManifestVideoEntry[];
+  /**
+   * Asset kind: skill, agent, or rovo-agent.
+   * Optional for backward compatibility — when absent, the scanner infers
+   * the kind from directory contents (AGENT.md, SKILL.md, rovo-agent.yaml).
+   */
+  kind?: 'skill' | 'agent' | 'rovo-agent';
+  /**
+   * For agents: the tool IDs this agent supports (e.g., ['claude-code', 'cursor']).
+   * Detected from subdirectory presence at bundle time.
+   */
+  tools?: string[];
+  /** Skill dependencies (for orchestrator agents). */
+  dependencies?: AgentDependencies;
 }
 
 /** Written by agent-bundler as manifest.json at the root of every agents zip. */

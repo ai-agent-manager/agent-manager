@@ -9,7 +9,7 @@
  * {@link ../catalogue-scope/index.js} instead of composing these helpers at call sites.
  */
 
-import type { RovoAgentInfo, SkillInfo } from '../bundle/scanner.js';
+import type { SkillInfo } from '../bundle/scanner.js';
 import type { Project, ProjectRestrictions } from './types.js';
 
 /** Ensure restriction fields exist when reading legacy API responses. */
@@ -51,10 +51,10 @@ export function filterSkillsForProject<T extends SkillInfo>(
   return skills.filter((skill) => isSkillAllowed(project, skill.dirName));
 }
 
-/** Filter resolved Rovo agents using the project's agent allowlist. */
-export function filterAgentsForProject(
-  agents: RovoAgentInfo[],
+/** Filter resolved agents (Rovo or harness) using the project's agent allowlist. */
+export function filterAgentsForProject<T extends { dirName: string }>(
+  agents: T[],
   project: Pick<ProjectRestrictions, 'restrictAgents' | 'allowedAgentIds'>,
-): RovoAgentInfo[] {
+): T[] {
   return agents.filter((agent) => isAgentAllowed(project, agent.dirName));
 }

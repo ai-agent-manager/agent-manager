@@ -22,10 +22,10 @@ export interface ArtefactScanResult {
  *   3. <wrapper>/<skill-id>/SKILL.md        → single top-level wrapper directory
  *      containing skill directories (descended once)
  *
- * Artefact sources are skills-only — rovo agents are not supported in artefact
- * packages. Use an http bundle source for rovo agents.
+ * Artefact sources are skills-only — rovo agents and harness agents are not
+ * supported in artefact packages. Use an http bundle source for agent packages.
  *
- * Throws a descriptive error when no skills can be found.
+ * Throws a descriptive error when no skills can be found or when agents are detected.
  */
 export async function scanArtefactForSkills(
   extractDir: string,
@@ -41,6 +41,14 @@ export async function scanArtefactForSkills(
         `Warning: SKILL.md at artefact root takes precedence — ${siblings.skills.length} skill director${siblings.skills.length === 1 ? 'y' : 'ies'} ignored.`,
       );
     }
+    // Reject if harness agents are present
+    if (siblings.agents.length > 0) {
+      throw new Error(
+        `Harness agents found in artefact: ${source.artefactUrl}\n` +
+          `  Artefact sources support skills only.\n` +
+          `  Use an HTTP bundle source for agent packages.`,
+      );
+    }
     const meta = await readRootMeta(extractDir, rootSkillMd);
     return {
       skills: [{ dirName: name, dirPath: extractDir, skillMdPath: rootSkillMd, meta }],
@@ -51,9 +59,18 @@ export async function scanArtefactForSkills(
   // 2. Bundle layout: skill directories at the root
   const rootContents = await scanBundle(extractDir);
   if (rootContents.skills.length > 0) {
+    // Reject if harness agents are also present
+    if (rootContents.agents.length > 0) {
+      throw new Error(
+        `Harness agents found in artefact: ${source.artefactUrl}\n` +
+          `  Artefact sources support skills only.\n` +
+          `  Use an HTTP bundle source for agent packages.`,
+      );
+    }
     return { skills: rootContents.skills, skillsDir: extractDir };
   }
   const hasRovoAgentsAtRoot = rootContents.rovoAgents.length > 0;
+  const hasHarnessAgentsAtRoot = rootContents.agents.length > 0;
 
   // 3. Single top-level wrapper directory containing skill directories
   const entries = await readdir(extractDir, { withFileTypes: true });
@@ -62,21 +79,43 @@ export async function scanArtefactForSkills(
     const wrapperDir = path.join(extractDir, dirs[0].name);
     const wrapped = await scanBundle(wrapperDir);
     if (wrapped.skills.length > 0) {
+      // Reject if harness agents are present
+      if (wrapped.agents.length > 0) {
+        throw new Error(
+          `Harness agents found in artefact: ${source.artefactUrl}\n` +
+            `  Artefact sources support skills only.\n` +
+            `  Use an HTTP bundle source for agent packages.`,
+        );
+      }
       return { skills: wrapped.skills, skillsDir: wrapperDir };
     }
     const hasRovoAgentsWrapped = wrapped.rovoAgents.length > 0;
+    const hasHarnessAgentsWrapped = wrapped.agents.length > 0;
     if (hasRovoAgentsAtRoot || hasRovoAgentsWrapped) {
       throw new Error(
         `No skills found in artefact: ${source.artefactUrl}\n` +
           `  Rovo agents were found but artefact sources support skills only.\n` +
-          `  Use an http bundle source for rovo agent packages.`,
+          `  Use an HTTP bundle source for rovo agent packages.`,
+      );
+    }
+    if (hasHarnessAgentsAtRoot || hasHarnessAgentsWrapped) {
+      throw new Error(
+        `No skills found in artefact: ${source.artefactUrl}\n` +
+          `  Harness agents were found but artefact sources support skills only.\n` +
+          `  Use an HTTP bundle source for agent packages.`,
       );
     }
   } else if (hasRovoAgentsAtRoot) {
     throw new Error(
       `No skills found in artefact: ${source.artefactUrl}\n` +
         `  Rovo agents were found but artefact sources support skills only.\n` +
-        `  Use an http bundle source for rovo agent packages.`,
+        `  Use an HTTP bundle source for rovo agent packages.`,
+    );
+  } else if (hasHarnessAgentsAtRoot) {
+    throw new Error(
+      `No skills found in artefact: ${source.artefactUrl}\n` +
+        `  Harness agents were found but artefact sources support skills only.\n` +
+        `  Use an HTTP bundle source for agent packages.`,
     );
   }
 

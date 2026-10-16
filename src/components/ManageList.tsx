@@ -46,7 +46,7 @@ export function ManageList({ onSelect, onBack, refreshToken }: ManageListProps) 
   if (records.length === 0) {
     return (
       <Box flexDirection="column" marginLeft={2}>
-        <Text>No skills installed.</Text>
+        <Text>No skills or agents installed.</Text>
         <Text> </Text>
         <SelectInput items={[backItem]} onSelect={() => onBack()} />
       </Box>
@@ -58,7 +58,7 @@ export function ManageList({ onSelect, onBack, refreshToken }: ManageListProps) 
 
   const items = [
     ...records.map((r) => ({
-      key: `${r.toolId}:${r.scope}:${r.installKey}`,
+      key: `${r.kind}:${r.toolId}:${r.scope}:${r.installKey}`,
       label: formatRow(r, nameCol, sourceCol),
       value: r as InstalledSkillRecord | null,
     })),
@@ -67,12 +67,12 @@ export function ManageList({ onSelect, onBack, refreshToken }: ManageListProps) 
 
   return (
     <Box flexDirection="column" marginLeft={2}>
-      <Text bold>Installed skills:</Text>
+      <Text bold>Installed skills &amp; agents:</Text>
       <Text dimColor>
         {'  '}
-        {pad('SKILL', nameCol)}
+        {pad('NAME', nameCol)}
         {pad('SOURCE', sourceCol)}
-        {'SCOPE  TOOL'}
+        {'SCOPE  TOOL      KIND'}
       </Text>
       <SelectInput
         limit={12}
@@ -95,7 +95,8 @@ function formatRow(r: InstalledSkillRecord, nameCol: number, sourceCol: number):
     pad(truncate(r.installKey, nameCol - 2), nameCol) +
     pad(truncate(sourceLabel(r), sourceCol - 2), sourceCol) +
     pad(scope, 7) +
-    r.toolId
+    pad(r.toolId, 10) +
+    r.kind
   );
 }
 

@@ -2,11 +2,13 @@ import { canonicaliseContentRoot, downloadBundle } from '../bundle/downloader.js
 import { extractBundle } from '../bundle/extractor.js';
 import { importLocalBundle } from '../bundle/importer.js';
 import { scanBundle } from '../bundle/scanner.js';
+import path from 'node:path';
 import { setCurrentBundle } from '../bundle/cache.js';
 import {
   buildSourcePin,
   bundleSourceKey,
   isRepoSource,
+  isBundleSource,
   resolveSkillSource,
   type SkillSource,
   type SkillSourcePin,
@@ -15,10 +17,11 @@ import { downloadRepoArchive } from '../bundle/repo-downloader.js';
 import { scanRepoForSkills } from '../bundle/repo-scanner.js';
 import { downloadArtefact } from '../bundle/artefact-downloader.js';
 import { scanArtefactForSkills } from '../bundle/artefact-scanner.js';
-import type { SkillInfo } from '../bundle/scanner.js';
+import type { SkillInfo, AgentInfo } from '../bundle/scanner.js';
 import type { InstallScope } from '../config/scopes.js';
 import type { InstallResult } from '../provisioners/types.js';
 import { createSkillProvisioner } from '../provisioners/registry.js';
+import { createAgentProvisioner } from '../provisioners/agent-registry.js';
 import { findRepoRoot } from '../lib/repo.js';
 import { getValidBearerToken, type AuthSession } from '../auth/index.js';
 
@@ -212,6 +215,124 @@ export async function installResolvedSkills(opts: InstallResolvedSkillsOpts): Pr
   const repoRoot = await resolveRepoRoot(scope, opts.repoRoot);
   const provisioner = createSkillProvisioner(toolId, scope, repoRoot);
   return provisioner.install(skills, bundleVersion ?? '');
+}
+
+/**
+ * Install already-acquired harness agents (e.g. resolved from a discovery
+ * document) for one tool.
+ */
+export interface InstallResolvedAgentsOpts {
+  agents: AgentInfo[];
+  toolId: string;
+  scope: InstallScope;
+  repoRoot?: string;
+  bundleVersion?: string;
+  /** Bundle URL for resolving "self" dependencies */
+  bundleUrl?: string;
+  /** Auth session for authenticated bundle downloads */
+  authSession?: AuthSession;
+}
+
+export async function installResolvedAgents(
+  opts: InstallResolvedAgentsOpts,
+): Promise<InstallResult> {
+  const { agents, toolId, scope, bundleVersion, bundleUrl, authSession } = opts;
+  const repoRoot = await resolveRepoRoot(scope, opts.repoRoot);
+  const provisioner = createAgentProvisioner(toolId, scope, repoRoot);
+
+  // For each agent with dependencies, install missing skills first
+  for (const agent of agents) {
+    if (agent.dependencies) {
+      const { installed, missing } = await provisioner.checkDependencies(agent.dependencies);
+
+      if (missing.length > 0) {
+        console.log(`\n📦 Installing ${missing.length} required skill(s) for ${agent.dirName}:`);
+        missing.forEach((s: string) => console.log(`  - ${s}`));
+
+        if (installed.length > 0) {
+          console.log(`\n✓ Already installed: ${installed.join(', ')}`);
+        }
+
+        // Resolve bundle URL: "self" means the same bundle the agent came from
+        const depBundleUrl = agent.dependencies.bundle === 'self' ? bundleUrl : agent.dependencies.bundle;
+
+        if (!depBundleUrl) {
+          // For local directory sources, skills should already be in the same directory
+          // Check if we can install from the agent's parent directory
+          const agentParentDir = path.dirname(agent.dirPath);
+          console.log(`\n📂 Checking local directory for skills...`);
+
+          try {
+            const contents = await scanBundle(agentParentDir);
+            const skillsToInstall = contents.skills.filter((s) => missing.includes(s.dirName));
+
+            if (skillsToInstall.length > 0) {
+              const skillProvisioner = createSkillProvisioner(toolId, scope, repoRoot);
+              const skillResult = await skillProvisioner.install(
+                skillsToInstall,
+                bundleVersion ?? 'local',
+                undefined,
+              );
+
+              console.log(`\n✓ Installed ${skillResult.installed.length} skill(s)`);
+
+              if (skillResult.errors.length > 0) {
+                console.error(`\n⚠️  Some skills failed to install:`);
+                skillResult.errors.forEach((e) => console.error(`  - ${e.name}: ${e.error}`));
+              }
+            } else {
+              console.error(`\n⚠️  Required skills not found in local directory: ${missing.join(', ')}`);
+            }
+          } catch (err) {
+            console.error(`\n⚠️  Failed to scan local directory: ${err instanceof Error ? err.message : String(err)}`);
+          }
+          continue;
+        }
+
+        console.log(`\nDownloading from ${depBundleUrl}...`);
+
+        // Download and extract the dependency bundle
+        const source = await resolveSkillSource(depBundleUrl);
+        if (!isBundleSource(source) || !source.baseUrl) {
+          console.error(`\n⚠️  Cannot install dependencies: invalid bundle source`);
+          continue;
+        }
+        const bearer = await resolveInstallBearer(authSession);
+        const { zipPath } = await downloadBundle(source.baseUrl, undefined, bearer);
+        const extracted = await extractBundle(zipPath);
+        const contents = await scanBundle(extracted.bundleDir, extracted.manifest.agents);
+
+        // Filter to only the missing skills
+        const skillsToInstall = contents.skills.filter((s) => missing.includes(s.dirName));
+
+        if (skillsToInstall.length > 0) {
+          const skillProvisioner = createSkillProvisioner(toolId, scope, repoRoot);
+          const sourcePin: SkillSourcePin = {
+            sourceType: 'bundle',
+            installLayout: 'flat',
+            bundleBaseUrl: source.baseUrl,
+            bundleSourceName: source.sourceName,
+            bundleVersion: extracted.manifest.version,
+            bundleAddressing: 'content-root',
+          };
+          const skillResult = await skillProvisioner.install(
+            skillsToInstall,
+            extracted.manifest.version,
+            sourcePin,
+          );
+
+          console.log(`\n✓ Installed ${skillResult.installed.length} skill(s)`);
+
+          if (skillResult.errors.length > 0) {
+            console.error(`\n⚠️  Some skills failed to install:`);
+            skillResult.errors.forEach((e) => console.error(`  - ${e.name}: ${e.error}`));
+          }
+        }
+      }
+    }
+  }
+
+  return provisioner.installAgents(agents, bundleVersion ?? '');
 }
 
 /**

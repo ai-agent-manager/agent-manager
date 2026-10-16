@@ -171,7 +171,7 @@ describe('parseHeadlessConfig', () => {
     const configPath = await writeConfigFile('tools: claude-code\nskills: []\n');
 
     await expect(parseHeadlessConfig(configPath)).rejects.toThrow(
-      '"skills" must be a non-empty list',
+      'at least one of "skills" or "agents" must be a non-empty list',
     );
   });
 });

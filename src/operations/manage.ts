@@ -5,17 +5,24 @@ import type { InstallScope } from '../config/scopes.js';
 import type { SkillSourcePin } from '../bundle/skill-source.js';
 import type { InstallResult, UninstallResult } from '../provisioners/types.js';
 import { createSkillProvisioner } from '../provisioners/registry.js';
+import { createAgentProvisioner } from '../provisioners/agent-registry.js';
 import { installFromRepo, installFromArtefact, installFromBundle } from './install.js';
 
 /** Supplies a bearer token for a pinned content URL when one is available. */
 export type AccessTokenProvider = (contentUrl: string) => Promise<string | undefined>;
 
+/** Suffix used for state keys that track harness agent installs, e.g. "claude-code-agents". */
+const AGENT_STATE_KEY_SUFFIX = '-agents';
+
 export interface InstalledSkillRecord {
   /** Config key, e.g. "github.com/org/repo/my-skill" or "my-skill" */
   installKey: string;
-  /** Bare skill directory name */
+  /** Bare skill (or agent) directory name */
   skillId: string;
+  /** Real tool id (e.g. "claude-code") — never carries the internal "-agents" state-key suffix. */
   toolId: string;
+  /** Whether this record is a skill or a harness agent install. */
+  kind: 'skill' | 'agent';
   scope: InstallScope;
   repoRoot?: string;
   sourcePin?: SkillSourcePin;
@@ -62,9 +69,10 @@ export async function listInstalled(
 
   if (includeSystem) {
     const config = await readConfig();
-    for (const [toolId, toolInstalls] of Object.entries(config.installations)) {
+    for (const [stateKey, toolInstalls] of Object.entries(config.installations)) {
+      const { toolId, kind } = splitStateKey(stateKey);
       for (const [key, rec] of Object.entries(toolInstalls)) {
-        records.push(toRecord(key, toolId, 'system', rec, undefined));
+        records.push(toRecord(key, toolId, kind, 'system', rec, undefined));
       }
     }
   }
@@ -74,9 +82,10 @@ export async function listInstalled(
     if (repoRoot) {
       const repoConfig = await readRepoConfig(repoRoot);
       if (repoConfig) {
-        for (const [toolId, toolInstalls] of Object.entries(repoConfig.installations)) {
+        for (const [stateKey, toolInstalls] of Object.entries(repoConfig.installations)) {
+          const { toolId, kind } = splitStateKey(stateKey);
           for (const [key, rec] of Object.entries(toolInstalls)) {
-            records.push(toRecord(key, toolId, 'repo', rec, repoRoot));
+            records.push(toRecord(key, toolId, kind, 'repo', rec, repoRoot));
           }
         }
       }
@@ -86,9 +95,23 @@ export async function listInstalled(
   return records;
 }
 
+/** Whether a config `installations` key is a harness agent state key (e.g. "claude-code-agents"). */
+export function isAgentStateKey(stateKey: string): boolean {
+  return stateKey.endsWith(AGENT_STATE_KEY_SUFFIX);
+}
+
+/** Agent installs are tracked under a `<tool-id>-agents` state key; split it back apart. */
+function splitStateKey(stateKey: string): { toolId: string; kind: 'skill' | 'agent' } {
+  if (isAgentStateKey(stateKey)) {
+    return { toolId: stateKey.slice(0, -AGENT_STATE_KEY_SUFFIX.length), kind: 'agent' };
+  }
+  return { toolId: stateKey, kind: 'skill' };
+}
+
 function toRecord(
   installKey: string,
   toolId: string,
+  kind: 'skill' | 'agent',
   scope: InstallScope,
   rec: {
     bundleVersion?: string;
@@ -107,6 +130,7 @@ function toRecord(
     installKey,
     skillId,
     toolId,
+    kind,
     scope,
     ...(repoRoot ? { repoRoot } : {}),
     ...(rec.sourcePin ? { sourcePin: rec.sourcePin } : {}),
@@ -160,6 +184,13 @@ export async function updateInstalled(
 ): Promise<InstallResult> {
   const record = await resolveIdentifier(id, scopeHint, toolIdHint);
   const { sourcePin, toolId, scope, repoRoot } = record;
+
+  if (record.kind === 'agent') {
+    throw new Error(
+      `Cannot update '${id}': updating installed agents is not yet supported. ` +
+        `Remove and reinstall the agent instead.`,
+    );
+  }
 
   if (!sourcePin) {
     throw new Error(
@@ -240,6 +271,11 @@ export async function removeInstalled(
 ): Promise<UninstallResult> {
   const record = await resolveIdentifier(id, scopeHint, toolIdHint);
   const { installKey, toolId, scope, repoRoot } = record;
+
+  if (record.kind === 'agent') {
+    const agentProvisioner = createAgentProvisioner(toolId, scope, repoRoot);
+    return agentProvisioner.uninstallAgents([installKey]);
+  }
 
   const provisioner = createSkillProvisioner(toolId, scope, repoRoot);
   return provisioner.uninstall([installKey]);

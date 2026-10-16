@@ -45,6 +45,7 @@ vi.mock('../../../src/bundle/scanner.js', () => ({
   scanBundle: vi.fn(async () => ({
     skills: mockBundleSkills,
     rovoAgents: [],
+    agents: [],
   })),
 }));
 
@@ -191,10 +192,12 @@ describe('resolveDiscoverySkills', () => {
             knowledgeBaseFiles: [],
           },
         ],
+        agents: [],
       })
       .mockResolvedValueOnce({
         skills: mockBundleSkills,
         rovoAgents: [],
+        agents: [],
       });
 
     const doc: DiscoveryDocument = {
@@ -400,22 +403,24 @@ describe('resolveDiscoverySkills', () => {
     vi.mocked(extractBundle)
       .mockResolvedValueOnce({
         bundleDir: '/tmp/bundles/team-a',
-        manifest: { version: '1.0.0', agents: [] },
+        manifest: { version: '1.0.0', published: '2024-01-01T00:00:00Z', agents: [] },
         isNew: true,
       })
       .mockResolvedValueOnce({
         bundleDir: '/tmp/bundles/team-b',
-        manifest: { version: '1.0.0', agents: [] },
+        manifest: { version: '1.0.0', published: '2024-01-01T00:00:00Z', agents: [] },
         isNew: true,
       });
     vi.mocked(scanBundle)
       .mockResolvedValueOnce({
         skills: [{ ...mockBundleSkills[0]!, dirPath: '/tmp/bundles/team-a/http-skill-a' }],
         rovoAgents: [],
+        agents: [],
       })
       .mockResolvedValueOnce({
         skills: [{ ...mockBundleSkills[0]!, dirPath: '/tmp/bundles/team-b/http-skill-a' }],
         rovoAgents: [],
+        agents: [],
       });
 
     const result = await resolveDiscoverySkills({

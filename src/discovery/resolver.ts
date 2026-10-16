@@ -9,7 +9,7 @@
 import { downloadBundle } from '../bundle/downloader.js';
 import { extractBundle } from '../bundle/extractor.js';
 import type { BundleManifest } from '../bundle/manifest.js';
-import { scanBundle, type SkillInfo, type RovoAgentInfo } from '../bundle/scanner.js';
+import { scanBundle, type SkillInfo, type RovoAgentInfo, type AgentInfo } from '../bundle/scanner.js';
 import { importGitSkills } from './git-importer.js';
 import { downloadArtefact } from '../bundle/artefact-downloader.js';
 import { IntegrityError } from '../bundle/downloader.js';
@@ -35,6 +35,8 @@ export interface ResolvedSources {
   skills: ResolvedSkill[];
   /** All rovo agents successfully resolved from the discovery document. */
   rovoAgents: RovoAgentInfo[];
+  /** All harness agents (AGENT.md-based) successfully resolved from the discovery document. */
+  agents: AgentInfo[];
   /** Sources that failed to resolve, with error details. */
   errors: Array<{ source: DiscoverySource; error: string; isIntegrity: boolean }>;
   /** Bundle version if an HTTP bundle was downloaded (for cache management). */
@@ -96,6 +98,7 @@ export async function resolveDiscoverySkills(
   const authSession = options?.authSession;
   const allSkills: ResolvedSkill[] = [];
   const allRovoAgents: RovoAgentInfo[] = [];
+  const allAgents: AgentInfo[] = [];
   const errors: Array<{ source: DiscoverySource; error: string; isIntegrity: boolean }> = [];
   let bundleVersion: string | undefined;
   let manifest: BundleManifest | undefined;
@@ -136,6 +139,7 @@ export async function resolveDiscoverySkills(
           const httpPin = buildSourcePin(httpSource, version);
           allSkills.push(...contents.skills.map((skill) => ({ ...skill, sourcePin: httpPin, ...sourceMeta })));
           allRovoAgents.push(...contents.rovoAgents);
+          allAgents.push(...contents.agents);
 
           // Keep metadata for the Chrome Extension bridge and similar consumers.
           // Prefer a source that actually contributed Rovo agents.
@@ -196,6 +200,7 @@ export async function resolveDiscoverySkills(
   return {
     skills: allSkills,
     rovoAgents: allRovoAgents,
+    agents: allAgents,
     errors,
     bundleVersion,
     ...(manifest ? { manifest } : {}),

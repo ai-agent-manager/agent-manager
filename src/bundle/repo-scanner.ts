@@ -1,11 +1,13 @@
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import { scanBundle } from './scanner.js';
-import type { SkillInfo } from './scanner.js';
+import type { SkillInfo, AgentInfo } from './scanner.js';
 import type { RepoSkillSource } from './skill-source.js';
 
 export interface RepoScanResult {
   skills: SkillInfo[];
+  /** Harness agents discovered in the repo */
+  agents: AgentInfo[];
   /** The resolved skills directory used for scanning */
   skillsDir: string;
 }
@@ -53,7 +55,7 @@ async function scanSkillsDirectory(extractDir: string, repoUrl: string): Promise
     );
   }
 
-  return { skills: contents.skills, skillsDir };
+  return { skills: contents.skills, agents: contents.agents, skillsDir };
 }
 
 async function scanSingleSkill(
@@ -92,7 +94,7 @@ async function scanSingleSkill(
     );
   }
 
-  return { skills: [skill], skillsDir };
+  return { skills: [skill], agents: contents.agents, skillsDir };
 }
 
 async function isDirectory(p: string): Promise<boolean> {

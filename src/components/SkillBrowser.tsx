@@ -17,6 +17,10 @@ function flattenEntries(entries: CatalogueEntry[]): DisplayRow[] {
       for (const candidate of entry.candidates) {
         rows.push({ entry, candidate, key: `${entry.skillId}:${candidate.sourceName}` });
       }
+    } else if (entry.kind === 'agent') {
+      for (const candidate of entry.candidates) {
+        rows.push({ entry, candidate, key: `agent:${entry.skillId}:${candidate.sourceName}` });
+      }
     } else {
       rows.push({ entry, key: `rovo:${entry.skillId}` });
     }
@@ -91,15 +95,29 @@ export function SkillBrowser({ entries, onSelect, onBack }: SkillBrowserProps) {
               {'  '}
               {row.candidate ? (
                 <Text dimColor>
-                  {row.candidate.sourceType}
-                  {row.candidate.sourceStatus && (
+                  {row.entry.kind === 'agent' ? (
                     <>
+                      <Text color="yellow">agent</Text>
                       {' · '}
-                      <TrustBadge status={row.candidate.sourceStatus} />
+                      {row.entry.agent.tools.length > 0
+                        ? row.entry.agent.tools.join(', ')
+                        : 'all tools'}
+                      {' · '}
+                      {row.candidate.sourceName}
+                    </>
+                  ) : (
+                    <>
+                      {row.candidate.sourceType}
+                      {row.candidate.sourceStatus && (
+                        <>
+                          {' · '}
+                          <TrustBadge status={row.candidate.sourceStatus} />
+                        </>
+                      )}
+                      {' · '}
+                      {row.candidate.sourceName}
                     </>
                   )}
-                  {' · '}
-                  {row.candidate.sourceName}
                 </Text>
               ) : (
                 <Text color="magenta">rovo agent</Text>
