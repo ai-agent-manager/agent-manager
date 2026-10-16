@@ -63,6 +63,8 @@ export interface AuthSession {
 
 export interface GetValidBearerTokenOptions {
   onPrompt?: (authorizeUrl: string) => void;
+  /** Called after the authorization callback has been accepted. */
+  onCallback?: () => void;
   /**
    * When true, fall through to interactive login if cache/refresh cannot
    * produce a token. Default false (API / background callers).
@@ -95,6 +97,8 @@ export class AuthCancelledError extends AuthFlowError {
 export interface AuthenticateOptions {
   /** Cancels any in-flight stage (OIDC discovery, callback wait, token exchange/refresh). */
   signal?: AbortSignal;
+  /** Called after the authorization callback has been accepted. */
+  onCallback?: () => void;
 }
 
 function requireAuthConfig(auth: DiscoveryAuth): asserts auth is DiscoveryAuth & {
@@ -131,7 +135,13 @@ async function resolveBearerTokenUnlocked(
 ): Promise<AuthResult> {
   requireAuthConfig(auth);
 
-  const { onPrompt, allowInteractive = false, forceRefresh = false, signal } = options;
+  const {
+    onPrompt,
+    onCallback,
+    allowInteractive = false,
+    forceRefresh = false,
+    signal,
+  } = options;
 
   if (signal?.aborted) throw new AuthCancelledError();
 
@@ -175,7 +185,7 @@ async function resolveBearerTokenUnlocked(
 
     if (allowInteractive && onPrompt) {
       // Await here so callback/token-exchange rejections reach the normalizer.
-      return await interactiveLogin(baseUrl, auth, oidcConfig, onPrompt, signal);
+      return await interactiveLogin(baseUrl, auth, oidcConfig, onPrompt, onCallback, signal);
     }
 
     throw new AuthFlowError(
@@ -233,6 +243,7 @@ export async function authenticate(
     allowInteractive: true,
     onPrompt,
     signal: options.signal,
+    onCallback: options.onCallback,
   });
 }
 
@@ -244,6 +255,7 @@ async function interactiveLogin(
   auth: DiscoveryAuth & { oidcDiscoveryUrl: string; clientId: string },
   oidcConfig: OidcConfiguration,
   onPrompt: (authorizeUrl: string) => void,
+  onCallback: (() => void) | undefined,
   signal?: AbortSignal,
 ): Promise<AuthResult> {
   const codeVerifier = generateCodeVerifier();
@@ -268,6 +280,7 @@ async function interactiveLogin(
 
   // Wait for the callback
   const { code } = await waitForCallback(state, { signal });
+  onCallback?.();
 
   // Exchange code for tokens — still abortable: the inline prompt stays
   // visible while this fetch runs, so cancel must cover it too.
@@ -378,19 +391,68 @@ function toStoredTokens(
 }
 
 /**
+ * Reject anything that isn't a well-formed http(s) URL before it reaches a
+ * launcher. Authorization endpoints come from a remote OIDC discovery
+ * document (see fetchOidcConfiguration), which only checks that the field is
+ * a nonempty string — a hostile endpoint could otherwise smuggle shell
+ * metacharacters into the browser-launch command.
+ */
+function assertSafeBrowserUrl(url: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new AuthFlowError(`Refusing to open malformed authorization URL: ${url}`);
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new AuthFlowError(
+      `Refusing to open authorization URL with unsupported scheme '${parsed.protocol}'`,
+    );
+  }
+}
+
+/**
  * Open a URL in the user's default browser.
  */
 export function openInBrowser(url: string): Promise<void> {
-  const platform = getPlatform();
-  const cmd =
-    platform === 'macos'
-      ? 'open'
-      : platform === 'windows'
-        ? 'rundll32'
-        : 'xdg-open';
+  // Validate synchronously so a hostile URL is rejected before any process
+  // is spawned; callers await the launch itself.
+  assertSafeBrowserUrl(url);
 
-  const args = platform === 'windows' ? ['url.dll,FileProtocolHandler', url] : [url];
+  const platform = getPlatform();
+  let cmd: string;
+  let args: string[];
+  let options: { shell: false; windowsVerbatimArguments?: true };
+
+  if (platform === 'windows') {
+    // Route through PowerShell's -EncodedCommand (Base64 UTF-16LE) instead of
+    // `cmd /c start`. cmd.exe treats `&`, `|`, `^`, and even quoted `"` as
+    // command separators / escapes it re-parses, so no amount of manual
+    // quoting of the URL argument is safe — a URL containing a stray `"`
+    // could close the argument and inject arbitrary commands. PowerShell's
+    // encoded-command channel carries the URL as opaque data with no shell
+    // re-interpretation, so it cannot be split or escaped regardless of its
+    // contents. The URL is embedded as a single-quoted PowerShell string
+    // literal, where the only metacharacter is `'` itself (escaped by
+    // doubling it) — unlike double-quoted strings, single-quoted ones do not
+    // expand `$variables` or backtick escapes. windowsVerbatimArguments is
+    // required so Node does not re-quote the already-safe -EncodedCommand
+    // argument. -ExecutionPolicy is deliberately omitted: it only restricts
+    // loading .ps1 script files, not -EncodedCommand/-Command invocations.
+    const systemRoot = process.env.SystemRoot || process.env.windir || 'C:\\Windows';
+    cmd = `${systemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
+    const psLiteral = `'${url.replace(/'/g, "''")}'`;
+    const encodedCommand = Buffer.from(`Start-Process ${psLiteral}`, 'utf16le').toString('base64');
+    args = ['-NoProfile', '-NonInteractive', '-EncodedCommand', encodedCommand];
+    options = { shell: false, windowsVerbatimArguments: true };
+  } else {
+    cmd = platform === 'macos' ? 'open' : 'xdg-open';
+    args = [url];
+    options = { shell: false };
+  }
+
   return new Promise((resolve, reject) => {
-    execFile(cmd, args, { shell: false }, (error) => error ? reject(error) : resolve());
+    execFile(cmd, args, options, (error) => error ? reject(error) : resolve());
   });
 }

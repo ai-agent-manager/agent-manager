@@ -22,6 +22,8 @@ export interface SessionEvents {
   runAuth?: <T>(run: () => Promise<T>) => Promise<T>;
   onProgress?: (message: string) => void;
   onAuthPrompt?: (authorizeUrl: string) => void;
+  /** Fired when the OAuth callback arrives, before the token exchange completes. */
+  onAuthCallback?: () => void;
   onWarning?: (warning: string) => void;
   signal?: AbortSignal;
 }
@@ -112,7 +114,7 @@ export async function acquireDiscoverySkills(
     source: Extract<BundleSource, { type: 'discovery' }>,
     setLoadingMessage: (message: string) => void,
     onAuthPrompt?: (authorizeUrl: string) => void,
-    options: Pick<SessionEvents, "signal" | "onWarning" | "runAuth"> = {},
+    options: Pick<SessionEvents, "signal" | "onWarning" | "runAuth" | "onAuthCallback"> = {},
 ): Promise<{
     skills: ResolvedSkill[];
     rovoAgents: RovoAgentInfo[];
@@ -133,7 +135,7 @@ export async function acquireDiscoverySkills(
         setLoadingMessage("Authenticating...");
         const resolveAuth = () => withOperationCancellation(options.signal, () => onAuthPrompt
             ? authenticate(source.baseUrl, source.discovery.auth!, onAuthPrompt,
-                ...(options.signal ? [{ signal: options.signal }] : []))
+                { signal: options.signal, onCallback: options.onAuthCallback })
             : getValidBearerToken(source.baseUrl, source.discovery.auth!, { signal: options.signal })
                 .then((bearerToken) => ({ bearerToken, fromCache: true })));
         const authResult: AuthResult = await (options.runAuth ? options.runAuth(resolveAuth) : resolveAuth());
@@ -287,7 +289,7 @@ async function loadSessionState(
   const progress = options.onProgress ?? (() => {});
   if (source.type === 'discovery') {
     const acquired = await acquireDiscoverySkills(source, progress, options.onAuthPrompt,
-      { signal: options.signal, onWarning: warn, ...(options.runAuth ? { runAuth: options.runAuth } : {}) });
+      { signal: options.signal, onWarning: warn, onAuthCallback: options.onAuthCallback, ...(options.runAuth ? { runAuth: options.runAuth } : {}) });
     session.discoverySkills = acquired.skills;
     session.discoveryBundleVersion = acquired.bundleVersion;
     session.manifest = acquired.manifest;

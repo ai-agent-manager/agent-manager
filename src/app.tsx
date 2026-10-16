@@ -93,6 +93,7 @@ export function App({ source, directInstallSource, forceUpdate, sourceError }: A
     const [loadingMessage, setLoadingMessage] = useState("Initializing...");
     const [error, setError] = useState<string | null>(null);
     const [warning, setWarning] = useState<string | null>(null);
+    const [authStatus, setAuthStatus] = useState<'waiting' | 'completing'>('waiting');
     const [startupNotices, setStartupNotices] = useState<StartupUpdateNotice[]>([]);
     const [repoBundleContents, setRepoBundleContents] = useState<BundleContents | null>(null);
     const [repoBundleVersion, setRepoBundleVersion] = useState<string | null>(null);
@@ -207,13 +208,27 @@ export function App({ source, directInstallSource, forceUpdate, sourceError }: A
     };
 
     const handleAuthPrompt = useCallback((url: string) => {
+        setAuthStatus('waiting');
         setAuthorizeUrl(url);
         setScreen("auth");
     }, []);
 
-    const handleAuthOpen = useCallback(() => {
+    const handleAuthCallback = useCallback(() => {
+        setAuthStatus('completing');
+        setLoadingMessage("Completing sign-in...");
+        setScreen("loading");
+    }, []);
+
+    const handleAuthOpen = useCallback(async () => {
         if (authorizeUrl) {
-            return openInBrowser(authorizeUrl);
+            try {
+                await openInBrowser(authorizeUrl);
+            } catch (openError) {
+                // Show error and return to main menu - browser launch failed
+                setError(openError instanceof Error ? openError.message : String(openError));
+                setAuthorizeUrl(null);
+                setScreen("main-menu");
+            }
         }
     }, [authorizeUrl]);
 
@@ -242,6 +257,7 @@ export function App({ source, directInstallSource, forceUpdate, sourceError }: A
                     forceUpdate, signal: controller.signal, deferMembership: true,
                     onProgress: (message) => { if (active()) setLoadingMessage(message); },
                     onAuthPrompt: (url) => { if (active()) handleAuthPrompt(url); },
+                    onAuthCallback: () => { if (active()) handleAuthCallback(); },
                     onWarning,
                 });
                 if (!active()) return;
@@ -361,7 +377,11 @@ export function App({ source, directInstallSource, forceUpdate, sourceError }: A
     if (screen === "auth" && authorizeUrl) {
         return (
             <Box flexDirection="column">
-                <AuthPrompt authorizeUrl={authorizeUrl} onOpen={handleAuthOpen} />
+                <AuthPrompt
+                    authorizeUrl={authorizeUrl}
+                    onOpen={handleAuthOpen}
+                    status={authStatus}
+                />
             </Box>
         );
     }
