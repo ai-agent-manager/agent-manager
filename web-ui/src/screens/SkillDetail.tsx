@@ -5,6 +5,7 @@ import type { CatalogueEntryDto, ContextDto, InstallResultDto, JobDto, SessionDt
 import type { ApiClient } from '../api/client.js';
 import { useResource } from '../api/hooks.js';
 import { ErrorMessage, Spinner } from '../components/Feedback.js';
+import ReactMarkdown from 'react-markdown';
 
 export function SkillDetail({ client, skillId, session, context, jobs, onJob }: { client: ApiClient; skillId: string; session?: SessionDto; context?: ContextDto; jobs: JobDto[]; onJob(id: string): void }) {
   const [candidate, setCandidate] = useState('');
@@ -55,7 +56,7 @@ export function SkillDetail({ client, skillId, session, context, jobs, onJob }: 
   return <>
     <a className="back" href="#/">← All skills</a>
     <div className="page-heading"><div><p className="eyebrow">SKILL</p><h1>{entry.displayName}</h1><p className="muted">{entry.description}</p></div></div>
-    <div className="detail-grid"><section className="panel"><h2>About this skill</h2>{detail.loading ? <Spinner>Loading skill details…</Spinner> : readme ? <pre className="readme">{readme}</pre> : <p className="muted">{entry.description || 'No README is available.'}</p>}</section>
+    <div className="detail-grid"><section className="panel"><h2>About this skill</h2>{detail.loading ? <Spinner>Loading skill details…</Spinner> : readme ? <ReactMarkdown className="readme">{readme}</ReactMarkdown> : <p className="muted">{entry.description || 'No README is available.'}</p>}</section>
       <form className="panel install-form" onSubmit={(event) => void install(event)}><h2>Install skill</h2>
         <label>Source<select value={candidate} onChange={(event) => setCandidate(event.target.value)} required><option value="" disabled>Select a source</option>{entry.candidates.map((item, index) => <option key={`${item.installKey}-${index}`} value={item.installKey}>{item.sourceName}{item.sourceStatus ? ` · ${item.sourceStatus}` : ''}{item.version ? ` · ${item.version}` : ''}</option>)}</select></label>
         <label>Install scope<select value={scope} onChange={(event) => { setScope(event.target.value as 'system' | 'repo'); setAppliedRoot(repoRoot); }}><option value="system">Personal · all your projects</option><option value="repo" disabled={!context?.repoRoot && !desktopBridge()}>Repository · {context?.repoName ?? (desktopBridge() ? 'choose a repository' : 'no repository detected')}</option></select></label>
