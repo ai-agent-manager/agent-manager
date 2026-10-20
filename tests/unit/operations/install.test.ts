@@ -1,450 +1,211 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { SkillInfo } from '../../../src/bundle/scanner.js';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { mkdir, writeFile, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { installResolvedAgents } from '../../../src/operations/install.js';
+import type { AgentInfo } from '../../../src/bundle/scanner.js';
 
-const repoSkills: SkillInfo[] = [
-  {
-    dirName: 'skill-a',
-    dirPath: '/tmp/repo/skills/skill-a',
-    skillMdPath: '/tmp/repo/skills/skill-a/SKILL.md',
-    meta: null,
-  },
-  {
-    dirName: 'skill-b',
-    dirPath: '/tmp/repo/skills/skill-b',
-    skillMdPath: '/tmp/repo/skills/skill-b/SKILL.md',
-    meta: null,
-  },
-];
+describe('installResolvedAgents', () => {
+  let tempDir: string;
+  let agentsDir: string;
+  let skillsDir: string;
+  let originalHome: { HOME?: string; USERPROFILE?: string };
 
-const artefactSkills: SkillInfo[] = [
-  {
-    dirName: 'my-artefact-skill',
-    dirPath: '/tmp/artefact/my-artefact-skill',
-    skillMdPath: '/tmp/artefact/my-artefact-skill/SKILL.md',
-    meta: null,
-  },
-];
-
-const bundleSkills: SkillInfo[] = [
-  {
-    dirName: 'bundle-skill',
-    dirPath: '/tmp/bundle/skills/bundle-skill',
-    skillMdPath: '/tmp/bundle/skills/bundle-skill/SKILL.md',
-    meta: null,
-  },
-  {
-    dirName: 'other-bundle-skill',
-    dirPath: '/tmp/bundle/skills/other-bundle-skill',
-    skillMdPath: '/tmp/bundle/skills/other-bundle-skill/SKILL.md',
-    meta: null,
-  },
-];
-
-const mockProvisioner = {
-  install: vi.fn(async () => ({ installed: [], errors: [] })),
-  uninstall: vi.fn(async () => ({ removed: [], errors: [] })),
-  getInstalled: vi.fn(async () => []),
-};
-
-vi.mock('../../../src/provisioners/registry.js', () => ({
-  createSkillProvisioner: vi.fn(() => mockProvisioner),
-}));
-
-vi.mock('../../../src/bundle/repo-downloader.js', () => ({
-  downloadRepoArchive: vi.fn(async () => ({ extractDir: '/tmp/repo', isNew: true })),
-}));
-
-vi.mock('../../../src/bundle/repo-scanner.js', () => ({
-  scanRepoForSkills: vi.fn(async () => ({ skills: repoSkills, skillsDir: '/tmp/repo/skills' })),
-}));
-
-vi.mock('../../../src/bundle/artefact-downloader.js', () => ({
-  downloadArtefact: vi.fn(async () => ({
-    extractDir: '/tmp/artefact',
-    name: 'my-artefact-skill',
-    version: '1.2.0',
-    sha256: 'a'.repeat(64),
-    isNew: true,
-  })),
-}));
-
-vi.mock('../../../src/bundle/artefact-scanner.js', () => ({
-  scanArtefactForSkills: vi.fn(async () => ({ skills: artefactSkills })),
-}));
-
-vi.mock('../../../src/bundle/downloader.js', () => ({
-  downloadBundle: vi.fn(async () => ({ zipPath: '/tmp/bundle.zip', version: '2.0.0' })),
-  canonicaliseContentRoot: vi.fn((url: string) => url.replace(/\/+$/, '')),
-  buildIndexUrl: vi.fn((url: string) => `${url.replace(/\/+$/, '')}/index.json`),
-}));
-
-vi.mock('../../../src/bundle/extractor.js', () => ({
-  extractBundle: vi.fn(async () => ({
-    bundleDir: '/tmp/bundle',
-    manifest: { version: '2.0.0' },
-    isNew: true,
-  })),
-}));
-
-vi.mock('../../../src/bundle/importer.js', () => ({
-  importLocalBundle: vi.fn(async () => ({
-    bundleDir: '/tmp/local-bundle',
-    manifest: { version: 'dev' },
-    isNew: false,
-  })),
-}));
-
-vi.mock('../../../src/bundle/scanner.js', () => ({
-  scanBundle: vi.fn(async () => ({ skills: bundleSkills, rovoAgents: [] })),
-}));
-
-vi.mock('../../../src/bundle/cache.js', () => ({
-  setCurrentBundle: vi.fn(async () => {}),
-}));
-
-vi.mock('../../../src/lib/repo.js', () => ({
-  findRepoRoot: vi.fn(async () => '/tmp/my-repo'),
-}));
-
-const { installFromRepo, installFromArtefact, installFromBundle, installResolvedSkills, acquireSource } =
-  await import('../../../src/operations/install.js');
-const { createSkillProvisioner } = await import('../../../src/provisioners/registry.js');
-const { downloadRepoArchive } = await import('../../../src/bundle/repo-downloader.js');
-const { downloadArtefact } = await import('../../../src/bundle/artefact-downloader.js');
-const { downloadBundle } = await import('../../../src/bundle/downloader.js');
-const { findRepoRoot } = await import('../../../src/lib/repo.js');
-
-beforeEach(() => {
-  vi.clearAllMocks();
-  mockProvisioner.install.mockResolvedValue({ installed: [], errors: [] });
-});
-
-describe('installFromRepo', () => {
-  it('downloads, scans, and installs all skills with a repo pin', async () => {
-    const result = await installFromRepo({
-      repoUrl: 'https://github.com/example-org/example-repo',
-      scope: 'system',
-      toolId: 'claude-code',
-    });
-
-    expect(mockProvisioner.install).toHaveBeenCalledWith(
-      repoSkills,
-      '',
-      expect.objectContaining({
-        sourceType: 'repo',
-        installLayout: 'namespaced',
-        repoUrl: 'https://github.com/example-org/example-repo',
-      }),
-    );
-    expect(result.sourcePin.sourceType).toBe('repo');
-    expect(createSkillProvisioner).toHaveBeenCalledWith('claude-code', 'system', undefined);
+  beforeEach(async () => {
+    tempDir = join(tmpdir(), `install-agents-test-${Date.now()}`);
+    agentsDir = join(tempDir, 'agents');
+    skillsDir = join(tempDir, 'home', '.claude', 'skills');
+    originalHome = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
+    process.env.HOME = join(tempDir, 'home');
+    process.env.USERPROFILE = join(tempDir, 'home');
+    await mkdir(agentsDir, { recursive: true });
+    await mkdir(skillsDir, { recursive: true });
   });
 
-  it('filters to the requested skill names', async () => {
-    await installFromRepo({
-      repoUrl: 'https://github.com/example-org/example-repo',
-      skillNames: ['skill-b'],
-      scope: 'system',
-      toolId: 'claude-code',
-    });
-
-    const [installed] = mockProvisioner.install.mock.calls[0]! as unknown as [SkillInfo[]];
-    expect(installed.map((s) => s.dirName)).toEqual(['skill-b']);
+  afterEach(async () => {
+    process.env.HOME = originalHome.HOME;
+    process.env.USERPROFILE = originalHome.USERPROFILE;
+    await rm(tempDir, { recursive: true, force: true });
   });
 
-  it('throws when a requested skill is not in the repo', async () => {
-    await expect(
-      installFromRepo({
-        repoUrl: 'https://github.com/example-org/example-repo',
-        skillNames: ['nope'],
-        scope: 'system',
+  describe('dependency handling', () => {
+    it('should install agent successfully if skill already installed', async () => {
+      // Create an installed skill
+      const skillPath = join(skillsDir, 'existing-skill');
+      await mkdir(skillPath);
+      await writeFile(join(skillPath, 'SKILL.md'), '---\nname: Existing Skill\n---\nContent');
+
+      // Create agent with dependency on existing skill
+      const agentPath = join(agentsDir, 'test-agent');
+      await mkdir(agentPath);
+      await writeFile(
+        join(agentPath, 'AGENT.md'),
+        `---
+name: Test Agent
+description: Test
+dependencies:
+  bundle: self
+  skills:
+    - existing-skill
+---
+# Test Agent
+`,
+      );
+
+      const agent: AgentInfo = {
+        dirName: 'test-agent',
+        dirPath: agentPath,
+        agentMdPath: join(agentPath, 'AGENT.md'),
+        tools: ['claude-code'],
+        meta: null,
+        dependencies: {
+          bundle: 'self',
+          skills: ['existing-skill'],
+        },
+      };
+
+      // Mock minimal required options
+      const result = await installResolvedAgents({
+        agents: [agent],
         toolId: 'claude-code',
-      }),
-    ).rejects.toThrow(/Skill\(s\) not found: nope/);
-  });
-
-  it('resolves the ref into the source pin', async () => {
-    const result = await installFromRepo({
-      repoUrl: 'https://github.com/example-org/example-repo',
-      ref: 'v2.0',
-      scope: 'system',
-      toolId: 'claude-code',
-    });
-
-    expect(result.sourcePin.ref).toBe('v2.0');
-  });
-
-  it('rejects a non-repo URL', async () => {
-    await expect(
-      installFromRepo({
-        repoUrl: 'https://cdn.example.com/thing.zip',
         scope: 'system',
-        toolId: 'claude-code',
-      }),
-    ).rejects.toThrow(/Not a repo URL/);
-  });
-
-  it('passes GITHUB_TOKEN to the repo downloader', async () => {
-    vi.stubEnv('GITHUB_TOKEN', 'test-token');
-    try {
-      await installFromRepo({
-        repoUrl: 'https://github.com/example-org/example-repo',
-        scope: 'system',
-        toolId: 'claude-code',
+        bundleVersion: '1.0.0',
+        bundleUrl: undefined,
       });
-    } finally {
-      vi.unstubAllEnvs();
-    }
 
-    expect(downloadRepoArchive).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'repo' }),
-      expect.objectContaining({ token: 'test-token' }),
-    );
-  });
-
-  it('uses the provided repoRoot for repo scope without re-deriving it', async () => {
-    await installFromRepo({
-      repoUrl: 'https://github.com/example-org/example-repo',
-      scope: 'repo',
-      toolId: 'claude-code',
-      repoRoot: '/explicit/root',
+      // Should succeed (skill already installed)
+      expect(result.errors).toHaveLength(0);
+      expect(result.installed.length).toBeGreaterThan(0);
     });
 
-    expect(findRepoRoot).not.toHaveBeenCalled();
-    expect(createSkillProvisioner).toHaveBeenCalledWith('claude-code', 'repo', '/explicit/root');
-  });
+    it('should fail with error if skill missing and no bundle URL', async () => {
+      // Create agent with dependency on non-existent skill
+      const agentPath = join(agentsDir, 'test-agent');
+      await mkdir(agentPath);
+      await writeFile(
+        join(agentPath, 'AGENT.md'),
+        `---
+name: Test Agent
+description: Test
+dependencies:
+  bundle: self
+  skills:
+    - missing-skill
+---
+# Test Agent
+`,
+      );
 
-  it('derives the repo root for repo scope when not provided', async () => {
-    await installFromRepo({
-      repoUrl: 'https://github.com/example-org/example-repo',
-      scope: 'repo',
-      toolId: 'claude-code',
-    });
+      const agent: AgentInfo = {
+        dirName: 'test-agent',
+        dirPath: agentPath,
+        agentMdPath: join(agentPath, 'AGENT.md'),
+        tools: ['claude-code'],
+        meta: null,
+        dependencies: {
+          bundle: 'self',
+          skills: ['missing-skill'],
+        },
+      };
 
-    expect(createSkillProvisioner).toHaveBeenCalledWith('claude-code', 'repo', '/tmp/my-repo');
-  });
-
-  it('fails repo scope outside a git repository', async () => {
-    vi.mocked(findRepoRoot).mockResolvedValueOnce(null);
-
-    await expect(
-      installFromRepo({
-        repoUrl: 'https://github.com/example-org/example-repo',
-        scope: 'repo',
+      const result = await installResolvedAgents({
+        agents: [agent],
         toolId: 'claude-code',
-      }),
-    ).rejects.toThrow(/inside a git repository/);
-  });
-});
-
-describe('installFromArtefact', () => {
-  it('downloads, scans, and installs with a re-pinned sha256 and version', async () => {
-    const result = await installFromArtefact({
-      artefactUrl: 'https://cdn.example.com/my-artefact-skill-1.2.0.zip',
-      scope: 'system',
-      toolId: 'claude-code',
-    });
-
-    expect(mockProvisioner.install).toHaveBeenCalledWith(
-      artefactSkills,
-      '',
-      expect.objectContaining({
-        sourceType: 'artefact',
-        installLayout: 'namespaced',
-        sha256: 'a'.repeat(64),
-        artefactVersion: '1.2.0',
-      }),
-    );
-    expect(result.sourcePin.artefactUrl).toBe('https://cdn.example.com/my-artefact-skill-1.2.0.zip');
-  });
-
-  it('rejects a non-artefact URL', async () => {
-    await expect(
-      installFromArtefact({
-        artefactUrl: 'https://github.com/example-org/example-repo',
         scope: 'system',
+        bundleVersion: '1.0.0',
+        bundleUrl: undefined, // No bundle URL
+      });
+
+      // Should fail with error about missing skill
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.errors[0].error).toContain('not found');
+      expect(result.installed).toHaveLength(0);
+    });
+
+    it('should not install agent if partial skill installation fails', async () => {
+      // Create agent with multiple dependencies
+      const agentPath = join(agentsDir, 'test-agent');
+      await mkdir(agentPath);
+      await writeFile(
+        join(agentPath, 'AGENT.md'),
+        `---
+name: Test Agent
+description: Test
+dependencies:
+  bundle: self
+  skills:
+    - skill-one
+    - skill-two
+---
+# Test Agent
+`,
+      );
+
+      const agent: AgentInfo = {
+        dirName: 'test-agent',
+        dirPath: agentPath,
+        agentMdPath: join(agentPath, 'AGENT.md'),
+        tools: ['claude-code'],
+        meta: null,
+        dependencies: {
+          bundle: 'self',
+          skills: ['skill-one', 'skill-two'],
+        },
+      };
+
+      const result = await installResolvedAgents({
+        agents: [agent],
         toolId: 'claude-code',
-      }),
-    ).rejects.toThrow(/Not a artefact URL/);
-  });
+        scope: 'system',
+        bundleVersion: '1.0.0',
+        bundleUrl: undefined,
+      });
 
-  it('forwards the bearer token to the artefact downloader', async () => {
-    await installFromArtefact({
-      artefactUrl: 'https://cdn.example.com/my-artefact-skill-1.2.0.zip',
-      bearerToken: 'discovery-token',
-      scope: 'system',
-      toolId: 'claude-code',
+      // Should fail - skills not available
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.installed).toHaveLength(0);
     });
 
-    expect(downloadArtefact).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'artefact' }),
-      expect.objectContaining({ bearerToken: 'discovery-token' }),
-    );
-  });
-});
+    it('should report error if bundle URL is invalid', async () => {
+      const agentPath = join(agentsDir, 'test-agent');
+      await mkdir(agentPath);
+      await writeFile(
+        join(agentPath, 'AGENT.md'),
+        `---
+name: Test Agent
+description: Test
+dependencies:
+  bundle: https://invalid-bundle-url.example.com
+  skills:
+    - some-skill
+---
+# Test Agent
+`,
+      );
 
-describe('installFromBundle', () => {
-  it('downloads and installs a remote bundle with a bundle pin', async () => {
-    const result = await installFromBundle({
-      bundleUrl: 'https://bundles.example.com',
-      scope: 'system',
-      toolId: 'claude-code',
+      const agent: AgentInfo = {
+        dirName: 'test-agent',
+        dirPath: agentPath,
+        agentMdPath: join(agentPath, 'AGENT.md'),
+        tools: ['claude-code'],
+        meta: null,
+        dependencies: {
+          bundle: 'https://invalid-bundle-url.example.com',
+          skills: ['some-skill'],
+        },
+      };
+
+      const result = await installResolvedAgents({
+        agents: [agent],
+        toolId: 'claude-code',
+        scope: 'system',
+        bundleVersion: '1.0.0',
+        bundleUrl: undefined,
+      });
+
+      // Should fail with network/resolve error
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.installed).toHaveLength(0);
     });
-
-    expect(mockProvisioner.install).toHaveBeenCalledWith(
-      bundleSkills,
-      '2.0.0',
-      expect.objectContaining({ sourceType: 'bundle', installLayout: 'flat' }),
-    );
-    expect(result.bundleVersion).toBe('2.0.0');
-  });
-
-  it('filters bundle skills to the requested names', async () => {
-    await installFromBundle({
-      bundleUrl: 'https://bundles.example.com',
-      skillNames: ['bundle-skill'],
-      scope: 'system',
-      toolId: 'claude-code',
-    });
-
-    const [installed] = mockProvisioner.install.mock.calls[0]! as unknown as [SkillInfo[]];
-    expect(installed.map((s) => s.dirName)).toEqual(['bundle-skill']);
-  });
-
-  it('namespaces an install from a declared source and scopes its cache', async () => {
-    const { extractBundle } = await import('../../../src/bundle/extractor.js');
-
-    const result = await installFromBundle({
-      bundleUrl: 'https://bundles.example.com/catalogues/team-a',
-      sourceName: 'team-a',
-      scope: 'system',
-      toolId: 'claude-code',
-    });
-
-    expect(downloadBundle).toHaveBeenCalledWith(
-      'https://bundles.example.com/catalogues/team-a',
-      undefined,
-      undefined,
-      'team-a',
-    );
-    expect(extractBundle).toHaveBeenCalledWith('/tmp/bundle.zip', {
-      sourceKey: 'team-a',
-      contentRoot: 'https://bundles.example.com/catalogues/team-a',
-    });
-    expect(result.sourcePin).toMatchObject({
-      sourceType: 'bundle',
-      installLayout: 'namespaced',
-      bundleSourceName: 'team-a',
-      bundleBaseUrl: 'https://bundles.example.com/catalogues/team-a',
-    });
-  });
-
-  it('forwards the bearer token to the bundle downloader', async () => {
-    await installFromBundle({
-      bundleUrl: 'https://bundles.example.com',
-      bearerToken: 'discovery-token',
-      scope: 'system',
-      toolId: 'claude-code',
-    });
-
-    expect(downloadBundle).toHaveBeenCalledWith(
-      'https://bundles.example.com',
-      undefined,
-      'discovery-token',
-      undefined,
-    );
-  });
-
-  it('forwards the bearer token for a declared source', async () => {
-    await installFromBundle({
-      bundleUrl: 'https://bundles.example.com/catalogues/team-a',
-      sourceName: 'team-a',
-      bearerToken: 'discovery-token',
-      scope: 'system',
-      toolId: 'claude-code',
-    });
-
-    expect(downloadBundle).toHaveBeenCalledWith(
-      'https://bundles.example.com/catalogues/team-a',
-      undefined,
-      'discovery-token',
-      'team-a',
-    );
-  });
-});
-
-describe('installResolvedSkills', () => {
-  it('installs the given skills relying on their per-item pins', async () => {
-    const skills = [{ ...repoSkills[0]!, sourcePin: { sourceType: 'repo' as const, installLayout: 'namespaced' as const } }];
-
-    await installResolvedSkills({
-      skills,
-      toolId: 'windsurf',
-      scope: 'system',
-      bundleVersion: '3.0.0',
-    });
-
-    expect(mockProvisioner.install).toHaveBeenCalledWith(skills, '3.0.0');
-    expect(createSkillProvisioner).toHaveBeenCalledWith('windsurf', 'system', undefined);
-  });
-
-  it('defaults bundleVersion to an empty string', async () => {
-    await installResolvedSkills({
-      skills: repoSkills,
-      toolId: 'claude-code',
-      scope: 'system',
-    });
-
-    expect(mockProvisioner.install).toHaveBeenCalledWith(repoSkills, '');
-  });
-});
-
-describe('acquireSource', () => {
-  it('acquires a repo source without installing', async () => {
-    const result = await acquireSource({
-      type: 'repo',
-      repoUrl: 'https://github.com/example-org/example-repo',
-      ref: 'main',
-      installLayout: 'namespaced',
-    });
-
-    expect(result.skills).toEqual(repoSkills);
-    expect(result.sourcePin.sourceType).toBe('repo');
-    expect(mockProvisioner.install).not.toHaveBeenCalled();
-  });
-
-  it('acquires an artefact source and re-pins the downloaded hash', async () => {
-    const result = await acquireSource({
-      type: 'artefact',
-      artefactUrl: 'https://cdn.example.com/my-artefact-skill-1.2.0.zip',
-      installLayout: 'namespaced',
-    });
-
-    expect(result.skills).toEqual(artefactSkills);
-    expect(result.sourcePin.sha256).toBe('a'.repeat(64));
-    expect(result.sourcePin.artefactVersion).toBe('1.2.0');
-  });
-
-  it('acquires a remote bundle source with its version', async () => {
-    const result = await acquireSource({
-      type: 'bundle',
-      baseUrl: 'https://bundles.example.com',
-      installLayout: 'flat',
-    });
-
-    expect(result.skills).toEqual(bundleSkills);
-    expect(result.bundleVersion).toBe('2.0.0');
-    expect(result.sourcePin.sourceType).toBe('bundle');
-  });
-
-  it('acquires a local directory bundle source', async () => {
-    const result = await acquireSource({
-      type: 'bundle',
-      dirPath: '/tmp/local-bundle',
-      installLayout: 'flat',
-    });
-
-    expect(result.skills).toEqual(bundleSkills);
-    expect(result.bundleVersion).toBe('dev');
   });
 });

@@ -3,7 +3,7 @@ import { parse as parseYaml } from 'yaml';
 import { downloadBundle } from './bundle/downloader.js';
 import { extractBundle } from './bundle/extractor.js';
 import { importLocalBundle } from './bundle/importer.js';
-import { scanBundle, type SkillInfo } from './bundle/scanner.js';
+import { scanBundle, type SkillInfo, type AgentInfo } from './bundle/scanner.js';
 import { setCurrentBundle } from './bundle/cache.js';
 import { resolveSource, type StartupSource } from './bundle/source.js';
 import {
@@ -26,6 +26,7 @@ import { DiscoveryError, fetchDiscoveryDocument, resolveDiscoverySkills } from '
 import { parseGitRemoteInput } from './discovery/git-probe.js';
 import type { DiscoveryDocument } from './discovery/types.js';
 import { authenticate, type AuthSession } from './auth/index.js';
+import { installResolvedAgents } from './operations/install.js';
 import {
   isProjectsExclusiveSource,
   listProjects,
@@ -43,6 +44,8 @@ export interface HeadlessConfig {
   tools: string[];
   scope: InstallScope;
   skills: string[];
+  /** Harness agents to install (AGENT.md-based, installed locally) */
+  agents: string[];
   bundleVersion?: string;
   /** Expected SHA-256 of the artefact zip — artefact sources only. */
   artefactSha256?: string;
@@ -66,8 +69,17 @@ export async function parseHeadlessConfig(configPath: string): Promise<HeadlessC
     throw new Error("ai-skills.yml: at least one tool must be specified");
   }
 
-  if (!parsed.skills || !Array.isArray(parsed.skills) || parsed.skills.length === 0) {
-    throw new Error('ai-skills.yml: "skills" must be a non-empty list of skill names');
+  // Parse skills (optional if agents is provided)
+  const skills = Array.isArray(parsed.skills) ? (parsed.skills as string[]) : [];
+
+  // Parse agents (optional if skills is provided)
+  const agents = Array.isArray(parsed.agents) ? (parsed.agents as string[]) : [];
+
+  // Validate that at least one of skills or agents is specified
+  if (skills.length === 0 && agents.length === 0) {
+    throw new Error(
+      'ai-skills.yml: at least one of "skills" or "agents" must be a non-empty list'
+    );
   }
 
   const scope = (parsed.scope as InstallScope) ?? "repo";
@@ -89,7 +101,8 @@ export async function parseHeadlessConfig(configPath: string): Promise<HeadlessC
   return {
     tools,
     scope,
-    skills: parsed.skills as string[],
+    skills,
+    agents,
     bundleVersion,
     artefactSha256,
   };
@@ -119,10 +132,16 @@ export async function runHeadless(
   console.log(`  Config:  ${configPath}`);
   console.log(`  Tools:   ${config.tools.join(", ")}`);
   console.log(`  Scope:   ${config.scope}`);
-  console.log(`  Skills:  ${config.skills.join(", ")}\n`);
+  if (config.skills.length > 0) {
+    console.log(`  Skills:  ${config.skills.join(", ")}`);
+  }
+  if (config.agents.length > 0) {
+    console.log(`  Agents:  ${config.agents.join(", ")}`);
+  }
   console.log(`  Bundle version: ${config.bundleVersion ?? "latest"}\n`);
 
   let allSkills: SkillInfo[];
+  let allAgents: AgentInfo[] = [];
   let bundleVersion: string;
   let sourcePin: SkillSourcePin | undefined;
 
@@ -219,6 +238,7 @@ export async function runHeadless(
     }
 
     allSkills = result.skills;
+    allAgents = result.agents;
     bundleVersion = result.bundleVersion ?? "discovery";
 
     if (isProjectsExclusiveSource(discovery.projects)) {
@@ -269,6 +289,7 @@ export async function runHeadless(
     const scanResult = await scanRepoForSkills(extractDir, repo);
 
     allSkills = scanResult.skills;
+    allAgents = scanResult.agents;
     bundleVersion = '';
     sourcePin = buildSourcePin(repo);
   } else if (skillSource && isArtefactSource(skillSource)) {
@@ -315,6 +336,7 @@ export async function runHeadless(
     console.log(`[agentman] Bundle version: ${bundleVersion}`);
     const contents = await scanBundle(bundleDir);
     allSkills = contents.skills;
+    allAgents = contents.agents;
   } else {
     throw new Error(
       skillSource
@@ -380,8 +402,34 @@ export async function runHeadless(
     process.exit(1);
   }
 
-  if (toInstall.length === 0) {
-    console.error("\n[agentman] ERROR: No valid skills to install. Exiting.");
+  // Match requested agents
+  const agentsToInstall: AgentInfo[] = [];
+  const agentsNotFound: string[] = [];
+
+  for (const agentName of config.agents) {
+    const agent = allAgents.find((a) => a.dirName === agentName);
+    if (agent) {
+      agentsToInstall.push(agent);
+    } else {
+      agentsNotFound.push(agentName);
+    }
+  }
+
+  if (agentsNotFound.length > 0) {
+    console.warn(`\n[agentman] WARNING: The following agents were not found:`);
+    for (const name of agentsNotFound) {
+      console.warn(`  - ${name}`);
+    }
+    console.warn(`\n  Available agents: ${allAgents.map((a) => a.dirName).join(", ")}`);
+  }
+
+  if (agentsNotFound.length > 0) {
+    console.error("\n[agentman] ERROR: Requested agent set is invalid. Nothing was installed.");
+    process.exit(1);
+  }
+
+  if (toInstall.length === 0 && agentsToInstall.length === 0) {
+    console.error("\n[agentman] ERROR: No valid skills or agents to install. Exiting.");
     process.exit(1);
   }
 
@@ -389,23 +437,70 @@ export async function runHeadless(
   let hasErrors = false;
 
   for (const toolId of config.tools) {
-    console.log(`\n[agentman] Installing ${toInstall.length} skill(s) for ${toolId}...`);
-    const provisioner = createSkillProvisioner(toolId, config.scope, repoRoot);
-    const result = await provisioner.install(toInstall, bundleVersion, sourcePin);
+    // Install skills
+    if (toInstall.length > 0) {
+      console.log(`\n[agentman] Installing ${toInstall.length} skill(s) for ${toolId}...`);
+      const provisioner = createSkillProvisioner(toolId, config.scope, repoRoot);
+      const result = await provisioner.install(toInstall, bundleVersion, sourcePin);
 
-    if (result.installed.length > 0) {
-      console.log(`[agentman] Installed (${toolId}):`);
-      for (const item of result.installed) {
-        console.log(`  ✓ ${item.name} (${item.method}) → ${item.path}`);
+      if (result.installed.length > 0) {
+        console.log(`[agentman] Installed (${toolId}):`);
+        for (const item of result.installed) {
+          console.log(`  ✓ ${item.name} (${item.method}) → ${item.path}`);
+        }
+      }
+
+      if (result.errors.length > 0) {
+        console.error(`[agentman] Errors (${toolId}):`);
+        for (const err of result.errors) {
+          console.error(`  ✗ ${err.name}: ${err.error}`);
+        }
+        hasErrors = true;
       }
     }
 
-    if (result.errors.length > 0) {
-      console.error(`[agentman] Errors (${toolId}):`);
-      for (const err of result.errors) {
-        console.error(`  ✗ ${err.name}: ${err.error}`);
+    // Install agents (with dependency resolution)
+    if (agentsToInstall.length > 0) {
+      // Filter agents to only those that support this tool
+      const supportedAgents = agentsToInstall.filter(
+        (a) => a.tools.length === 0 || a.tools.includes(toolId),
+      );
+
+      if (supportedAgents.length > 0) {
+        console.log(`\n[agentman] Installing ${supportedAgents.length} agent(s) for ${toolId}...`);
+        try {
+          const result = await installResolvedAgents({
+            agents: supportedAgents,
+            toolId,
+            scope: config.scope,
+            repoRoot,
+            bundleVersion,
+            bundleUrl: sourcePin?.bundleBaseUrl,
+            authSession: undefined, // Headless mode doesn't have auth session
+          });
+
+          if (result.installed.length > 0) {
+            console.log(`[agentman] Installed agents (${toolId}):`);
+            for (const item of result.installed) {
+              console.log(`  ✓ ${item.name} (${item.method}) → ${item.path}`);
+            }
+          }
+
+          if (result.errors.length > 0) {
+            console.error(`[agentman] Agent errors (${toolId}):`);
+            for (const err of result.errors) {
+              console.error(`  ✗ ${err.name}: ${err.error}`);
+            }
+            hasErrors = true;
+          }
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error);
+          console.error(`[agentman] Agent install failed for ${toolId}: ${msg}`);
+          hasErrors = true;
+        }
+      } else if (agentsToInstall.length > 0) {
+        console.log(`\n[agentman] No agents support ${toolId}, skipping agent install for this tool.`);
       }
-      hasErrors = true;
     }
   }
 

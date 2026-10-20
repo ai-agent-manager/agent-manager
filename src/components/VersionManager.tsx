@@ -15,6 +15,7 @@ import { extractBundle } from '../bundle/extractor.js';
 import { readRepoConfig, type RepoAgentmanConfig } from '../bundle/repo-config.js';
 import type { BundleSource } from '../bundle/source.js';
 import { getSkillTools } from '../config/tools.js';
+import { isAgentStateKey } from '../operations/manage.js';
 import { findRepoRoot } from '../lib/repo.js';
 import { getValidBearerToken, type AuthSession } from '../auth/index.js';
 import {
@@ -144,14 +145,18 @@ export function VersionManager({
   const pinnedCountFor = (version: string): number => {
     let count = 0;
     if (config) {
-      count += Object.values(config.installations).reduce((total, skills) => {
-        return total + Object.values(skills).filter((record) => record.bundleVersion === version).length;
-      }, 0);
+      count += Object.entries(config.installations)
+        .filter(([toolId]) => !isAgentStateKey(toolId))
+        .reduce((total, [, skills]) => {
+          return total + Object.values(skills).filter((record) => record.bundleVersion === version).length;
+        }, 0);
     }
     if (repoConfig) {
-      count += Object.values(repoConfig.installations).reduce((total, skills) => {
-        return total + Object.values(skills).filter((record) => record.bundleVersion === version).length;
-      }, 0);
+      count += Object.entries(repoConfig.installations)
+        .filter(([toolId]) => !isAgentStateKey(toolId))
+        .reduce((total, [, skills]) => {
+          return total + Object.values(skills).filter((record) => record.bundleVersion === version).length;
+        }, 0);
     }
     return count;
   };
@@ -323,10 +328,14 @@ export function VersionManager({
             }
 
             const hasSystemSkills = config
-              ? Object.values(config.installations).some((skills) => Object.keys(skills).length > 0)
+              ? Object.entries(config.installations).some(
+                  ([toolId, skills]) => !isAgentStateKey(toolId) && Object.keys(skills).length > 0,
+                )
               : false;
             const hasRepoSkills = repoConfig
-              ? Object.values(repoConfig.installations).some((skills) => Object.keys(skills).length > 0)
+              ? Object.entries(repoConfig.installations).some(
+                  ([toolId, skills]) => !isAgentStateKey(toolId) && Object.keys(skills).length > 0,
+                )
               : false;
             const hasInstalledSkills = hasSystemSkills || hasRepoSkills;
 
@@ -395,6 +404,7 @@ export function VersionManager({
                   // Update system-scoped skills
                   if (config) {
                     for (const [toolId, skills] of Object.entries(config.installations)) {
+                      if (isAgentStateKey(toolId)) continue;
                       for (const skillName of Object.keys(skills)) {
                         const result = await updateSkillVersion(toolId, skillName, pendingVersion);
                         if (!result.success) {
@@ -407,6 +417,7 @@ export function VersionManager({
                   // Update repo-scoped skills
                   if (repoConfig && detectedRepoRoot) {
                     for (const [toolId, skills] of Object.entries(repoConfig.installations)) {
+                      if (isAgentStateKey(toolId)) continue;
                       for (const skillName of Object.keys(skills)) {
                         const result = await updateSkillVersion(toolId, skillName, pendingVersion, {
                           scope: 'repo',
@@ -539,6 +550,7 @@ export function VersionManager({
 
     if (config) {
       for (const [toolId, skills] of Object.entries(config.installations)) {
+        if (isAgentStateKey(toolId)) continue;
         const tool = getSkillTools().find((entry) => entry.id === toolId);
         const toolName = tool?.name ?? toolId;
 
@@ -552,6 +564,7 @@ export function VersionManager({
 
     if (repoConfig) {
       for (const [toolId, skills] of Object.entries(repoConfig.installations)) {
+        if (isAgentStateKey(toolId)) continue;
         const tool = getSkillTools().find((entry) => entry.id === toolId);
         const toolName = tool?.name ?? toolId;
 

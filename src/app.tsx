@@ -30,7 +30,7 @@ import { extractBundle } from "./bundle/extractor.js";
 import { importLocalBundle } from "./bundle/importer.js";
 import type { BundleManifest } from "./bundle/manifest.js";
 import { readRepoConfig } from "./bundle/repo-config.js";
-import { scanBundle, type BundleContents, type RovoAgentInfo } from "./bundle/scanner.js";
+import { scanBundle, type BundleContents, type RovoAgentInfo, type AgentInfo } from "./bundle/scanner.js";
 import type { BundleSource } from "./bundle/source.js";
 import { getBundleVersionDir } from "./config/paths.js";
 import type { InstallScope } from "./config/scopes.js";
@@ -133,6 +133,7 @@ async function acquireDiscoverySkills(
 ): Promise<{
     skills: ResolvedSkill[];
     rovoAgents: RovoAgentInfo[];
+    agents: AgentInfo[];
     warnings: string[];
     bundleVersion?: string;
     manifest?: BundleManifest;
@@ -175,6 +176,7 @@ async function acquireDiscoverySkills(
     return {
         skills: result.skills,
         rovoAgents: result.rovoAgents,
+        agents: result.agents,
         warnings,
         bundleVersion: result.bundleVersion,
         manifest: result.manifest,
@@ -424,6 +426,7 @@ export function App({ source, directInstallSource, forceUpdate, sourceError }: A
                     const {
                         skills,
                         rovoAgents,
+                        agents,
                         warnings,
                         bundleVersion: discoveredVersion,
                         manifest: discoveredManifest,
@@ -444,7 +447,7 @@ export function App({ source, directInstallSource, forceUpdate, sourceError }: A
                     if (discoveredVersion) setDiscoveryBundleVersion(discoveredVersion);
                     if (discoveredManifest) setManifest(discoveredManifest);
                     if (discoveredBundleDir) setBundleDir(discoveredBundleDir);
-                    setBundleContents({ skills, rovoAgents });
+                    setBundleContents({ skills, rovoAgents, agents });
                     setAuthSession(session ?? null);
                     setScreen("main-menu");
                     return;
@@ -632,18 +635,20 @@ export function App({ source, directInstallSource, forceUpdate, sourceError }: A
             sourceType: "http" as const,
         }));
     const allRovoAgents = bundleContents?.rovoAgents ?? [];
+    const allHarnessAgents = bundleContents?.agents ?? [];
 
     const catalogueScope = resolveCatalogueScope({
         projectContext,
         exclusiveSource,
         membershipProjects,
     });
-    const { skills: scopedSkills, agents: scopedAgents } = scopeCatalogueAssets(
+    const { skills: scopedSkills, agents: scopedAgents, harnessAgents: scopedHarnessAgents } = scopeCatalogueAssets(
         catalogueSkills,
         allRovoAgents,
         catalogueScope,
+        allHarnessAgents,
     );
-    const catalogueEntries = buildScopedCatalogue(catalogueSkills, allRovoAgents, catalogueScope);
+    const catalogueEntries = buildScopedCatalogue(catalogueSkills, allRovoAgents, catalogueScope, allHarnessAgents);
     const bulkSyncSkills = scopeSkills(effectiveContents?.skills ?? [], catalogueScope);
 
     const hasProjectsAccess =
@@ -789,6 +794,7 @@ export function App({ source, directInstallSource, forceUpdate, sourceError }: A
                 <SkillInstallFlow
                     entries={catalogueEntries}
                     bundleVersion={effectiveVersion}
+                    authSession={authSession ?? undefined}
                     onSelectRovoAgent={(agent) => {
                         setSelectedRovoAgent(agent);
                         setScreen(featureFlags.chromeExtension ? "rovo-method" : "rovo-menu");
@@ -937,6 +943,7 @@ export function App({ source, directInstallSource, forceUpdate, sourceError }: A
                     bundleContents={{
                         skills: scopedSkills,
                         rovoAgents: scopedAgents,
+                        agents: scopedHarnessAgents,
                     }}
                     manifest={manifest}
                     bundleDir={bundleDir}

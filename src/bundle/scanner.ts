@@ -6,7 +6,7 @@ import { parse as parseYaml } from 'yaml';
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import type { ErrorObject } from 'ajv/dist/2020.js';
 import { parseFrontmatter, type AssetConfig } from '../lib/frontmatter.js';
-import type { AgentManifestEntry } from './manifest.js';
+import type { AgentManifestEntry, AgentDependencies } from './manifest.js';
 import type { SkillSourcePin } from './skill-source.js';
 
 // ---------------------------------------------------------------------------
@@ -200,9 +200,30 @@ export interface RovoAgentInfo {
   knowledgeBaseFiles: KnowledgeBaseFile[];
 }
 
+/**
+ * A harness agent discovered in a bundle (AGENT.md at root of asset directory).
+ * Harness agents are local personas for coding tools like Claude Code, Cursor, Copilot.
+ */
+export interface AgentInfo {
+  /** Directory name (e.g., 'code-review-agent') */
+  dirName: string;
+  /** Absolute path to the agent directory */
+  dirPath: string;
+  /** Absolute path to AGENT.md at the root of the agent directory */
+  agentMdPath: string;
+  /** Tool IDs this agent supports, detected from subdirectory presence (e.g., ['claude-code', 'cursor']) */
+  tools: string[];
+  /** Metadata from README.md frontmatter, if available */
+  meta: AssetConfig | null;
+  /** Skill dependencies (for orchestrator agents). */
+  dependencies?: AgentDependencies;
+}
+
 export interface BundleContents {
   skills: SkillInfo[];
   rovoAgents: RovoAgentInfo[];
+  /** Harness agents (AGENT.md-based, installed locally) */
+  agents: AgentInfo[];
 }
 
 // ---------------------------------------------------------------------------
@@ -434,6 +455,7 @@ export async function scanBundle(
 ): Promise<BundleContents> {
   const skills: SkillInfo[] = [];
   const rovoAgents: RovoAgentInfo[] = [];
+  const agents: AgentInfo[] = [];
 
   // Build a lookup map from manifest agents for O(1) access by directory name
   const manifestMap = new Map<string, AgentManifestEntry>();
@@ -451,7 +473,11 @@ export async function scanBundle(
 
     const dirPath = path.join(bundleDir, entry.name);
 
-    // Check for SKILL.md (agent skill)
+    // Check for AGENT.md (harness agent) — check first for priority
+    const agentMdPath = path.join(dirPath, 'AGENT.md');
+    const hasAgentMd = await fileExists(agentMdPath);
+
+    // Check for SKILL.md (skill)
     const skillMdPath = path.join(dirPath, 'SKILL.md');
     const hasSkillMd = await fileExists(skillMdPath);
 
@@ -463,6 +489,32 @@ export async function scanBundle(
     const meta = manifestMap.has(entry.name)
       ? manifestEntryToAssetConfig(manifestMap.get(entry.name)!)
       : await readAssetMeta(dirPath);
+
+    // Harness agent (AGENT.md) takes priority
+    if (hasAgentMd) {
+      // Warn if directory also has SKILL.md (ambiguous)
+      if (hasSkillMd) {
+        process.stderr.write(
+          `[warn] ${entry.name}: Both AGENT.md and SKILL.md found. Prioritizing AGENT.md.\n`
+        );
+      }
+
+      // Detect tool subdirectories
+      const tools = await detectAgentTools(dirPath);
+
+      // Get manifest entry for dependencies
+      const manifestEntry = manifestMap.get(entry.name);
+
+      agents.push({
+        dirName: entry.name,
+        dirPath,
+        agentMdPath,
+        tools,
+        meta,
+        dependencies: manifestEntry?.dependencies,
+      });
+      continue;
+    }
 
     if (hasSkillMd) {
       skills.push({
@@ -503,7 +555,7 @@ export async function scanBundle(
     }
   }
 
-  return { skills, rovoAgents };
+  return { skills, rovoAgents, agents };
 }
 
 /** Convert a manifest entry to the scanner's AssetConfig shape. */
@@ -548,6 +600,39 @@ async function fileExists(filePath: string): Promise<boolean> {
   try {
     await stat(filePath);
     return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Known tool directory names for harness agents.
+ * These correspond to the tool IDs used in the provisioner registry.
+ */
+const KNOWN_TOOL_DIRS = ['claude-code', 'cursor', 'github-copilot', 'copilot'] as const;
+
+/**
+ * Detect which tools an agent supports by scanning for tool-specific subdirectories.
+ * Returns the tool IDs for which a subdirectory exists (e.g., ['claude-code', 'cursor']).
+ */
+async function detectAgentTools(agentDir: string): Promise<string[]> {
+  const detected: string[] = [];
+
+  for (const toolDir of KNOWN_TOOL_DIRS) {
+    const toolPath = path.join(agentDir, toolDir);
+    if (await isDirectory(toolPath)) {
+      // Normalize 'copilot' to 'github-copilot' for consistency with provisioner IDs
+      const toolId = toolDir === 'copilot' ? 'github-copilot' : toolDir;
+      detected.push(toolId);
+    }
+  }
+
+  return detected;
+}
+
+async function isDirectory(p: string): Promise<boolean> {
+  try {
+    return (await stat(p)).isDirectory();
   } catch {
     return false;
   }

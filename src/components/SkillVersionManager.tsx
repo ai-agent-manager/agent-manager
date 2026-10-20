@@ -3,6 +3,7 @@ import path from "node:path";
 import { Box, Text, useInput } from "ink";
 import SelectInput from "ink-select-input";
 import { readConfig, listCachedBundles, updateSkillVersion, getRecordVersion, type CachedBundle } from "../bundle/cache.js";
+import { isAgentStateKey } from "../operations/manage.js";
 import { readRepoConfig } from "../bundle/repo-config.js";
 import { scanBundle } from "../bundle/scanner.js";
 import { getBundleVersionDir } from "../config/paths.js";
@@ -39,6 +40,7 @@ function VersionMenuItem({ label }: { isSelected?: boolean; label: string }) {
 function buildInstalledSkills(config: Awaited<ReturnType<typeof readConfig>>): InstalledSkillWithTool[] {
     const skills: InstalledSkillWithTool[] = [];
     for (const [toolId, skillRecords] of Object.entries(config.installations)) {
+        if (isAgentStateKey(toolId)) continue; // harness agent installs, not version-syncable skills
         const tool = getSkillTools().find((t) => t.id === toolId);
         const toolName = tool?.name ?? toolId;
         for (const [skillName, record] of Object.entries(skillRecords)) {
@@ -52,6 +54,7 @@ function buildRepoInstalledSkills(repoConfig: Awaited<ReturnType<typeof readRepo
     if (!repoConfig) return [];
     const skills: InstalledSkillWithTool[] = [];
     for (const [toolId, skillRecords] of Object.entries(repoConfig.installations)) {
+        if (isAgentStateKey(toolId)) continue; // harness agent installs, not version-syncable skills
         const tool = getSkillTools().find((t) => t.id === toolId);
         const toolName = tool?.name ?? toolId;
         for (const [skillName, record] of Object.entries(skillRecords)) {

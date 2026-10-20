@@ -56,7 +56,7 @@ describe("MaintenanceMenu", () => {
             const { lastFrame } = render(
                 <MaintenanceMenu hasBundleContents={false} hasSource={true} onSelect={noop} onBack={noop} />,
             );
-            expect(lastFrame()).toContain("Manage Installed Skills");
+            expect(lastFrame()).toContain("Manage Installed");
             expect(lastFrame()).toContain("Manage Bundle Versions");
             expect(lastFrame()).toContain("Update Agent Manager App");
             expect(lastFrame()).toContain("← Back");

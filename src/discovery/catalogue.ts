@@ -7,7 +7,7 @@
 
 import { deriveSkillInstallKey } from '../bundle/skill-source.js';
 import type { ResolvedSkill } from './resolver.js';
-import type { RovoAgentInfo } from '../bundle/scanner.js';
+import type { RovoAgentInfo, AgentInfo } from '../bundle/scanner.js';
 import type { SourceType, SourceStatus } from './types.js';
 
 export interface SkillCandidate {
@@ -44,12 +44,21 @@ export interface RovoCatalogueEntry extends BaseCatalogueEntry {
   agent: RovoAgentInfo;
 }
 
+/** A harness agent entry: installed locally to coding tools (Claude Code, Cursor, Copilot). */
+export interface AgentCatalogueEntry extends BaseCatalogueEntry {
+  kind: 'agent';
+  agent: AgentInfo;
+  /** Sources tracking for the agent (reuse SkillCandidate for consistency) */
+  candidates: SkillCandidate[];
+}
+
 /**
- * A single row in the unified catalogue. The two kinds diverge sharply after
- * selection (skills install to a local path; Rovo agents provision to Studio),
- * so the entry carries a `kind` discriminator that callers branch on.
+ * A single row in the unified catalogue. The three kinds diverge sharply after
+ * selection (skills install to a local path; Rovo agents provision to Studio;
+ * harness agents install to tool-specific agents directories), so the entry
+ * carries a `kind` discriminator that callers branch on.
  */
-export type CatalogueEntry = SkillCatalogueEntry | RovoCatalogueEntry;
+export type CatalogueEntry = SkillCatalogueEntry | RovoCatalogueEntry | AgentCatalogueEntry;
 
 const STATUS_RANK: Record<SourceStatus, number> = { official: 0, verified: 1, community: 2 };
 
@@ -102,6 +111,36 @@ export function buildRovoCatalogue(agents: RovoAgentInfo[]): RovoCatalogueEntry[
 }
 
 /**
+ * Build catalogue entries for harness agents.
+ * Agents use a simple candidate structure for source tracking consistency.
+ */
+export function buildAgentCatalogue(
+  agents: AgentInfo[],
+  sourceName: string = 'bundle',
+  sourceType: SourceType = 'http',
+): AgentCatalogueEntry[] {
+  return agents.map((agent) => ({
+    kind: 'agent' as const,
+    skillId: agent.dirName,
+    displayName: agent.meta?.name ?? agent.dirName,
+    description: agent.meta?.description ?? '',
+    agent,
+    candidates: [{
+      skill: {
+        dirName: agent.dirName,
+        dirPath: agent.dirPath,
+        meta: agent.meta,
+        sourceName,
+        sourceType,
+      } as ResolvedSkill,
+      sourceName,
+      sourceType,
+      installKey: agent.dirName,
+    }],
+  }));
+}
+
+/**
  * Build the unified catalogue from skills and Rovo agents. A skill and an agent
  * that happen to share a directory name stay separate rows (keyed by kind), so
  * the two never collapse into one entry.
@@ -111,6 +150,24 @@ export function buildUnifiedCatalogue(
   agents: RovoAgentInfo[],
 ): CatalogueEntry[] {
   return [...buildCatalogue(skills), ...buildRovoCatalogue(agents)];
+}
+
+/**
+ * Build the unified catalogue including harness agents.
+ * Each asset type (skill, rovo-agent, agent) gets its own entries keyed by kind.
+ */
+export function buildUnifiedCatalogueWithAgents(
+  skills: ResolvedSkill[],
+  rovoAgents: RovoAgentInfo[],
+  harnessAgents: AgentInfo[],
+  sourceName: string = 'bundle',
+  sourceType: SourceType = 'http',
+): CatalogueEntry[] {
+  return [
+    ...buildCatalogue(skills),
+    ...buildRovoCatalogue(rovoAgents),
+    ...buildAgentCatalogue(harnessAgents, sourceName, sourceType),
+  ];
 }
 
 export function filterCatalogue(entries: CatalogueEntry[], query: string): CatalogueEntry[] {
@@ -125,6 +182,10 @@ export function filterCatalogue(entries: CatalogueEntry[], query: string): Catal
     ) {
       return true;
     }
-    return entry.kind === 'skill' && entry.candidates.some((c) => c.sourceName.toLowerCase().includes(q));
+    // For skills and agents, search candidates
+    if (entry.kind === 'skill' || entry.kind === 'agent') {
+      return entry.candidates.some((c) => c.sourceName.toLowerCase().includes(q));
+    }
+    return false;
   });
 }

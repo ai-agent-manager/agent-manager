@@ -29,6 +29,8 @@ export interface RepoInstallRecord {
     sourcePin?: SkillSourcePin;
     /** Flat link name under the tool's skills dir (one level only). Absent for legacy flat installs — use bare skillId. */
     linkName?: string;
+    /** For agents: skills they depend on */
+    dependencies?: string[];
 }
 
 export interface RepoAgentmanConfig {
