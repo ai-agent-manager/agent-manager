@@ -318,18 +318,46 @@ export async function installResolvedAgents(
           continue;
         }
 
-        if (!isBundleSource(source) || !source.baseUrl) {
-          const errorMsg = `Cannot install dependencies: invalid bundle source`;
+        if (!isBundleSource(source)) {
+          const errorMsg = `Cannot install dependencies: expected bundle source, got ${source.type}`;
           console.error(`\n❌ ${errorMsg}`);
           errors.push({ name: agent.dirName, error: errorMsg });
           continue;
         }
 
         try {
-          const bearer = await resolveInstallBearer(authSession);
-          const { zipPath } = await downloadBundle(source.baseUrl, bundleVersion, bearer);
-          const extracted = await extractBundle(zipPath);
-          const contents = await scanBundle(extracted.bundleDir, extracted.manifest.agents);
+          let contents;
+          let skillVersion = bundleVersion ?? 'local';
+          let sourcePin: SkillSourcePin = {
+            sourceType: 'bundle',
+            installLayout: 'flat',
+            bundleVersion: skillVersion,
+          };
+
+          if (source.baseUrl) {
+            // HTTP bundle - download and extract
+            const bearer = await resolveInstallBearer(authSession);
+            const { zipPath } = await downloadBundle(source.baseUrl, bundleVersion, bearer);
+            const extracted = await extractBundle(zipPath);
+            contents = await scanBundle(extracted.bundleDir, extracted.manifest.agents);
+            skillVersion = extracted.manifest.version;
+            sourcePin = {
+              sourceType: 'bundle',
+              installLayout: 'flat',
+              bundleBaseUrl: source.baseUrl,
+              bundleSourceName: source.sourceName,
+              bundleVersion: skillVersion,
+              bundleAddressing: 'content-root',
+            };
+          } else if (source.dirPath) {
+            // Local directory - scan directly
+            contents = await scanBundle(source.dirPath);
+          } else {
+            const errorMsg = `Bundle source has neither baseUrl nor dirPath`;
+            console.error(`\n❌ ${errorMsg}`);
+            errors.push({ name: agent.dirName, error: errorMsg });
+            continue;
+          }
 
           // Filter to only the missing skills
           const skillsToInstall = contents.skills.filter((s) => missing.includes(s.dirName));
@@ -342,19 +370,7 @@ export async function installResolvedAgents(
           }
 
           const skillProvisioner = createSkillProvisioner(toolId, scope, repoRoot);
-          const sourcePin: SkillSourcePin = {
-            sourceType: 'bundle',
-            installLayout: 'flat',
-            bundleBaseUrl: source.baseUrl,
-            bundleSourceName: source.sourceName,
-            bundleVersion: extracted.manifest.version,
-            bundleAddressing: 'content-root',
-          };
-          const skillResult = await skillProvisioner.install(
-            skillsToInstall,
-            extracted.manifest.version,
-            sourcePin,
-          );
+          const skillResult = await skillProvisioner.install(skillsToInstall, skillVersion, sourcePin);
 
           console.log(`\n✓ Installed ${skillResult.installed.length} skill(s)`);
 

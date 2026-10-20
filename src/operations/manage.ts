@@ -7,6 +7,8 @@ import type { InstallResult, UninstallResult } from '../provisioners/types.js';
 import { createSkillProvisioner } from '../provisioners/registry.js';
 import { createAgentProvisioner } from '../provisioners/agent-registry.js';
 import { installFromRepo, installFromArtefact, installFromBundle } from './install.js';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 
 /** Supplies a bearer token for a pinned content URL when one is available. */
 export type AccessTokenProvider = (contentUrl: string) => Promise<string | undefined>;
@@ -279,4 +281,42 @@ export async function removeInstalled(
 
   const provisioner = createSkillProvisioner(toolId, scope, repoRoot);
   return provisioner.uninstall([installKey]);
+}
+
+/**
+ * Check if any installed agents depend on a given skill.
+ * Returns list of agent names that require this skill.
+ */
+export async function checkSkillDependencies(
+  skillName: string,
+): Promise<string[]> {
+  const all = await listInstalled('all');
+  const agents = all.filter(r => r.kind === 'agent');
+
+  const dependentAgents: string[] = [];
+
+  for (const agent of agents) {
+    // Read from install record instead of AGENT.md
+    try {
+      const stateKey = `${agent.toolId}-agents`;
+      const config = agent.scope === 'system'
+        ? await readConfig()
+        : await readRepoConfig(agent.repoRoot ?? '');
+
+      if (!config) continue;
+
+      const toolInstalls = config.installations?.[stateKey];
+
+      if (toolInstalls && toolInstalls[agent.installKey]) {
+        const record = toolInstalls[agent.installKey];
+        if (record.dependencies && record.dependencies.includes(skillName)) {
+          dependentAgents.push(agent.installKey);
+        }
+      }
+    } catch {
+      // Config read error - skip
+    }
+  }
+
+  return dependentAgents;
 }

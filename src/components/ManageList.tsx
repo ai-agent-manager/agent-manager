@@ -67,7 +67,7 @@ export function ManageList({ onSelect, onBack, refreshToken }: ManageListProps) 
 
   return (
     <Box flexDirection="column" marginLeft={2}>
-      <Text bold>Installed skills &amp; agents:</Text>
+      <Text bold>Manage installed skills &amp; agents:</Text>
       <Text dimColor>
         {'  '}
         {pad('NAME', nameCol)}
@@ -75,7 +75,7 @@ export function ManageList({ onSelect, onBack, refreshToken }: ManageListProps) 
         {'SCOPE  TOOL      KIND'}
       </Text>
       <SelectInput
-        limit={12}
+        limit={50}
         items={items}
         onSelect={(item) => {
           if (!item.value) {

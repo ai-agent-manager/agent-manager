@@ -30,6 +30,7 @@ type AgentInstallRecord = {
   installedAt: string;
   method: 'symlink' | 'copy'; // Match the stored record type
   sourcePin?: SkillSourcePin;
+  dependencies?: string[];
 };
 
 /**
@@ -169,6 +170,7 @@ export abstract class AgentProvisioner implements AgentProvisionerInterface {
           installedAt: new Date().toISOString(),
           method: 'copy',
           sourcePin,
+          dependencies: agent.dependencies?.skills,
         };
 
         const stateKey = `${this.id}-agents`;

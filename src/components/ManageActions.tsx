@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import SelectInput from 'ink-select-input';
 import type { AccessTokenProvider, InstalledSkillRecord } from '../operations/manage.js';
-import { updateInstalled, removeInstalled } from '../operations/manage.js';
+import { updateInstalled, removeInstalled, checkSkillDependencies } from '../operations/manage.js';
 import type { InteractiveAccessTokenProvider } from '../auth/access-token-provider.js';
 import { openInBrowser } from '../auth/index.js';
 import { LoadingSpinner } from './Spinner.js';
@@ -26,12 +26,25 @@ export function ManageActions({ record, onBack, onDone, getAccessToken }: Manage
   const [resultMessage, setResultMessage] = useState('');
   const [resultOk, setResultOk] = useState(true);
   const [authorizeUrl, setAuthorizeUrl] = useState<string | null>(null);
+  const [dependentAgents, setDependentAgents] = useState<string[]>([]);
+  const [checkingDeps, setCheckingDeps] = useState(false);
   // The in-flight update's abort controller. Render-time handlers (AuthPrompt
   // onCancel, unmount cleanup) can only reach it through a ref.
   const controllerRef = useRef<AbortController | null>(null);
 
   // Unmounting mid-authentication must close the OAuth callback server.
   useEffect(() => () => controllerRef.current?.abort(), []);
+
+  // Check dependencies when entering confirm-remove screen for skills
+  useEffect(() => {
+    if (screen === 'confirm-remove' && record.kind === 'skill') {
+      setCheckingDeps(true);
+      checkSkillDependencies(record.skillId)
+        .then(setDependentAgents)
+        .catch(() => setDependentAgents([]))
+        .finally(() => setCheckingDeps(false));
+    }
+  }, [screen, record.kind, record.skillId]);
 
   // Adapt the interactive provider (needs a prompt surface and abort signal —
   // both owned here) down to the plain operations-layer provider, keeping
@@ -134,15 +147,40 @@ export function ManageActions({ record, onBack, onDone, getAccessToken }: Manage
   }
 
   if (screen === 'confirm-remove') {
+    if (checkingDeps) {
+      return <LoadingSpinner message="Checking dependencies..." />;
+    }
+
     const confirmItems = [
       { label: `Yes, remove ${record.skillId}`, value: 'yes' },
       { label: 'No, cancel', value: 'no' },
     ];
+
     return (
       <Box flexDirection="column" marginLeft={2}>
         <Text>
           Remove <Text bold>{record.installKey}</Text>?
         </Text>
+        {record.kind === 'agent' && dependentAgents.length === 0 && (
+          <>
+            <Text> </Text>
+            <Text dimColor>
+              ℹ️  Agent dependencies will remain installed (other agents may use them).
+            </Text>
+          </>
+        )}
+        {dependentAgents.length > 0 && (
+          <>
+            <Text> </Text>
+            <Text color="yellow">
+              ⚠️  Warning: {dependentAgents.length} agent{dependentAgents.length > 1 ? 's' : ''} depend{dependentAgents.length === 1 ? 's' : ''} on this skill:
+            </Text>
+            {dependentAgents.map(agent => (
+              <Text key={agent} dimColor>  - {agent}</Text>
+            ))}
+            <Text dimColor>  Removing this skill will break these agents.</Text>
+          </>
+        )}
         <Text> </Text>
         <SelectInput
           items={confirmItems}

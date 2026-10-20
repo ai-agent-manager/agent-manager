@@ -35,7 +35,7 @@ export function MaintenanceMenu({ hasBundleContents, hasSource, onSelect, onBack
               ]
             : []),
         {
-            label: "Manage Installed Skills     Update, remove, or inspect installed skills",
+            label: "Manage Installed            Update, remove, or inspect installed skills & agents",
             value: "manage-installed" as MaintenanceAction,
         },
         ...(hasSource
