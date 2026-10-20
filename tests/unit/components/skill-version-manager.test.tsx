@@ -3,6 +3,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render } from "ink-testing-library";
 import { SkillVersionManager } from "../../../src/components/SkillVersionManager.js";
 
+vi.mock("../../../src/operations/versions.js", async (original) => {
+  const actual = await original<typeof import("../../../src/operations/versions.js")>();
+  return { ...actual, listInstalledSkillVersions: vi.fn(async (instance) => ({
+    versions: await actual.listVersionsContainingSkill(instance.installKey),
+  })) };
+});
+
 // Mock dependencies
 vi.mock("../../../src/bundle/cache.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../src/bundle/cache.js")>();

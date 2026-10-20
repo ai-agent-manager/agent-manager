@@ -105,6 +105,27 @@ const { installFromRepo, installFromArtefact, installFromBundle } = await import
 );
 const { findRepoRoot } = await import('../../../src/lib/repo.js');
 const { readConfig } = await import('../../../src/bundle/cache.js');
+const { readRepoConfig } = await import('../../../src/bundle/repo-config.js');
+
+describe('explicit repository context', () => {
+  const opts = { repoRoot: '/example/selected-repo' };
+
+  it('lists and resolves the selected repository without consulting cwd', async () => {
+    const records = await listInstalled('repo', opts);
+    expect(records[0].repoRoot).toBe(opts.repoRoot);
+    expect(await resolveIdentifier('bundle-skill', 'repo', 'claude-code', opts)).toEqual(records[0]);
+    expect(readRepoConfig).toHaveBeenCalledWith(opts.repoRoot);
+    expect(findRepoRoot).not.toHaveBeenCalled();
+  });
+
+  it('updates and removes in the selected repository', async () => {
+    await updateInstalled('bundle-skill', 'repo', 'claude-code', undefined, opts);
+    expect(installFromBundle).toHaveBeenCalledWith(expect.objectContaining({ repoRoot: opts.repoRoot, scope: 'repo' }));
+    await removeInstalled('bundle-skill', 'repo', 'claude-code', opts);
+    expect(createSkillProvisioner).toHaveBeenCalledWith('claude-code', 'repo', opts.repoRoot);
+    expect(findRepoRoot).not.toHaveBeenCalled();
+  });
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -245,6 +266,7 @@ describe('updateInstalled', () => {
       toolId: 'claude-code',
       repoRoot: undefined,
       forceUpdate: true,
+      beforeInstall: expect.any(Function),
     });
   });
 
@@ -394,6 +416,7 @@ describe('updateInstalled', () => {
       toolId: 'claude-code',
       repoRoot: undefined,
       forceUpdate: true,
+      beforeInstall: expect.any(Function),
     });
   });
 

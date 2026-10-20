@@ -6,6 +6,7 @@
  */
 
 import { execFile } from 'node:child_process';
+import { withAuthCoordinator } from './coordinator.js';
 import { fetchOidcConfiguration, type OidcConfiguration } from './oidc.js';
 import { generateCodeVerifier, generateCodeChallenge, generateState } from './pkce.js';
 import { waitForCallback, REDIRECT_URI } from './callback-server.js';
@@ -119,6 +120,19 @@ async function resolveBearerToken(
   auth: DiscoveryAuth,
   options: GetValidBearerTokenOptions = {},
 ): Promise<AuthResult> {
+  try {
+    return await withAuthCoordinator(() => resolveBearerTokenUnlocked(baseUrl, auth, options), options.signal);
+  } catch (error) {
+    if (options.signal?.aborted) throw new AuthCancelledError();
+    throw error;
+  }
+}
+
+async function resolveBearerTokenUnlocked(
+  baseUrl: string,
+  auth: DiscoveryAuth,
+  options: GetValidBearerTokenOptions = {},
+): Promise<AuthResult> {
   requireAuthConfig(auth);
 
   const {
@@ -170,7 +184,8 @@ async function resolveBearerToken(
     }
 
     if (allowInteractive && onPrompt) {
-      return interactiveLogin(baseUrl, auth, oidcConfig, onPrompt, onCallback, signal);
+      // Await here so callback/token-exchange rejections reach the normalizer.
+      return await interactiveLogin(baseUrl, auth, oidcConfig, onPrompt, onCallback, signal);
     }
 
     throw new AuthFlowError(
@@ -400,10 +415,15 @@ function assertSafeBrowserUrl(url: string): void {
 /**
  * Open a URL in the user's default browser.
  */
-export function openInBrowser(url: string): void {
+export function openInBrowser(url: string): Promise<void> {
+  // Validate synchronously so a hostile URL is rejected before any process
+  // is spawned; callers await the launch itself.
   assertSafeBrowserUrl(url);
 
   const platform = getPlatform();
+  let cmd: string;
+  let args: string[];
+  let options: { shell: false; windowsVerbatimArguments?: true };
 
   if (platform === 'windows') {
     // Route through PowerShell's -EncodedCommand (Base64 UTF-16LE) instead of
@@ -421,18 +441,18 @@ export function openInBrowser(url: string): void {
     // argument. -ExecutionPolicy is deliberately omitted: it only restricts
     // loading .ps1 script files, not -EncodedCommand/-Command invocations.
     const systemRoot = process.env.SystemRoot || process.env.windir || 'C:\\Windows';
-    const powershell = `${systemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
+    cmd = `${systemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
     const psLiteral = `'${url.replace(/'/g, "''")}'`;
     const encodedCommand = Buffer.from(`Start-Process ${psLiteral}`, 'utf16le').toString('base64');
-
-    execFile(
-      powershell,
-      ['-NoProfile', '-NonInteractive', '-EncodedCommand', encodedCommand],
-      { shell: false, windowsVerbatimArguments: true },
-    );
-    return;
+    args = ['-NoProfile', '-NonInteractive', '-EncodedCommand', encodedCommand];
+    options = { shell: false, windowsVerbatimArguments: true };
+  } else {
+    cmd = platform === 'macos' ? 'open' : 'xdg-open';
+    args = [url];
+    options = { shell: false };
   }
 
-  const cmd = platform === 'macos' ? 'open' : 'xdg-open';
-  execFile(cmd, [url], { shell: false });
+  return new Promise((resolve, reject) => {
+    execFile(cmd, args, options, (error) => error ? reject(error) : resolve());
+  });
 }

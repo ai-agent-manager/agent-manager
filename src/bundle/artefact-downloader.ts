@@ -1,3 +1,5 @@
+import { withMutation } from '../lib/mutation.js';
+import { randomUUID } from 'node:crypto';
 import { createHash } from 'node:crypto';
 import { lstat, mkdir, readdir, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -101,7 +103,7 @@ export function enforceArtefactUrl(url: string): void {
   if (parsed.protocol === 'http:' && !isLoopbackHost(parsed.hostname)) {
     throw new Error(
       `Artefact URLs must use https: ${url}\n` +
-        'Plain http is only allowed for localhost during local development.',
+      'Plain http is only allowed for localhost during local development.',
     );
   }
 }
@@ -196,6 +198,8 @@ export interface ArtefactDownloadOptions {
   forceUpdate?: boolean;
   /** Bearer token for protected artefact and sidecar requests. */
   bearerToken?: string;
+  /** Aborts the artefact and sidecar requests when the owning job is cancelled or draining. */
+  signal?: AbortSignal;
 }
 
 const SEMVER_RE = /^v?\d+\.\d+\.\d+(?:[-+][\w.]+)?$/;
@@ -260,12 +264,14 @@ export function buildArtefactHashUrl(artefactUrl: string): string {
 export async function fetchArtefactHash(
   artefactUrl: string,
   bearerToken?: string,
+  options: { signal?: AbortSignal } = {},
 ): Promise<string | null> {
   const url = buildArtefactHashUrl(artefactUrl);
   enforceArtefactUrl(url);
 
   const response = await fetch(url, {
     redirect: 'error',
+    ...(options.signal ? { signal: options.signal } : {}),
     ...(bearerToken ? { headers: { Authorization: `Bearer ${bearerToken}` } } : {}),
   });
 
@@ -339,7 +345,7 @@ export async function downloadArtefact(
 
   const tempDir = getTempDir();
   await mkdir(tempDir, { recursive: true });
-  const stamp = Date.now();
+  const stamp = randomUUID();
   const zipPath = path.join(tempDir, `artefact-${name}-${stamp}.zip`);
   const tempExtractDir = path.join(tempDir, `artefact-extract-${name}-${stamp}`);
 
@@ -349,6 +355,7 @@ export async function downloadArtefact(
 
     // Download — reject redirects to prevent cross-scheme downgrade
     const response = await fetch(source.artefactUrl, {
+      ...(options.signal ? { signal: options.signal } : {}),
       headers: {
         'User-Agent': 'agentman',
         ...(options.bearerToken
@@ -388,7 +395,7 @@ export async function downloadArtefact(
     // Integrity verification: explicit pin takes precedence over the sidecar
     const expectedHash =
       source.sha256?.toLowerCase() ??
-      (await fetchArtefactHash(source.artefactUrl, options.bearerToken));
+      (await fetchArtefactHash(source.artefactUrl, options.bearerToken, ...(options.signal ? [{ signal: options.signal }] : [])));
     if (expectedHash) {
       try {
         await verifyBundleHash(zipPath, expectedHash);
@@ -434,35 +441,37 @@ export async function downloadArtefact(
 
     // A non-URL-versioned re-run may already have this version cached.
     // Reuse only when the content matches; otherwise replace the stale copy.
-    const existing = await readCacheMeta(cacheDir);
-    if (!options.forceUpdate && existing && existing.sha256 === actualSha256) {
-      return { extractDir: cacheDir, name, version, sha256: actualSha256, isNew: false };
-    }
+    return await withMutation(async () => {
+      const existing = await readCacheMeta(cacheDir);
+      if (!options.forceUpdate && existing && existing.sha256 === actualSha256) {
+        return { extractDir: cacheDir, name, version, sha256: actualSha256, isNew: false };
+      }
 
-    await writeFile(
-      path.join(tempExtractDir, ARTEFACT_META_FILE),
-      JSON.stringify(
-        {
-          artefactUrl: source.artefactUrl,
-          version,
-          sha256: actualSha256,
-          downloadedAt: new Date().toISOString(),
-        } satisfies ArtefactCacheMeta,
-        null,
-        2,
-      ),
-    );
+      await writeFile(
+        path.join(tempExtractDir, ARTEFACT_META_FILE),
+        JSON.stringify(
+          {
+            artefactUrl: source.artefactUrl,
+            version,
+            sha256: actualSha256,
+            downloadedAt: new Date().toISOString(),
+          } satisfies ArtefactCacheMeta,
+          null,
+          2,
+        ),
+      );
 
-    await rm(cacheDir, { recursive: true, force: true });
-    await mkdir(path.dirname(cacheDir), { recursive: true });
-    await rename(tempExtractDir, cacheDir);
+      await rm(cacheDir, { recursive: true, force: true });
+      await mkdir(path.dirname(cacheDir), { recursive: true });
+      await rename(tempExtractDir, cacheDir);
 
-    trackTelemetryEvent({
-      action: 'artefact_download_succeeded',
-      properties: { artefactUrl: source.artefactUrl, name, version },
+      trackTelemetryEvent({
+        action: 'artefact_download_succeeded',
+        properties: { artefactUrl: source.artefactUrl, name, version },
+      });
+
+      return { extractDir: cacheDir, name, version, sha256: actualSha256, isNew: true };
     });
-
-    return { extractDir: cacheDir, name, version, sha256: actualSha256, isNew: true };
   } catch (error) {
     trackTelemetryError('artefact_download_failed', error, {
       artefactUrl: source.artefactUrl,
