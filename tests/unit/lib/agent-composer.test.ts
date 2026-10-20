@@ -135,7 +135,39 @@ description: Tool adapter
       expect(result.siblingFiles.some((f) => f.endsWith("template.md"))).toBe(true);
     });
 
-    it("normalizes github-copilot tool id to copilot directory", async () => {
+    it("accepts github-copilot directory for github-copilot tool id", async () => {
+      const agentDir = join(tempDir, "my-agent");
+      await mkdir(agentDir);
+      await mkdir(join(agentDir, "github-copilot"));
+
+      await writeFile(
+        join(agentDir, "AGENT.md"),
+        `---
+name: Copilot Agent
+description: For GitHub Copilot
+---
+
+Root content.
+`,
+      );
+
+      await writeFile(
+        join(agentDir, "github-copilot", "AGENT.md"),
+        `---
+name: Copilot Agent
+description: Copilot adapter
+---
+
+Copilot instructions.
+`,
+      );
+
+      const result = await composeAgent(agentDir, "github-copilot");
+
+      expect(result.content).toContain("Copilot instructions.");
+    });
+
+    it("accepts copilot directory as fallback for github-copilot tool id", async () => {
       const agentDir = join(tempDir, "my-agent");
       await mkdir(agentDir);
       await mkdir(join(agentDir, "copilot"));

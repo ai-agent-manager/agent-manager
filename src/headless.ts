@@ -26,6 +26,7 @@ import { DiscoveryError, fetchDiscoveryDocument, resolveDiscoverySkills } from '
 import { parseGitRemoteInput } from './discovery/git-probe.js';
 import type { DiscoveryDocument } from './discovery/types.js';
 import { authenticate, type AuthSession } from './auth/index.js';
+import { installResolvedAgents } from './operations/install.js';
 import {
   isProjectsExclusiveSource,
   listProjects,
@@ -459,7 +460,7 @@ export async function runHeadless(
       }
     }
 
-    // Install agents
+    // Install agents (with dependency resolution)
     if (agentsToInstall.length > 0) {
       // Filter agents to only those that support this tool
       const supportedAgents = agentsToInstall.filter(
@@ -469,8 +470,15 @@ export async function runHeadless(
       if (supportedAgents.length > 0) {
         console.log(`\n[agentman] Installing ${supportedAgents.length} agent(s) for ${toolId}...`);
         try {
-          const agentProvisioner = createAgentProvisioner(toolId, config.scope, repoRoot);
-          const result = await agentProvisioner.installAgents(supportedAgents, bundleVersion, sourcePin);
+          const result = await installResolvedAgents({
+            agents: supportedAgents,
+            toolId,
+            scope: config.scope,
+            repoRoot,
+            bundleVersion,
+            bundleUrl: sourcePin?.bundleBaseUrl,
+            authSession: undefined, // Headless mode doesn't have auth session
+          });
 
           if (result.installed.length > 0) {
             console.log(`[agentman] Installed agents (${toolId}):`);

@@ -23,6 +23,7 @@ import { ensureDir, pathExists, writeFileAtomic } from '../lib/fs.js';
 import { recordInstall, removeInstallRecord, readConfig } from '../bundle/cache.js';
 import { recordRepoInstall, removeRepoInstallRecord, readRepoConfig } from '../bundle/repo-config.js';
 import { getHomeDir } from '../lib/platform.js';
+import { createSkillProvisioner } from './registry.js';
 
 type AgentInstallRecord = {
   bundleVersion?: string;
@@ -219,10 +220,9 @@ export abstract class AgentProvisioner implements AgentProvisionerInterface {
 
   /** Get the skills directory for this tool (where dependencies are checked). */
   private getSkillsDir(): string {
-    if (this.scope === 'repo' && this.repoRoot) {
-      return path.join(this.repoRoot, `.${this.id}`, 'skills');
-    }
-    return path.join(getHomeDir(), `.${this.id}`, 'skills');
+    // Use the skill provisioner to get the correct skills directory path
+    const skillProvisioner = createSkillProvisioner(this.id, this.scope, this.repoRoot);
+    return skillProvisioner.getEffectiveSkillsDir();
   }
 
   async uninstallAgents(names: string[]): Promise<UninstallResult> {

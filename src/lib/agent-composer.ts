@@ -100,7 +100,25 @@ export async function composeAgent(
   const rootBody = rootParsed?.body ?? rootContent.trim();
 
   // Check for tool adapter directory
-  const toolDirName = toolId === 'github-copilot' ? 'copilot' : toolId;
+  // For github-copilot, accept both 'github-copilot' and 'copilot' (prefer 'github-copilot')
+  let toolDirName: string;
+  if (toolId === 'github-copilot') {
+    const githubCopilotPath = path.join(agentDir, 'github-copilot', 'AGENT.md');
+    const copilotPath = path.join(agentDir, 'copilot', 'AGENT.md');
+
+    let preferGitHubCopilot = false;
+    try {
+      await stat(githubCopilotPath);
+      preferGitHubCopilot = true;
+    } catch {
+      // github-copilot directory doesn't exist, check copilot
+    }
+
+    toolDirName = preferGitHubCopilot ? 'github-copilot' : 'copilot';
+  } else {
+    toolDirName = toolId;
+  }
+
   const toolAdapterDir = path.join(agentDir, toolDirName);
   const toolAdapterPath = path.join(toolAdapterDir, 'AGENT.md');
 
@@ -110,7 +128,7 @@ export async function composeAgent(
     const s = await stat(toolAdapterPath);
     hasToolAdapter = s.isFile();
   } catch {
-    // Tool adapter doesn't exist - that's OK, use root only
+    // Tool adapter doesn't exist - use root-only fallback
   }
 
   let adapterFrontmatter = '';

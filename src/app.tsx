@@ -772,6 +772,7 @@ export function App({ source, directInstallSource, forceUpdate, sourceError }: A
                 <SkillInstallFlow
                     entries={catalogueEntries}
                     bundleVersion={effectiveVersion}
+                    authSession={authSession ?? undefined}
                     onSelectRovoAgent={(agent) => {
                         setSelectedRovoAgent(agent);
                         setScreen(featureFlags.chromeExtension ? "rovo-method" : "rovo-menu");

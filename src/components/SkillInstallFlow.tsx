@@ -13,6 +13,7 @@ import type { CatalogueEntry, SkillCatalogueEntry, AgentCatalogueEntry, SkillCan
 import type { RovoAgentInfo } from '../bundle/scanner.js';
 import type { InstallScope } from '../config/scopes.js';
 import type { InstallResult } from '../provisioners/types.js';
+import type { AuthSession } from '../auth/index.js';
 
 type FlowScreen =
   | 'browse'
@@ -26,12 +27,14 @@ interface SkillInstallFlowProps {
   entries: CatalogueEntry[];
   /** Bundle version used when the chosen candidate comes from an http bundle source. */
   bundleVersion: string;
+  /** Auth session for authenticated bundle downloads. */
+  authSession?: AuthSession;
   /** Called when the user picks a Rovo agent — provisioning happens outside this flow. */
   onSelectRovoAgent: (agent: RovoAgentInfo) => void;
   onBack: () => void;
 }
 
-export function SkillInstallFlow({ entries, bundleVersion, onSelectRovoAgent, onBack }: SkillInstallFlowProps) {
+export function SkillInstallFlow({ entries, bundleVersion, authSession, onSelectRovoAgent, onBack }: SkillInstallFlowProps) {
   const [screen, setScreen] = useState<FlowScreen>('browse');
   const [entry, setEntry] = useState<SkillCatalogueEntry | AgentCatalogueEntry | null>(null);
   const [candidate, setCandidate] = useState<SkillCandidate | null>(null);
@@ -64,6 +67,7 @@ export function SkillInstallFlow({ entries, bundleVersion, onSelectRovoAgent, on
                 repoRoot: repoRoot ?? undefined,
                 bundleVersion: candidate.sourceType === 'http' ? bundleVersion : '',
                 bundleUrl: candidate.skill.sourcePin?.bundleBaseUrl,
+                authSession,
               })
             : installResolvedSkills({
                 skills: [candidate.skill],
