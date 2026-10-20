@@ -33,13 +33,21 @@ it('shows restricted membership failure without offering excluded skills', () =>
   expect(screen.getByText(/Project memberships could not be verified/)).toBeTruthy();
   expect(screen.queryByRole('heading', { name: 'Test Skill' })).toBeNull();
 });
-it('sends only the selected candidate, revision, scope and tools; README stays text', async () => {
+it('sends only the selected candidate, revision, scope and tools; README renders as sanitised markdown', async () => {
   const onJob = vi.fn();
-  const { client, fetcher } = mockApi((path) => path.startsWith('/api/catalogue') ? { entry, readme: '<script>alert("unsafe")</script>' } : { jobId: 'install-job' });
+  // Bundle-supplied README: markdown must render, but raw HTML stays inert text and unsafe link schemes are stripped.
+  const readme = '# Skill guide\n\n<script>alert("unsafe")</script>\n\n[run](javascript:alert(1)) and [docs](https://example.com/docs)';
+  const { client, fetcher } = mockApi((path) => path.startsWith('/api/catalogue') ? { entry, readme } : { jobId: 'install-job' });
   render(<SkillDetail client={client} skillId="test-skill" session={session} context={context} jobs={[]} onJob={onJob} />);
   await screen.findByRole('heading', { name: 'Install skill' });
-  expect(screen.getByText('<script>alert("unsafe")</script>').tagName).toBe('PRE');
+  expect(screen.getByRole('heading', { name: 'Skill guide' }).tagName).toBe('H1');
+  expect(screen.getByText('<script>alert("unsafe")</script>')).toBeTruthy();
   expect(document.querySelector('script')).toBeNull();
+  expect(document.querySelector('a[href^="javascript:"]')).toBeNull();
+  const unsafeLink = screen.getByText('run').closest('a');
+  expect(unsafeLink).not.toBeNull();
+  expect(unsafeLink!.getAttribute('href') ?? '').toBe('');
+  expect(screen.getByRole('link', { name: 'docs' }).getAttribute('href')).toBe('https://example.com/docs');
   await userEvent.selectOptions(screen.getByLabelText('Install scope'), 'repo');
   await userEvent.click(screen.getByRole('checkbox', { name: 'Claude Code' }));
   await userEvent.click(screen.getByRole('button', { name: 'Install to 1 tool' }));
