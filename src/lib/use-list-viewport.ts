@@ -31,7 +31,9 @@ export function useListViewport(
     chromeRows: number = DEFAULT_CHROME_ROWS,
 ): ListViewport {
     const { stdout } = useStdout();
-    const visibleCount = Math.max(MIN_VISIBLE, (stdout?.rows ?? 24) - chromeRows);
+    // Ink types stdout as a plain stream; `rows` only exists when it is a TTY.
+    const rows = (stdout as Partial<NodeJS.WriteStream> | undefined)?.rows ?? 24;
+    const visibleCount = Math.max(MIN_VISIBLE, rows - chromeRows);
     const maxStart = Math.max(0, itemCount - visibleCount);
     // Centre the cursor once the list scrolls, clamped at both ends so the
     // first and last screens stay full.
