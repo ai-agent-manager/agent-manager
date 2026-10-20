@@ -7,7 +7,8 @@ import path from 'node:path';
 
 const original = childProcess.execFile;
 childProcess.execFile = function (command, ...args) {
-  if (/^(xdg-open|open|rundll32(?:\.exe)?)$/i.test(path.basename(command))) {
+  // Windows launches via PowerShell -EncodedCommand (see openInBrowser); rundll32 covers older builds.
+  if (/^(xdg-open|open|powershell(?:\.exe)?|pwsh(?:\.exe)?|rundll32(?:\.exe)?)$/i.test(path.basename(command))) {
     // Do not record the URL: it contains the temporary bootstrap token.
     appendFileSync(process.env.AGENTMAN_TEST_BROWSER_SENTINEL, `${path.basename(command)}\n`);
     throw new Error('Test child attempted to launch a browser despite --no-open.');
