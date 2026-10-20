@@ -38,7 +38,6 @@ import {
   resolveCatalogueScope,
 } from './catalogue-scope/index.js';
 import { createSkillProvisioner, formatSupportedSkillToolIds } from './provisioners/registry.js';
-import { createAgentProvisioner } from './provisioners/agent-registry.js';
 import type { InstallScope } from './config/scopes.js';
 
 export interface HeadlessConfig {

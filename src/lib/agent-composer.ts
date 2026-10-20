@@ -104,7 +104,6 @@ export async function composeAgent(
   let toolDirName: string;
   if (toolId === 'github-copilot') {
     const githubCopilotPath = path.join(agentDir, 'github-copilot', 'AGENT.md');
-    const copilotPath = path.join(agentDir, 'copilot', 'AGENT.md');
 
     let preferGitHubCopilot = false;
     try {

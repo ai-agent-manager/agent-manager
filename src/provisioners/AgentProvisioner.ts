@@ -22,7 +22,6 @@ import { composeAgent } from '../lib/agent-composer.js';
 import { ensureDir, pathExists, writeFileAtomic } from '../lib/fs.js';
 import { recordInstall, removeInstallRecord, readConfig } from '../bundle/cache.js';
 import { recordRepoInstall, removeRepoInstallRecord, readRepoConfig } from '../bundle/repo-config.js';
-import { getHomeDir } from '../lib/platform.js';
 import { createSkillProvisioner } from './registry.js';
 
 type AgentInstallRecord = {

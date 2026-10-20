@@ -7,8 +7,6 @@ import type { InstallResult, UninstallResult } from '../provisioners/types.js';
 import { createSkillProvisioner } from '../provisioners/registry.js';
 import { createAgentProvisioner } from '../provisioners/agent-registry.js';
 import { installFromRepo, installFromArtefact, installFromBundle } from './install.js';
-import { readFile } from 'node:fs/promises';
-import path from 'node:path';
 
 /** Supplies a bearer token for a pinned content URL when one is available. */
 export type AccessTokenProvider = (contentUrl: string) => Promise<string | undefined>;

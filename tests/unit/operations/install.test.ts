@@ -4,7 +4,6 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { installResolvedAgents } from '../../../src/operations/install.js';
 import type { AgentInfo } from '../../../src/bundle/scanner.js';
-import type { AgentDependencies } from '../../../src/bundle/manifest.js';
 
 describe('installResolvedAgents', () => {
   let tempDir: string;
