@@ -9,16 +9,22 @@ describe('installResolvedAgents', () => {
   let tempDir: string;
   let agentsDir: string;
   let skillsDir: string;
+  let originalHome: { HOME?: string; USERPROFILE?: string };
 
   beforeEach(async () => {
     tempDir = join(tmpdir(), `install-agents-test-${Date.now()}`);
     agentsDir = join(tempDir, 'agents');
-    skillsDir = join(tempDir, 'skills');
+    skillsDir = join(tempDir, 'home', '.claude', 'skills');
+    originalHome = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
+    process.env.HOME = join(tempDir, 'home');
+    process.env.USERPROFILE = join(tempDir, 'home');
     await mkdir(agentsDir, { recursive: true });
     await mkdir(skillsDir, { recursive: true });
   });
 
   afterEach(async () => {
+    process.env.HOME = originalHome.HOME;
+    process.env.USERPROFILE = originalHome.USERPROFILE;
     await rm(tempDir, { recursive: true, force: true });
   });
 

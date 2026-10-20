@@ -336,6 +336,7 @@ export async function installResolvedAgents(
 
           if (source.baseUrl) {
             // HTTP bundle - download and extract
+            // Use the agent's bundleVersion to ensure skill versions match the agent
             const bearer = await resolveInstallBearer(authSession);
             const { zipPath } = await downloadBundle(source.baseUrl, bundleVersion, bearer);
             const extracted = await extractBundle(zipPath);
