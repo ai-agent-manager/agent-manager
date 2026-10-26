@@ -170,6 +170,26 @@ it('rejects forged candidates, stale revisions, invalid tools, and non-root repo
   expect((await (await api('/api/context')).json()).repoRoot).toBe(await realpath(directory));
 });
 
+it('rejects a directory source whose path does not exist, is not a directory, or has no bundle structure', async () => {
+  const missing = await api('/api/sources', 'POST', { value: '/no/such/path', activate: false });
+  expect(missing.status).toBe(400);
+  expect((await missing.json()).error.message).toContain('/no/such/path');
+
+  const file = path.join(directory, 'not-a-dir');
+  await writeFile(file, '');
+  const notDir = await api('/api/sources', 'POST', { value: file, activate: false });
+  expect(notDir.status).toBe(400);
+  expect((await notDir.json()).error.message).toContain(file);
+
+  // A directory that exists but has no manifest.json or skill/agent subdirectories is rejected.
+  const emptyBundle = await api('/api/sources', 'POST', { value: directory, activate: false });
+  expect(emptyBundle.status).toBe(400);
+  expect((await emptyBundle.json()).error.message).toContain(directory);
+
+  // A valid bundle directory (manifest.json + skill dirs) is accepted.
+  expect((await api('/api/sources', 'POST', { value: fixture, activate: false })).status).toBe(200);
+});
+
 it('manages sources and invalidates the catalogue when active source changes', async () => {
   await load();
   const added = await api('/api/sources', 'POST', { value: 'https://skills.example.com' });
