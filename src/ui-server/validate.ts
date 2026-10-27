@@ -75,16 +75,20 @@ export async function assertLocalDirectory(dirPath: string): Promise<void> {
   if (!stats.isDirectory()) throw new ValidationError(`'${dirPath}' is not a directory.`);
 }
 
+async function isFile(filePath: string): Promise<boolean> {
+  try { return (await stat(filePath)).isFile(); } catch { return false; }
+}
+
 export async function assertBundleDirectory(dirPath: string): Promise<void> {
   await assertLocalDirectory(dirPath);
-  // A manifest.json at the root is sufficient evidence of a bundle.
-  try { await stat(path.join(dirPath, 'manifest.json')); return; } catch { /* fall through */ }
+  // A manifest.json file at the root is sufficient evidence of a bundle.
+  if (await isFile(path.join(dirPath, 'manifest.json'))) return;
   // Or at least one direct subdirectory must contain a SKILL.md or rovo-agent.yaml.
   for (const entry of await readdir(dirPath, { withFileTypes: true })) {
     if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
     const sub = path.join(dirPath, entry.name);
-    try { await stat(path.join(sub, 'SKILL.md')); return; } catch { /* continue */ }
-    try { await stat(path.join(sub, 'rovo-agent.yaml')); return; } catch { /* continue */ }
+    if (await isFile(path.join(sub, 'SKILL.md'))) return;
+    if (await isFile(path.join(sub, 'rovo-agent.yaml'))) return;
   }
   throw new ValidationError(
     `'${dirPath}' is not a valid bundle directory. It must contain a manifest.json or at least one skill (SKILL.md) or agent (rovo-agent.yaml) subdirectory.`,
