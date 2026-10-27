@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { realpath, stat } from 'node:fs/promises';
+import { readdir, realpath, stat } from 'node:fs/promises';
 import { findRepoRoot } from '../lib/repo.js';
 import { getToolById } from '../config/tools.js';
 import { ValidationError } from './errors.js';
@@ -63,6 +63,36 @@ export async function assertRepoRoot(value: unknown, defaultRoot: string | null)
     if (!(await stat(canonical)).isDirectory() || await findRepoRoot(canonical) !== canonical) throw new Error();
     return canonical;
   } catch { throw new ValidationError('Select an existing git repository root, not a subdirectory.'); }
+}
+
+export async function assertLocalDirectory(dirPath: string): Promise<void> {
+  let stats;
+  try {
+    stats = await stat(dirPath);
+  } catch {
+    throw new ValidationError(`'${dirPath}' does not exist.`);
+  }
+  if (!stats.isDirectory()) throw new ValidationError(`'${dirPath}' is not a directory.`);
+}
+
+async function isFile(filePath: string): Promise<boolean> {
+  try { return (await stat(filePath)).isFile(); } catch { return false; }
+}
+
+export async function assertBundleDirectory(dirPath: string): Promise<void> {
+  await assertLocalDirectory(dirPath);
+  // A manifest.json file at the root is sufficient evidence of a bundle.
+  if (await isFile(path.join(dirPath, 'manifest.json'))) return;
+  // Or at least one direct subdirectory must contain a SKILL.md or rovo-agent.yaml.
+  for (const entry of await readdir(dirPath, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+    const sub = path.join(dirPath, entry.name);
+    if (await isFile(path.join(sub, 'SKILL.md'))) return;
+    if (await isFile(path.join(sub, 'rovo-agent.yaml'))) return;
+  }
+  throw new ValidationError(
+    `'${dirPath}' is not a valid bundle directory. It must contain a manifest.json or at least one skill (SKILL.md) or agent (rovo-agent.yaml) subdirectory.`,
+  );
 }
 
 export function bundleId(value: unknown): string {

@@ -39,10 +39,12 @@ export function Versions({ client, session, context, refreshKey, onJob }: { clie
     <div className="page-heading"><div><p className="eyebrow">BUNDLES</p><h1>Versions</h1><p className="muted">Manage cached bundles and download versions from your current source.</p></div><button onClick={cached.refresh}>Refresh</button></div>
     <ErrorMessage message={error || cached.error} />
     <section aria-label="Cached bundles"><h2>Cached bundles</h2>
-      {cached.loading ? <Spinner /> : !cached.data?.cached.length ? <EmptyState title="No cached bundles">Load a bundle source to get started.</EmptyState> : <div className="source-list">{cached.data.cached.map((bundle, index) => <article className="panel" key={bundle.bundleId ?? `unsupported-${index}`}>
+      {cached.loading ? <Spinner /> : !cached.data?.cached.length ? <EmptyState title="No cached bundles">Load a bundle source to get started.</EmptyState> : <div className="source-list">{cached.data.cached.map((bundle, index) => <article className="panel bundle-card" key={bundle.bundleId ?? `unsupported-${index}`}>
         <div className="row spread"><h3>{bundle.version}</h3>{bundle.isCurrent && <span className="badge succeeded">Current</span>}</div>
-        <p className="break-word">{bundle.source?.name && <strong>{bundle.source.name} · </strong>}{bundle.source?.value ?? 'Origin not verified'}</p><p className="muted">{bundle.cacheKind === 'named' ? 'Named source · select per installed skill' : 'Global bundle'}{bundle.published && ` · ${bundle.published.slice(0, 10)}`}</p>
-        {bundle.reason && <p>{bundle.reason}</p>}{bundle.removalReason && <p>{bundle.removalReason}</p>}
+        <p className="break-word">{bundle.source?.name && <strong>{bundle.source.name} · </strong>}{bundle.source?.value ?? 'Origin not verified'}</p>
+        <p className="muted">{bundle.cacheKind === 'named' ? 'Named source · select per installed skill' : 'Global bundle'}{bundle.published && ` · ${bundle.published.slice(0, 10)}`}</p>
+        {bundle.reason && <p>{bundle.reason}</p>}
+        {bundle.removalReason && <p>{bundle.removalReason}</p>}
         <div className="row"><button disabled={busy || !bundle.canSelect || bundle.isCurrent || session?.state !== 'ready'} onClick={() => { setPending({ bundle, action: 'select' }); setSync(false); setError(''); }}>Use version {bundle.version}</button><button className="danger" disabled={busy || !bundle.canRemove} onClick={() => { setPending({ bundle, action: 'remove' }); setError(''); }}>Remove version {bundle.version}</button></div>
       </article>)}</div>}
     </section>

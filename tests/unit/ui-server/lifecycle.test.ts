@@ -1,7 +1,7 @@
 import { withMutation } from '../../../src/lib/mutation.js';
 import { updateInstalled } from '../../../src/operations/manage.js';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import net from 'node:net';
 import { createServer, type Server } from 'node:http';
 import os from 'node:os';
@@ -214,8 +214,12 @@ it('a newer load aborts a superseded load that is stuck on the network', async (
 });
 
 it('activating a source that cannot be resolved fails the next load instead of silently reloading the previous source', async () => {
-  const missing = path.join(cwd, 'missing');
-  expect((await api('/api/sources', { value: missing, activate: true })).status).toBe(200);
+  // Create a valid bundle, add it, then delete it so the load job finds it gone.
+  const bundle = path.join(cwd, 'bundle');
+  await mkdir(bundle);
+  await writeFile(path.join(bundle, 'manifest.json'), JSON.stringify({ version: 'test-1.0.0', published: new Date().toISOString() }));
+  expect((await api('/api/sources', { value: bundle, activate: true })).status).toBe(200);
+  await rm(bundle, { recursive: true });
   const { jobId } = await (await api('/api/session/load', {})).json();
   await vi.waitFor(async () => expect((await (await api(`/api/jobs/${jobId}`)).json()).state).toBe('failed'), { timeout: 10_000 });
   const session: SessionDto = await (await api('/api/session')).json();
@@ -223,7 +227,7 @@ it('activating a source that cannot be resolved fails the next load instead of s
   expect(session.error).toMatchObject({ code: 'SOURCE_LOAD_FAILED' });
   expect(session.source).toBeUndefined();
   // The user's choice stays active so it can be corrected in Sources; nothing is re-activated behind their back.
-  expect((await (await api('/api/sources')).json()).active.value).toBe(missing);
+  expect((await (await api('/api/sources')).json()).active.value).toBe(bundle);
 });
 
 it('sign-out prevents an update in download from entering a later interactive auth phase', async () => {

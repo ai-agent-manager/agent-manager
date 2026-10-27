@@ -17,6 +17,7 @@ export function sourceRoutes(router: Router, sessions: SessionStore): void {
     v.query(query, []);
     const body = v.object(await readJsonBody(req), ['value', 'activate']);
     const source = classifyStoredSource(sessions.normaliseInput(v.string(body.value, 'value')));
+    if (source.kind === 'directory') await v.assertBundleDirectory(source.value);
     const activate = v.boolean(body.activate, 'activate') ?? false;
     await requestMutation(res, () => sessions.changeSource(() => addSource(source, { setActive: activate }), activate));
     sendJson(res, 200, await sources());
