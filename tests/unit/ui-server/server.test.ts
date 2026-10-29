@@ -171,9 +171,11 @@ it('rejects forged candidates, stale revisions, invalid tools, and non-root repo
 });
 
 it('rejects a directory source whose path does not exist, is not a directory, or has no bundle structure', async () => {
-  const missing = await api('/api/sources', 'POST', { value: '/no/such/path', activate: false });
+  // Build the path under the temp directory so the asserted string survives path.resolve on Windows.
+  const missingPath = path.join(directory, 'no', 'such', 'path');
+  const missing = await api('/api/sources', 'POST', { value: missingPath, activate: false });
   expect(missing.status).toBe(400);
-  expect((await missing.json()).error.message).toContain('/no/such/path');
+  expect((await missing.json()).error.message).toContain(missingPath);
 
   const file = path.join(directory, 'not-a-dir');
   await writeFile(file, '');
