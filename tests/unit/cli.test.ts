@@ -37,10 +37,25 @@ describe('parseCli', () => {
     expect(parseCli(['src', '--update', '--no-update']).forceUpdate).toBe(false);
   });
 
+  it('preserves explicit boolean values for --update', () => {
+    expect(parseCli(['src', '--update=true']).forceUpdate).toBe(true);
+    expect(parseCli(['src', '--update=false']).forceUpdate).toBe(false);
+    expect(parseCli(['src', '--update', 'true']).forceUpdate).toBe(true);
+    expect(parseCli(['src', '--update', 'false']).forceUpdate).toBe(false);
+
+    const separated = parseCli(['--update', 'false', 'src']);
+    expect(separated.forceUpdate).toBe(false);
+    expect(separated.source).toBe('src');
+  });
+
   it('parses --config and its -c short flag', () => {
     expect(parseCli(['src', '--config', 'ai-skills.yml']).configPath).toBe('ai-skills.yml');
     expect(parseCli(['src', '--config=ai-skills.yml']).configPath).toBe('ai-skills.yml');
     expect(parseCli(['src', '-c', 'other.yml']).configPath).toBe('other.yml');
+    expect(parseCli(['src', '-c=ai-skills.yml']).configPath).toBe('ai-skills.yml');
+    expect(parseCli(['tests/fixtures/valid-bundle', '-c=mocks/test-config.yml']).configPath).toBe(
+      'mocks/test-config.yml',
+    );
   });
 
   it('treats --config without a value as unset', () => {
@@ -57,7 +72,16 @@ describe('parseCli', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     mockExit();
     expect(() => parseCli(['--version'])).toThrow('exit 0');
+    expect(() => parseCli(['--version=true'])).toThrow('exit 0');
     expect(log).toHaveBeenCalledWith(APP_VERSION);
+  });
+
+  it('does not treat --version false as a version request', () => {
+    const exit = mockExit();
+    const result = parseCli(['--version', 'false', 'src']);
+    expect(exit).not.toHaveBeenCalled();
+    expect(result.source).toBe('src');
+    expect(result.forceUpdate).toBe(false);
   });
 
   it('prints the description and help text and exits 0 on --help', () => {

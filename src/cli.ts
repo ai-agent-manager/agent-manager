@@ -53,10 +53,45 @@ function printHelp(): void {
     console.log(`${description}\n${HELP_TEXT}\n`);
 }
 
+// parseArgs stores `--update=true` as the string "true", leaves a following
+// `true` or `false` as a positional, and keeps the `=` in `-c=path`.
+// Rewrite those forms so they match the previous meow CLI.
+function normalizeCliArgs(argv: string[]): string[] {
+    const normalized: string[] = [];
+
+    for (let index = 0; index < argv.length; index++) {
+        const arg = argv[index];
+        if (arg === undefined) {
+            continue;
+        }
+
+        const shortEquals = /^-c=(.*)$/.exec(arg);
+        if (shortEquals) {
+            normalized.push("-c", shortEquals[1] ?? "");
+            continue;
+        }
+
+        const next = argv[index + 1];
+        if (/^--(update|help|version)$/.test(arg) && (next === "true" || next === "false")) {
+            normalized.push(`${arg}=${next}`);
+            index++;
+            continue;
+        }
+
+        normalized.push(arg);
+    }
+
+    return normalized;
+}
+
+function readBoolean(value: unknown): boolean {
+    return value === true || value === "true";
+}
+
 export function parseCli(argv: string[] = process.argv.slice(2)) {
     // Unknown flags are ignored rather than fatal.
     const { values, positionals } = parseArgs({
-        args: argv,
+        args: normalizeCliArgs(argv),
         strict: false,
         allowPositionals: true,
         allowNegative: true,
@@ -68,18 +103,18 @@ export function parseCli(argv: string[] = process.argv.slice(2)) {
         },
     });
 
-    if (values.version === true) {
+    if (readBoolean(values.version)) {
         console.log(APP_VERSION);
         process.exit(0);
     }
-    if (values.help === true) {
+    if (readBoolean(values.help)) {
         printHelp();
         process.exit(0);
     }
 
     return {
         source: positionals[0],
-        forceUpdate: values.update === true,
+        forceUpdate: readBoolean(values.update),
         configPath: typeof values.config === "string" && values.config ? values.config : undefined,
         showHelp: printHelp,
     };
