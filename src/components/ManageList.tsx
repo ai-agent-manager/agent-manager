@@ -17,7 +17,8 @@ export function ManageList({ onSelect, onBack, refreshToken }: ManageListProps) 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { stdout } = useStdout();
-  const termWidth = stdout?.columns ?? 80;
+  // Ink types stdout as a plain stream; `columns` only exists when it is a TTY.
+  const termWidth = (stdout as Partial<NodeJS.WriteStream> | undefined)?.columns ?? 80;
 
   useEscapeBack(onBack, !loading);
 
