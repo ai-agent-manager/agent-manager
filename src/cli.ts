@@ -1,6 +1,6 @@
-import meow from "meow";
+import { parseArgs } from "node:util";
 import chalk from "chalk";
-import { APP_VERSION } from "./app-info.js";
+import { APP_DESCRIPTION, APP_VERSION } from "./app-info.js";
 
 export const BANNER = `
 ${chalk.cyan(` █████╗  ██████╗ ███████╗███╗   ██╗████████╗`)}
@@ -20,10 +20,7 @@ ${chalk.cyan(`╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═══
 ${chalk.dim("  Your AI agent skills, sorted.")}
 `;
 
-export function parseCli() {
-    const cli = meow(
-        `
-  ${chalk.bold("Usage")}
+export const HELP_TEXT = `  ${chalk.bold("Usage")}
     $ agentman <source>
 
   ${chalk.bold("Arguments")}
@@ -49,29 +46,76 @@ export function parseCli() {
     $ agentman https://github.com/org/my-skills-repo --config ai-skills.yml
     $ agentman https://github.com/org/my-skills-repo/tree/v2.0 --config ai-skills.yml
     $ agentman https://bundles.example.com --config ai-skills.yml
-    $ agentman ./my-local-bundle
-`,
-        {
-            importMeta: import.meta,
-            flags: {
-                update: {
-                    type: "boolean",
-                    default: false,
-                },
-                config: {
-                    type: "string",
-                    shortFlag: "c",
-                },
-            },
-        },
-    );
+    $ agentman ./my-local-bundle`;
 
-    const source = cli.input[0];
+function printHelp(): void {
+    const description = APP_DESCRIPTION ? `\n  ${APP_DESCRIPTION}\n` : "";
+    console.log(`${description}\n${HELP_TEXT}\n`);
+}
+
+// parseArgs stores `--update=true` as the string "true", leaves a following
+// `true` or `false` as a positional, and keeps the `=` in `-c=path`.
+// Rewrite those forms so they match the previous meow CLI.
+function normalizeCliArgs(argv: string[]): string[] {
+    const normalized: string[] = [];
+
+    for (let index = 0; index < argv.length; index++) {
+        const arg = argv[index];
+        if (arg === undefined) {
+            continue;
+        }
+
+        const shortEquals = /^-c=(.*)$/.exec(arg);
+        if (shortEquals) {
+            normalized.push("-c", shortEquals[1] ?? "");
+            continue;
+        }
+
+        const next = argv[index + 1];
+        if (/^--(update|help|version)$/.test(arg) && (next === "true" || next === "false")) {
+            normalized.push(`${arg}=${next}`);
+            index++;
+            continue;
+        }
+
+        normalized.push(arg);
+    }
+
+    return normalized;
+}
+
+function readBoolean(value: unknown): boolean {
+    return value === true || value === "true";
+}
+
+export function parseCli(argv: string[] = process.argv.slice(2)) {
+    // Unknown flags are ignored rather than fatal.
+    const { values, positionals } = parseArgs({
+        args: normalizeCliArgs(argv),
+        strict: false,
+        allowPositionals: true,
+        allowNegative: true,
+        options: {
+            update: { type: "boolean", default: false },
+            config: { type: "string", short: "c" },
+            help: { type: "boolean" },
+            version: { type: "boolean" },
+        },
+    });
+
+    if (readBoolean(values.version)) {
+        console.log(APP_VERSION);
+        process.exit(0);
+    }
+    if (readBoolean(values.help)) {
+        printHelp();
+        process.exit(0);
+    }
 
     return {
-        source,
-        forceUpdate: cli.flags.update,
-        configPath: cli.flags.config,
-        showHelp: () => cli.showHelp(),
+        source: positionals[0],
+        forceUpdate: readBoolean(values.update),
+        configPath: typeof values.config === "string" && values.config ? values.config : undefined,
+        showHelp: printHelp,
     };
 }
