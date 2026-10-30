@@ -1,0 +1,99 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { AuthDto, JobDto } from '@api-types';
+import { ApiClient, ApiError } from './api/client.js';
+import { useResource, useSession } from './api/hooks.js';
+import { useHashRoute } from './router.js';
+import { ErrorMessage, Notice } from './components/Feedback.js';
+import { JobPanel, type ActionNotice } from './components/JobPanel.js';
+import { ThemeSelector } from './components/ThemeSelector.js';
+import { Catalogue } from './screens/Catalogue.js';
+import { SkillDetail } from './screens/SkillDetail.js';
+import { Installed } from './screens/Installed.js';
+import { Sources } from './screens/Sources.js';
+import { Versions } from './screens/Versions.js';
+import { SkillVersions } from './screens/SkillVersions.js';
+import { Settings } from './screens/Settings.js';
+import bannerUrl from './assets/banner.png';
+import styles from './App.module.css';
+
+const pageTitles: Record<string, string> = { '/': 'Catalogue', '/installed': 'Installed skills', '/sources': 'Sources', '/versions': 'Versions', '/skill-versions': 'Skill versions', '/settings': 'Settings' };
+
+export function App({ client }: { client: ApiClient }) {
+  const { session, context, jobs, connection, error: sessionError } = useSession(client);
+  const route = useHashRoute();
+  const [selectedJob, setSelectedJob] = useState<string>();
+  const dismissJob = useCallback((id: string) => setSelectedJob((selected) => selected === id ? undefined : selected), []);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [missingJob, setMissingJob] = useState<JobDto>();
+  const [notices, setNotices] = useState<ActionNotice[]>([]);
+  const noticeCounter = useRef(0);
+  const addNotice = useCallback((label: string, kind: ActionNotice['kind'], message: string) => {
+    noticeCounter.current += 1;
+    setNotices((current) => [...current, { id: `notice-${noticeCounter.current}`, label, kind, message }]);
+  }, []);
+  const dismissNotice = useCallback((id: string) => setNotices((current) => current.filter((notice) => notice.id !== id)), []);
+  useEffect(() => { setError(''); }, [route]);
+  let skillId: string | undefined;
+  if (route.startsWith('/skills/')) { try { skillId = decodeURIComponent(route.slice('/skills/'.length)); } catch { /* Invalid navigation renders the not-found screen. */ } }
+  const skillName = skillId ? session?.catalogue.find((entry) => entry.skillId === skillId)?.displayName ?? skillId : undefined;
+  useEffect(() => { document.title = `${skillName ?? pageTitles[route] ?? 'Page not found'} · Agent Manager`; }, [route, skillName]);
+  // Hash navigation replaces the content without a page load; move focus to the new main region (not on first render).
+  const firstRoute = useRef(true);
+  useEffect(() => {
+    if (firstRoute.current) { firstRoute.current = false; return; }
+    document.getElementById('main-content')?.focus();
+  }, [route]);
+  useEffect(() => {
+    if (!selectedJob || jobs.some((job) => job.id === selectedJob)) { setMissingJob(undefined); return; }
+    let disposed = false;
+    void client.request<JobDto>(`/api/jobs/${selectedJob}`).then((job) => { if (!disposed) setMissingJob(job); }).catch((error: Error) => {
+      if (disposed) return;
+      setError(error instanceof ApiError && error.status === 404 ? 'This activity is no longer retained. Refresh the catalogue or installed skills to see the current state.' : error.message);
+    });
+    return () => { disposed = true; };
+  }, [client, selectedJob, jobs]);
+  const refreshKey = jobs.filter((job) => ['succeeded', 'failed', 'cancelled'].includes(job.state)).map((job) => `${job.id}:${job.state}`).sort().join(',');
+  const authStatus = useResource<AuthDto>(client, session && session.state !== 'loading' && connection !== 'unauthorised' ? '/api/auth' : null, `${session?.sessionRevision}:${session?.state}:${refreshKey}`);
+  const auth = authStatus.data ?? session?.auth;
+  async function reload() {
+    setError(''); setBusy(true);
+    try { const { jobId } = await client.request<{ jobId: string }>('/api/session/load', 'POST'); setSelectedJob(jobId); }
+    catch (error) { setError((error as Error).message); }
+    finally { setBusy(false); }
+  }
+  async function authAction() {
+    setError(''); setBusy(true);
+    try {
+      if (auth?.authenticated) await client.request('/api/auth/logout', 'POST');
+      else { const { jobId } = await client.request<{ jobId: string }>('/api/auth/login', 'POST'); setSelectedJob(jobId); }
+    } catch (error) { setError((error as Error).message); }
+    finally { setBusy(false); }
+  }
+  return <div className={styles.app}>
+    <a className="skip-link" href="#main-content" onClick={(event) => { event.preventDefault(); document.getElementById('main-content')?.focus(); }}>Skip to content</a>
+    <aside className={styles.sidebar}>
+      <a className={styles.brand} href="#/" aria-label="Agent Manager home"><img className={styles.brandMark} src={bannerUrl} alt="" /></a>
+      <nav aria-label="Main navigation">{[['/', 'Catalogue', '⌘'], ['/installed', 'Installed', '▦'], ['/sources', 'Sources', '◎'], ['/versions', 'Versions', '◷'], ['/skill-versions', 'Skill versions', '⇄'], ['/settings', 'Settings', '⚙']].map(([href, label, icon]) => <a href={`#${href}`} key={href} className={(route === href || href === '/' && route.startsWith('/skills/')) ? styles.active : ''} aria-current={(route === href || href === '/' && route.startsWith('/skills/')) ? 'page' : undefined}><span aria-hidden="true">{icon}</span>{label}</a>)}</nav>
+      <div className={styles.sidebarBottom}><span className="status-dot" />Running locally<small>v{context?.appVersion ?? '…'}</small><ThemeSelector client={client} enabled={!!context && connection !== 'unauthorised'} /></div>
+    </aside>
+    <div className={styles.workspace}>
+      <header className={styles.header}><div className="min-width"><small className="muted">ACTIVE SOURCE</small><div className={styles.source} title={session?.source?.value}>{session?.source?.value ?? 'No source selected'}</div></div><div className="row">{session?.bundleVersion && <span className="badge">{session.bundleVersion}</span>}<span className="badge">{auth?.authenticated ? 'Signed in' : auth?.required ? 'Sign-in required' : 'Local session'}</span>{auth?.required && <button disabled={busy || session?.state === 'loading'} onClick={() => void authAction()}>{auth.authenticated ? 'Sign out' : 'Sign in'}</button>}<button disabled={busy || session?.state === 'loading'} onClick={() => void reload()}>{session?.state === 'loading' ? 'Loading…' : 'Reload'}</button></div></header>
+      <main id="main-content" className={styles.main} tabIndex={-1}>
+        <ErrorMessage message={connection === 'unauthorised' ? 'This tab is not authorized. Open the Web UI URL printed by Agent Manager; each launch URL works once, so start it again for a fresh one.' : error || sessionError || session?.error?.message} />
+        {connection === 'reconnecting' && <Notice role="status">Connection lost. Reconnecting and refreshing activity…</Notice>}
+        {session?.warnings.map((warning, index) => <Notice key={`${index}:${warning}`}>{warning}</Notice>)}
+        {session?.startupNotices.map((notice, index) => <Notice key={`${index}:${notice.message}`}>{notice.message}</Notice>)}
+        {connection === 'unauthorised' || !session && sessionError ? null : route === '/' ? <Catalogue session={session} />
+          : skillId ? <SkillDetail key={`${skillId}:${session?.sessionRevision}`} client={client} skillId={skillId} session={session} context={context} jobs={jobs} onJob={setSelectedJob} />
+          : route === '/installed' ? <Installed client={client} context={context} refreshKey={refreshKey} onJob={setSelectedJob} onToast={addNotice} />
+          : route === '/sources' ? <Sources client={client} onJob={setSelectedJob} />
+          : route === '/versions' ? <Versions key={session?.sessionRevision} client={client} session={session} context={context} refreshKey={refreshKey} onJob={setSelectedJob} />
+          : route === '/skill-versions' ? <SkillVersions client={client} session={session} context={context} refreshKey={refreshKey} onJob={setSelectedJob} />
+          : route === '/settings' ? <Settings client={client} />
+          : <div className="empty"><h1>Page not found</h1><a href="#/">Return to the catalogue</a></div>}
+      </main>
+      <JobPanel client={client} jobs={missingJob && !jobs.some((job) => job.id === missingJob.id) ? [...jobs, missingJob] : jobs} selectedId={selectedJob} onDismiss={dismissJob} notices={notices} onDismissNotice={dismissNotice} />
+    </div>
+  </div>;
+}

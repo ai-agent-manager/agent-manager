@@ -84,7 +84,7 @@ export async function resolveSkillVersion(linkPath: string): Promise<string | nu
   try {
     const target = await readlink(linkPath);
     // Expected: /home/user/.agentman/bundles/<hash>/<skill-name>
-    const match = target.match(/\.agentman[/\\]bundles[/\\]([^/\\]+)/);
+    const match = target.match(/\.agentman[/\\]bundles[/\\](?:sources[/\\][^/\\]+[/\\])?([^/\\]+)/);
     return match ? match[1] : null;
   } catch {
     return null;

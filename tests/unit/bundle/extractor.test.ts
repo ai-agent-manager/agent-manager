@@ -264,4 +264,38 @@ describe('extractBundle — source-scoped cache', () => {
       /must not be 'sources'/,
     );
   });
+  it('attests flat caches and refuses reuse by another origin with the same version label', async () => {
+    const first = await extractBundle('/tmp/ignored.zip', { contentRoot: 'https://a.example.com/agents' });
+    expect(JSON.parse(await readFile(path.join(first.bundleDir, '.source.json'), 'utf8'))).toEqual({ contentRoot: 'https://a.example.com/agents', trackedReferences: true });
+    await expect(extractBundle('/tmp/ignored.zip', { contentRoot: 'https://b.example.com/agents' })).rejects.toMatchObject({ statusCode: 409 });
+    expect((await extractBundle('/tmp/ignored.zip', { contentRoot: 'https://a.example.com/agents' })).isNew).toBe(false);
+  });
+
+  it('never accepts an archive-supplied marker as provenance for an unqualified extract', async () => {
+    zipContents = { ...manifest('1.0.0'), '.source.json': JSON.stringify({ contentRoot: 'https://forged.example.com', trackedReferences: true }) };
+    const result = await extractBundle('/tmp/ignored.zip');
+    await expect(readFile(path.join(result.bundleDir, '.source.json'))).rejects.toMatchObject({ code: 'ENOENT' });
+    await extractBundle('/tmp/ignored.zip', { contentRoot: 'https://real.example.com' });
+    expect(JSON.parse(await readFile(path.join(result.bundleDir, '.source.json'), 'utf8')).contentRoot).toBe('https://real.example.com');
+  });
+
+  it('does not claim repository references are tracked after repairing an old cache', async () => {
+    const dir = versionDir('official', '1.0.0');
+    await mkdir(dir, { recursive: true });
+    await writeFile(path.join(dir, 'manifest.json'), manifest('1.0.0')['manifest.json']);
+    const result = await extractBundle('/tmp/ignored.zip', { sourceKey: 'official', contentRoot: 'https://a.example.com/agents' });
+    expect(JSON.parse(await readFile(path.join(result.bundleDir, '.source.json'), 'utf8')).trackedReferences).toBe(false);
+  });
+
+  it('rejects a mismatched manifest before publishing any selected version', async () => {
+    await expect(extractBundle('/tmp/ignored.zip', { sourceKey: 'official', contentRoot: 'https://a.example.com/agents', expectedVersion: '2.0.0' })).rejects.toThrow('does not match the selected version');
+    await expect(readFile(path.join(versionDir('official', '1.0.0'), 'manifest.json'))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+  it('checks the adapter commit guard before reusing or publishing a downloaded cache', async () => {
+    const guard = vi.fn(() => { throw new Error('Superseded session'); });
+    await expect(extractBundle('/tmp/ignored.zip', { sourceKey: 'official', contentRoot: 'https://a.example.com/agents', beforeCommit: guard })).rejects.toThrow('Superseded session');
+    expect(guard).toHaveBeenCalledOnce();
+    await expect(readFile(path.join(versionDir('official', '1.0.0'), 'manifest.json'))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
 });

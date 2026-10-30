@@ -94,6 +94,7 @@ export function parseDiscoveryDocument(
 export async function fetchDiscoveryDocument(
   baseUrl: string,
   accessToken?: string,
+  options: { signal?: AbortSignal } = {},
 ): Promise<DiscoveryDocument> {
   const url = new URL(WELL_KNOWN_PATH, baseUrl).toString();
 
@@ -106,7 +107,7 @@ export async function fetchDiscoveryDocument(
 
   let response: Response;
   try {
-    response = await fetch(url, { headers });
+    response = await fetch(url, { headers, ...(options.signal ? { signal: options.signal } : {}) });
   } catch (err) {
     throw new DiscoveryError(
       `Failed to fetch discovery document from ${url}`,

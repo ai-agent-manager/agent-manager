@@ -15,8 +15,10 @@ import type { Project } from './types.js';
 export async function listProjects(
   apiBaseUrl: string,
   auth: ApiAuth,
+  options?: { signal?: AbortSignal },
 ): Promise<Project[]> {
-  const projects = await apiRequest<Project[]>(apiBaseUrl, '/projects', auth);
+  const projects = await apiRequest<Project[]>(apiBaseUrl, '/projects', auth,
+    ...(options?.signal ? [{ signal: options.signal }] : []));
   return projects.map(normaliseProjectRestrictions);
 }
 

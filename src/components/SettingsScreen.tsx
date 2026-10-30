@@ -2,8 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Box, Text } from "ink";
 import SelectInput from "ink-select-input";
 import { LoadingSpinner } from "./Spinner.js";
-import { readConfig, updateConfig } from "../bundle/cache.js";
-import { setTelemetryDisabledByConfig } from "../telemetry.js";
+import { getSettings, updateSettings } from "../operations/settings.js";
 import { useEscapeBack } from "../lib/use-escape-back.js";
 
 interface SettingsScreenProps {
@@ -11,6 +10,8 @@ interface SettingsScreenProps {
 }
 
 export function SettingsScreen({ onBack }: SettingsScreenProps) {
+    const [error, setError] = useState<string | null>(null);
+    const [saving, setSaving] = useState(false);
     const [loaded, setLoaded] = useState(false);
     const [startupDisabled, setStartupDisabled] = useState(false);
     const [telemetryDisabled, setTelemetryDisabled] = useState(false);
@@ -19,28 +20,26 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
 
     useEffect(() => {
         (async () => {
-            const config = await readConfig();
+            const config = await getSettings();
             setStartupDisabled(config.startupUpdateChecksDisabled ?? false);
             setTelemetryDisabled(config.telemetryDisabled ?? false);
             setLoaded(true);
-        })();
+        })().catch((error) => { setError(error instanceof Error ? error.message : String(error)); setLoaded(true); });
     }, []);
 
-    const toggleStartup = async () => {
-        const next = !startupDisabled;
-        setStartupDisabled(next);
-        await updateConfig((config) => {
-            config.startupUpdateChecksDisabled = next;
-        });
-    };
-
-    const toggleTelemetry = async () => {
-        const next = !telemetryDisabled;
-        setTelemetryDisabled(next);
-        setTelemetryDisabledByConfig(next);
-        await updateConfig((config) => {
-            config.telemetryDisabled = next;
-        });
+    const toggle = async (setting: 'startup' | 'telemetry') => {
+        if (saving) return;
+        setSaving(true);
+        setError(null);
+        try {
+            const updated = await updateSettings(setting === 'startup'
+                ? { startupUpdateChecksDisabled: !startupDisabled }
+                : { telemetryDisabled: !telemetryDisabled });
+            setStartupDisabled(updated.startupUpdateChecksDisabled);
+            setTelemetryDisabled(updated.telemetryDisabled);
+        } catch (error) {
+            setError(error instanceof Error ? error.message : String(error));
+        } finally { setSaving(false); }
     };
 
     if (!loaded) {
@@ -64,14 +63,16 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
     return (
         <Box flexDirection="column" marginLeft={2}>
             <Text bold>Settings &amp; config</Text>
+            {error && <Text color="red">{error}</Text>}
+            {saving && <Text dimColor>Saving...</Text>}
             <Text> </Text>
             <Text dimColor>{"  "}Enter toggles a setting · Esc back</Text>
             <Text> </Text>
             <SelectInput
                 items={items}
                 onSelect={(item) => {
-                    if (item.value === "startup") void toggleStartup();
-                    else if (item.value === "telemetry") void toggleTelemetry();
+                    if (item.value === "startup") void toggle("startup");
+                    else if (item.value === "telemetry") void toggle("telemetry");
                     else onBack();
                 }}
             />
