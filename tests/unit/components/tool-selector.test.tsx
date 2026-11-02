@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render } from 'ink-testing-library';
+import { press } from '../../helpers/ink-input.js';
 
 const ESC = String.fromCharCode(27);
 const DOWN = `${ESC}[B`;
@@ -28,13 +29,6 @@ const { ToolSelector } = await import('../../../src/components/ToolSelector.js')
 
 async function flushInkInput(): Promise<void> {
   await new Promise<void>((resolve) => setImmediate(resolve));
-}
-
-type Stdin = { write: (input: string) => void };
-
-async function press(stdin: Stdin, input: string): Promise<void> {
-  stdin.write(input);
-  await flushInkInput();
 }
 
 describe('ToolSelector', () => {
@@ -100,7 +94,7 @@ describe('ToolSelector', () => {
     await flushInkInput();
 
     await press(stdin, ESC);
-    expect(onBack).toHaveBeenCalled();
+    await vi.waitFor(() => expect(onBack).toHaveBeenCalled());
   });
 
   it('goes back when Enter is pressed on the back row', async () => {
