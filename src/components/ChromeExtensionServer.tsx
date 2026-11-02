@@ -141,7 +141,7 @@ export function ChromeExtensionServer({
       <Box flexDirection="column" marginLeft={2}>
         <Text>To connect the Chrome extension:</Text>
         <Text> </Text>
-        <Text>  1. Install the Agentman Chrome extension (if you haven't already)</Text>
+        <Text>  1. Install the Agent Manager Chrome extension (if you haven't already)</Text>
         <Text>  2. Open the extension popup in Chrome</Text>
         <Text>  3. Enter this auth token when prompted:</Text>
         <Text> </Text>

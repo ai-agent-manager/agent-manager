@@ -41,7 +41,7 @@ async function isExistingDirectory(input: string): Promise<boolean> {
  *
  * Throws descriptive errors for invalid inputs.
  */
-export async function resolveSource(input: string): Promise<StartupSource> {
+export async function resolveSource(input: string, options: { signal?: AbortSignal } = {}): Promise<StartupSource> {
   // A real local directory must win over GitHub `owner/repo` shorthand —
   // otherwise `team/skills` on disk would silently become a remote probe.
   if (isGithubRepoShorthand(input) && (await isExistingDirectory(input))) {
@@ -76,7 +76,7 @@ export async function resolveSource(input: string): Promise<StartupSource> {
   }
 
   const baseUrl = source.type === 'bundle' ? source.baseUrl : source.artefactUrl;
-  const discovery = await fetchDiscoveryDocument(baseUrl!);
+  const discovery = options.signal ? await fetchDiscoveryDocument(baseUrl!, undefined, options) : await fetchDiscoveryDocument(baseUrl!);
   return { type: 'discovery', baseUrl: baseUrl!, discovery };
 }
 
@@ -94,7 +94,7 @@ export interface ResolvedPersistedSource {
  * first source that resolves, or `null` when there are none configured. Throws
  * only when every configured source failed, aggregating their errors.
  */
-export async function resolvePersistedSource(): Promise<ResolvedPersistedSource | null> {
+export async function resolvePersistedSource(options: { signal?: AbortSignal } = {}): Promise<ResolvedPersistedSource | null> {
   const config = await readConfig();
   const stored = orderedSources(config);
   if (stored.length === 0) {
@@ -104,7 +104,8 @@ export async function resolvePersistedSource(): Promise<ResolvedPersistedSource 
   const failures: string[] = [];
   for (const entry of stored) {
     try {
-      const source = await resolveSource(entry.value);
+      options.signal?.throwIfAborted();
+      const source = await resolveSource(entry.value, ...(options.signal ? [options] : []));
       return { source, stored: entry };
     } catch (error) {
       failures.push(`  - ${entry.value}: ${error instanceof Error ? error.message : String(error)}`);

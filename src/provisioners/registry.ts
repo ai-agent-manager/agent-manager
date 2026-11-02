@@ -38,6 +38,7 @@ export const SKILL_PROVISIONER_CLASSES: readonly SkillProvisionerClass[] = [
 function toToolDefinition(ProvisionerClass: SkillProvisionerClass): ToolDefinition {
   const probe = new ProvisionerClass();
   const note = probe.getNote();
+  const repoNote = probe.getRepoNote();
 
   return {
     id: probe.id,
@@ -45,6 +46,7 @@ function toToolDefinition(ProvisionerClass: SkillProvisionerClass): ToolDefiniti
     getSkillsDir: () => probe.getSkillsDir(),
     getRepoSkillsDir: (repoRoot: string) => probe.getRepoSkillsDir(repoRoot),
     ...(note ? { note } : {}),
+    ...(repoNote ? { repoNote } : {}),
   };
 }
 

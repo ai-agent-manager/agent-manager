@@ -1,5 +1,8 @@
+import { randomUUID } from 'node:crypto';
+import { withMutation } from '../lib/mutation.js';
+import { assertSafeCacheSegment } from '../lib/path-segment.js';
 import { execFile } from 'node:child_process';
-import { readdir, readFile, stat, rm } from 'node:fs/promises';
+import { readdir, readFile, stat, rm, rename, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { getAgentmanDir } from '../config/paths.js';
@@ -28,22 +31,30 @@ export async function importGitSkills(
   repoUrl: string,
   skillName: string,
 ): Promise<GitImportResult> {
+  assertSafeCacheSegment(skillName, 'Git source name');
   const cacheDir = path.join(getAgentmanDir(), 'git-cache');
   // Use a stable directory name based on the skill name
   const clonePath = path.join(cacheDir, skillName);
 
-  // Remove existing clone to get a fresh copy
-  await rm(clonePath, { recursive: true, force: true });
+  await mkdir(cacheDir, { recursive: true });
+  const staged = `${clonePath}.stage-${randomUUID()}`;
+  try {
 
-  // Shallow clone for speed
-  await execFileAsync('git', ['clone', '--depth', '1', repoUrl, clonePath], {
-    timeout: 60_000,
-  });
+    // Shallow clone for speed
+    await execFileAsync('git', ['clone', '--depth', '1', repoUrl, staged], {
+      timeout: 60_000,
+    });
 
-  // Scan for skills
-  const skills = await scanPluginSkills(clonePath);
+    await withMutation(async () => {
+      await rm(clonePath, { recursive: true, force: true });
+      await rename(staged, clonePath);
+    });
 
-  return { skills, clonePath };
+    // Scan for skills
+    const skills = await scanPluginSkills(clonePath);
+
+    return { skills, clonePath };
+  } finally { await rm(staged, { recursive: true, force: true }); }
 }
 
 /**

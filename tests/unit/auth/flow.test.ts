@@ -37,7 +37,7 @@ vi.stubGlobal('fetch', mockFetch);
 const { getValidBearerToken, authenticate, AuthFlowError, AuthCancelledError } = await import(
   '../../../src/auth/flow.js'
 );
-const { waitForCallback } = await import('../../../src/auth/callback-server.js');
+const { waitForCallback, CallbackServerError } = await import('../../../src/auth/callback-server.js');
 
 const baseUrl = 'https://discovery.example.com';
 const auth = {
@@ -310,6 +310,7 @@ describe('authenticate', () => {
 
 describe('authenticate cancellation', () => {
   beforeEach(() => {
+    vi.mocked(waitForCallback).mockReset();
     loadTokens.mockReset();
     saveTokens.mockReset();
     deleteTokens.mockReset();
@@ -319,6 +320,29 @@ describe('authenticate cancellation', () => {
     fetchOidcConfiguration.mockResolvedValue(oidcConfig);
     saveTokens.mockResolvedValue('filesystem');
     deleteTokens.mockResolvedValue(undefined);
+  });
+
+  it('coordinates real authenticate callers and cancels a queued login before callback binding', async () => {
+    loadTokens.mockResolvedValue(null);
+    let entered!: () => void;
+    const waiting = new Promise<void>((resolve) => { entered = resolve; });
+    vi.mocked(waitForCallback).mockImplementation((_state, options) => new Promise((_resolve, reject) => {
+      options!.signal!.addEventListener('abort', () => reject(new CallbackServerError('Authentication cancelled')), { once: true });
+      entered();
+    }));
+    const firstController = new AbortController();
+    const secondController = new AbortController();
+    const firstPrompt = vi.fn(), secondPrompt = vi.fn();
+    const first = authenticate(baseUrl, auth, firstPrompt, { signal: firstController.signal });
+    const firstRejected = expect(first).rejects.toBeInstanceOf(AuthCancelledError);
+    await waiting;
+    const second = authenticate(baseUrl, auth, secondPrompt, { signal: secondController.signal });
+    const secondRejected = expect(second).rejects.toBeInstanceOf(AuthCancelledError);
+    secondController.abort(); await secondRejected;
+    expect(waitForCallback).toHaveBeenCalledTimes(1);
+    expect(firstPrompt).toHaveBeenCalledOnce(); expect(secondPrompt).not.toHaveBeenCalled();
+    firstController.abort(); await firstRejected;
+    expect(saveTokens).not.toHaveBeenCalled();
   });
 
   it('throws AuthCancelledError up front when the signal is already aborted', async () => {
@@ -331,6 +355,36 @@ describe('authenticate cancellation', () => {
       }),
     ).rejects.toBeInstanceOf(AuthCancelledError);
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it.each(['discovery', 'callback', 'exchange'] as const)('normalizes cancellation during %s with the real authenticate flow', async (stage) => {
+    const controller = new AbortController();
+    let entered!: () => void;
+    const ready = new Promise<void>((resolve) => { entered = resolve; });
+    const waitForAbort = (signal: AbortSignal | undefined, error: Error) => new Promise<never>((_resolve, reject) => {
+      expect(signal).toBe(controller.signal);
+      signal!.addEventListener('abort', () => reject(error), { once: true });
+      entered();
+    });
+    loadTokens.mockResolvedValue(null);
+    if (stage === 'discovery') {
+      fetchOidcConfiguration.mockImplementation((_url, options) =>
+        waitForAbort(options.signal, new DOMException('Aborted', 'AbortError')));
+    } else if (stage === 'callback') {
+      vi.mocked(waitForCallback).mockImplementation((_state, options) =>
+        waitForAbort(options?.signal, new CallbackServerError('Authentication cancelled')));
+    } else {
+      vi.mocked(waitForCallback).mockResolvedValue({ code: 'test-code' });
+      mockFetch.mockImplementation((_url, options) =>
+        waitForAbort(options.signal, new DOMException('Aborted', 'AbortError')));
+    }
+    const pending = authenticate(baseUrl, auth, vi.fn(), { signal: controller.signal });
+    const rejection = expect(pending).rejects.toBeInstanceOf(AuthCancelledError);
+    await ready;
+    controller.abort();
+    await rejection;
+    expect(saveTokens).not.toHaveBeenCalled();
+    if (stage !== 'exchange') expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it('normalizes a refresh aborted mid-flight and never falls through to interactive login', async () => {

@@ -82,7 +82,7 @@ export function ScopeSelector({ onSelect, onBack }: ScopeSelectorProps) {
             />
             {!isInRepo && (
                 <Text color="yellow" dimColor>
-                    {"  "}Repo-level installation requires running agentman from inside a git repository.
+                    {"  "}Repo-level installation requires running Agent Manager from inside a git repository.
                 </Text>
             )}
         </Box>

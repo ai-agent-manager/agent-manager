@@ -75,7 +75,7 @@ export function SourceManager({ onBack }: SourceManagerProps) {
                             void (async () => {
                                 await addSource(classifyStoredSource(trimmed), { setActive: true });
                                 setAddValue("");
-                                setNote(`Added ${trimmed} and set it active. Restart agentman to load it.`);
+                                setNote(`Added ${trimmed} and set it active. Restart Agent Manager to load it.`);
                                 await reload();
                                 setScreen("menu");
                             })();
@@ -156,7 +156,7 @@ export function SourceManager({ onBack }: SourceManagerProps) {
                         const index = Number(item.value.slice("select:".length));
                         void (async () => {
                             await setActiveSource(sources[index]!);
-                            setNote(`Active source set to ${sources[index]!.value}. Restart agentman to load it.`);
+                            setNote(`Active source set to ${sources[index]!.value}. Restart Agent Manager to load it.`);
                             await reload();
                         })();
                     }

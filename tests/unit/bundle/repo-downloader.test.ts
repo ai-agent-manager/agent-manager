@@ -30,6 +30,7 @@ let mockTempDir = '';
 let mockReposDir = '';
 
 vi.mock('../../../src/config/paths.js', () => ({
+  getAgentmanDir: () => path.join(os.homedir(), '.agentman'),
   getTempDir: () => mockTempDir,
   getRepoCacheDir: (owner: string, repo: string, ref: string) =>
     path.join(mockReposDir, owner, repo, ref),

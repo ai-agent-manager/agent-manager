@@ -26,4 +26,8 @@ export class AgentsProvisioner extends SkillProvisioner {
   getNote(): string {
     return "Installs to the shared Agent Skills layout (~/.agents/skills/). Compatible with Pi and other cross-client harnesses.";
   }
+
+  getRepoNote(): string {
+    return "Installs to the repository's Agent Skills layout (<repo>/.agents/skills/). Compatible with Pi and other cross-client harnesses.";
+  }
 }

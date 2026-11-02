@@ -30,7 +30,7 @@ describe('openInBrowser', () => {
     const hostileUrl =
       'https://idp.example.com/authorize" & echo PWNED> canary.txt & rem "?client_id=x&response_type=code';
 
-    openInBrowser(hostileUrl);
+    void openInBrowser(hostileUrl);
 
     expect(execFile).toHaveBeenCalledTimes(1);
     const [command, args] = execFile.mock.calls[0];
@@ -66,7 +66,7 @@ describe('openInBrowser', () => {
     const url =
       'https://idp.example.com/authorize?client_id=agentman-cli&response_type=code&scope=openid&state=abc123';
 
-    openInBrowser(url);
+    void openInBrowser(url);
 
     expect(execFile).toHaveBeenCalledTimes(1);
     const [command, args, options] = execFile.mock.calls[0];
@@ -87,7 +87,7 @@ describe('openInBrowser', () => {
     mockGetPlatform.mockReturnValue('windows');
     const url = "https://idp.example.com/authorize?x=don't";
 
-    openInBrowser(url);
+    void openInBrowser(url);
 
     const args = execFile.mock.calls[0][1] as string[];
     const encoded = args[args.indexOf('-EncodedCommand') + 1];
@@ -99,17 +99,17 @@ describe('openInBrowser', () => {
     mockGetPlatform.mockReturnValue('macos');
     const url = 'https://idp.example.com/authorize?client_id=x';
 
-    openInBrowser(url);
+    void openInBrowser(url);
 
-    expect(execFile).toHaveBeenCalledWith('open', [url], { shell: false });
+    expect(execFile).toHaveBeenCalledWith('open', [url], { shell: false }, expect.any(Function));
   });
 
   it('opens URLs via `xdg-open` on Linux without a shell', () => {
     mockGetPlatform.mockReturnValue('linux');
     const url = 'https://idp.example.com/authorize?client_id=x';
 
-    openInBrowser(url);
+    void openInBrowser(url);
 
-    expect(execFile).toHaveBeenCalledWith('xdg-open', [url], { shell: false });
+    expect(execFile).toHaveBeenCalledWith('xdg-open', [url], { shell: false }, expect.any(Function));
   });
 });
