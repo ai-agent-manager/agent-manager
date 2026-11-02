@@ -114,7 +114,7 @@ membership failure exposes an empty permitted catalogue.
 - `src/ui-server/`: loopback HTTP API, jobs, session generations, SSE, DTOs,
   validation and production static assets. See [the M2 contract](web-ui-m2.md).
 - `src/ui-command.ts`: CLI port fallback, browser launch, and signal handling.
-- `web-ui/`: React 18/Vite browser package with its own lockfile and DOM tests.
+- `web-ui/`: React 19/Vite browser package with its own lockfile and DOM tests.
 - `src/ui-server/api-types.ts`: type-only browser contract. The import check in
   `scripts/check-ui-imports.mjs` rejects runtime imports across this boundary.
 - `assets/web-ui/`: generated production assets. Build through
