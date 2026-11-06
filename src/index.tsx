@@ -15,6 +15,7 @@ import { addSource, classifyStoredSource } from "./bundle/cache.js";
 import { parseGitRemoteInput } from "./discovery/git-probe.js";
 import { startConsoleSpinner } from "./lib/console-spinner.js";
 import {
+    applyActiveSourceTelemetry,
     getBundleEndpointTelemetryValue,
     getBundleSourceTelemetryProperties,
     trackTelemetryError,
@@ -50,6 +51,12 @@ if (configPath) {
                     : resolvedStartup;
         } else {
             telemetrySource = await resolveHeadlessTelemetrySource(sourceInput);
+        }
+        // Telemetry mode must respect the active source: once its discovery
+        // document is known, point the process-wide client at its telemetry
+        // block (env vars still take precedence).
+        if (resolvedStartup?.type === "discovery") {
+            applyActiveSourceTelemetry(resolvedStartup.discovery.telemetry);
         }
         trackTelemetryEvent({
             action: "agentman_started",
@@ -91,6 +98,13 @@ try {
             trackTelemetryError("bundle_source_resolve_failed", err, telemetryForInput(sourceInput));
             sourceError = err instanceof Error ? err.message : String(err);
         }
+    }
+
+    // Telemetry mode must respect the active source: once it is resolved,
+    // point the process-wide client at its discovery telemetry block (env
+    // vars still take precedence) before the first event is tracked.
+    if (source?.type === "discovery") {
+        applyActiveSourceTelemetry(source.discovery.telemetry);
     }
 
     spinner.stop();

@@ -5,6 +5,7 @@ import {
     createTelemetryClient,
     getBundleEndpointTelemetryValue,
     getBundleSourceTelemetryProperties,
+    resolveTelemetryMode,
     resolveTelemetrySettings,
     setTelemetryDisabledByConfig,
     shouldDisableTelemetry,
@@ -177,6 +178,58 @@ describe("resolveTelemetrySettings", () => {
     });
 });
 
+describe("resolveTelemetryMode", () => {
+    const interactive = { stdinIsTTY: true, stdoutIsTTY: true };
+    const discovery = { url: "https://telemetry.example.com", siteId: "discovery-site" };
+
+    it("reports not-configured when neither env vars nor the discovery file provide an endpoint", () => {
+        expect(resolveTelemetryMode(undefined, {}, interactive)).toBe("not-configured");
+    });
+
+    it("reports enabled when the discovery file explicitly enables telemetry (issue #95)", () => {
+        expect(resolveTelemetryMode(discovery, {}, interactive)).toBe("enabled");
+    });
+
+    it("reports enabled from env-only configuration", () => {
+        expect(
+            resolveTelemetryMode(
+                undefined,
+                {
+                    AGENTMAN_TELEMETRY_URL: "https://example.com/metrics",
+                    AGENTMAN_TELEMETRY_SITE_ID: "42",
+                },
+                interactive,
+            ),
+        ).toBe("enabled");
+    });
+
+    it("reports disabled when the persisted config opt-out is set", () => {
+        expect(resolveTelemetryMode(discovery, {}, interactive, true)).toBe("disabled");
+    });
+
+    it("reports disabled when an env opt-out suppresses discovery telemetry", () => {
+        expect(resolveTelemetryMode(discovery, { AGENTMAN_TELEMETRY_DISABLED: "1" }, interactive)).toBe(
+            "disabled",
+        );
+    });
+
+    it("reports disabled in CI even when discovery telemetry is configured", () => {
+        expect(resolveTelemetryMode(discovery, { CI: "true" }, interactive)).toBe("disabled");
+    });
+
+    it("reports disabled when the run is non-interactive", () => {
+        expect(
+            resolveTelemetryMode(discovery, {}, { stdinIsTTY: true, stdoutIsTTY: false }),
+        ).toBe("disabled");
+    });
+
+    it("reports not-configured when only opt-out env vars are set", () => {
+        expect(resolveTelemetryMode(undefined, { DISABLE_TELEMETRY: "1" }, interactive)).toBe(
+            "not-configured",
+        );
+    });
+});
+
 describe("categoriseError", () => {
     it("classifies network-style failures", () => {
         expect(categoriseError(new Error("Failed to fetch index: 404 Not Found"))).toBe("network");
@@ -257,6 +310,99 @@ describe("createTelemetryClient", () => {
 
         expect(() => client.track({ action: "agentman_started" })).not.toThrow();
         await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+});
+
+describe("createTelemetryClient.applySettings", () => {
+    let fetchMock: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+        fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    });
+
+    afterEach(() => {
+        // Module-level flag — reset so it never leaks into other tests.
+        setTelemetryDisabledByConfig(false);
+        vi.restoreAllMocks();
+    });
+
+    it("enables an otherwise-disabled client from a discovery telemetry block", async () => {
+        const client = createTelemetryClient({
+            env: {},
+            fetchImpl: fetchMock as typeof fetch,
+            stdinIsTTY: true,
+            stdoutIsTTY: true,
+            sessionId: "session1234567890",
+        });
+
+        expect(client.isEnabled()).toBe(false);
+        await client.send({ action: "agentman_started" });
+        expect(fetchMock).not.toHaveBeenCalled();
+
+        client.applySettings({ url: "https://telemetry.example.com", siteId: "13" });
+        expect(client.isEnabled()).toBe(true);
+
+        await client.send({ action: "agentman_started" });
+        const [endpoint, options] = fetchMock.mock.calls[0];
+        expect(endpoint).toBe("https://telemetry.example.com/matomo.php");
+        expect(new URLSearchParams(options.body as string).get("idsite")).toBe("13");
+    });
+
+    it("keeps env vars in precedence over discovery values", async () => {
+        const client = createTelemetryClient({
+            env: {
+                AGENTMAN_TELEMETRY_URL: "https://override.example.com",
+                AGENTMAN_TELEMETRY_SITE_ID: "env-site",
+            },
+            fetchImpl: fetchMock as typeof fetch,
+            stdinIsTTY: true,
+            stdoutIsTTY: true,
+        });
+
+        client.applySettings({ url: "https://telemetry.example.com", siteId: "discovery-site" });
+        expect(client.isEnabled()).toBe(true);
+
+        await client.send({ action: "agentman_started" });
+        const [endpoint, options] = fetchMock.mock.calls[0];
+        expect(endpoint).toBe("https://override.example.com/matomo.php");
+        expect(new URLSearchParams(options.body as string).get("idsite")).toBe("env-site");
+    });
+
+    it("falls back to env-only behaviour when re-applied without a discovery block", async () => {
+        const client = createTelemetryClient({
+            env: {
+                AGENTMAN_TELEMETRY_URL: "https://example.com/metrics",
+                AGENTMAN_TELEMETRY_SITE_ID: "42",
+            },
+            fetchImpl: fetchMock as typeof fetch,
+            stdinIsTTY: true,
+            stdoutIsTTY: true,
+        });
+
+        client.applySettings({ url: "https://telemetry.example.com", siteId: "13" });
+        client.applySettings(undefined);
+        expect(client.isEnabled()).toBe(true);
+
+        await client.send({ action: "agentman_started" });
+        const [endpoint, options] = fetchMock.mock.calls[0];
+        expect(endpoint).toBe("https://example.com/metrics/matomo.php");
+        expect(new URLSearchParams(options.body as string).get("idsite")).toBe("42");
+    });
+
+    it("still honours the config opt-out after applying discovery telemetry", async () => {
+        const client = createTelemetryClient({
+            env: {},
+            fetchImpl: fetchMock as typeof fetch,
+            stdinIsTTY: true,
+            stdoutIsTTY: true,
+        });
+
+        client.applySettings({ url: "https://telemetry.example.com", siteId: "13" });
+        setTelemetryDisabledByConfig(true);
+
+        expect(client.isEnabled()).toBe(false);
+        await client.send({ action: "agentman_started" });
+        expect(fetchMock).not.toHaveBeenCalled();
     });
 });
 

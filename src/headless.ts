@@ -36,6 +36,7 @@ import {
   partitionSkillsByScope,
   resolveCatalogueScope,
 } from './catalogue-scope/index.js';
+import { applyActiveSourceTelemetry } from './telemetry.js';
 import { createSkillProvisioner, formatSupportedSkillToolIds } from './provisioners/registry.js';
 import type { InstallScope } from './config/scopes.js';
 
@@ -161,6 +162,13 @@ export async function runHeadless(
         // No discovery document exists at this origin, so treat it as a legacy bundle.
       }
     }
+  }
+
+  // Telemetry mode must respect the active source: once the discovery document
+  // is known, point the process-wide client at its telemetry block (env vars
+  // still take precedence; CI/non-interactive runs stay disabled).
+  if (discovery) {
+    applyActiveSourceTelemetry(discovery.telemetry);
   }
 
   // Handle each source type
