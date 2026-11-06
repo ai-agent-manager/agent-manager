@@ -300,6 +300,24 @@ describe("createTelemetryClient", () => {
         expect(fetchMock).not.toHaveBeenCalled();
     });
 
+    it("enables an otherwise-unconfigured client from the discoveryTelemetry option", async () => {
+        const client = createTelemetryClient({
+            env: {},
+            fetchImpl: fetchMock as typeof fetch,
+            stdinIsTTY: true,
+            stdoutIsTTY: true,
+            sessionId: "session1234567890",
+            discoveryTelemetry: { url: "https://telemetry.example.com", siteId: "13" },
+        });
+
+        expect(client.isEnabled()).toBe(true);
+
+        await client.send({ action: "agentman_started" });
+        const [endpoint, options] = fetchMock.mock.calls[0];
+        expect(endpoint).toBe("https://telemetry.example.com/matomo.php");
+        expect(new URLSearchParams(options.body as string).get("idsite")).toBe("13");
+    });
+
     it("swallows transport failures", async () => {
         const client = createTelemetryClient({
             env: { AGENTMAN_TELEMETRY_URL: "https://example.com/telemetry", AGENTMAN_TELEMETRY_SITE_ID: "13" },

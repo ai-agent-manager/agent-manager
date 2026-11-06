@@ -65,6 +65,16 @@ vi.mock('../../src/discovery/git-probe.js', async () => {
   };
 });
 
+// Mock only the function that re-points the process-wide telemetry client at
+// the active source's discovery telemetry.
+vi.mock('../../src/telemetry.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/telemetry.js')>();
+  return {
+    ...actual,
+    applyActiveSourceTelemetry: vi.fn(),
+  };
+});
+
 vi.mock('../../src/bundle/downloader.js', () => ({
   downloadBundle: vi.fn(),
 }));
@@ -193,6 +203,8 @@ describe('runHeadless', () => {
 
   beforeEach(async () => {
     tmpDir = await mkdtemp(path.join(os.tmpdir(), 'agentman-headless-'));
+    const { applyActiveSourceTelemetry } = await import('../../src/telemetry.js');
+    vi.mocked(applyActiveSourceTelemetry).mockClear();
   });
 
   afterEach(async () => {
@@ -422,6 +434,10 @@ describe('runHeadless', () => {
 
     expect(downloadBundle).toHaveBeenCalledWith('https://cdn.example.com', undefined);
     expect(installMock).toHaveBeenCalledTimes(1);
+
+    // No discovery document means no discovery telemetry to apply.
+    const { applyActiveSourceTelemetry } = await import('../../src/telemetry.js');
+    expect(applyActiveSourceTelemetry).not.toHaveBeenCalled();
   });
 
   it('does not fall back when the discovery document is invalid', async () => {
@@ -438,6 +454,75 @@ describe('runHeadless', () => {
       'Discovery document validation failed',
     );
     expect(downloadBundle).not.toHaveBeenCalled();
+  });
+
+  it('points the process-wide telemetry client at the discovery document telemetry block', async () => {
+    const { fetchDiscoveryDocument, resolveDiscoverySkills } = await import('../../src/discovery/index.js');
+    const { applyActiveSourceTelemetry } = await import('../../src/telemetry.js');
+    const telemetry = { url: 'https://telemetry.example.com', siteId: '13' };
+    vi.mocked(fetchDiscoveryDocument).mockResolvedValueOnce({
+      version: '1' as const,
+      telemetry,
+      sources: [{ name: 'test-artefact', type: 'artefact', url: 'https://cdn.example.com/skill.zip' }],
+    });
+    vi.mocked(resolveDiscoverySkills).mockResolvedValueOnce({
+      skills: [{
+        dirName: 'my-skill',
+        dirPath: '/tmp/source-a/my-skill',
+        skillMdPath: '/tmp/source-a/my-skill/SKILL.md',
+        meta: null,
+        sourcePin: { sourceType: 'repo' as const, installLayout: 'namespaced' as const, repoUrl: 'https://github.com/example-org/repo-a' },
+      }],
+      rovoAgents: [],
+      errors: [],
+      bundleVersion: undefined,
+    });
+    const configPath = path.join(tmpDir, 'ai-skills.yml');
+    await writeFile(configPath, 'tools: claude-code\nscope: repo\nskills:\n  - my-skill\n');
+    installMock.mockClear();
+
+    await expect(runHeadless('https://cdn.example.com/discovery', configPath, false)).resolves.toBeUndefined();
+
+    expect(applyActiveSourceTelemetry).toHaveBeenCalledWith(telemetry);
+    expect(installMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('applies the telemetry block from a resolved startup discovery source', async () => {
+    const { resolveDiscoverySkills } = await import('../../src/discovery/index.js');
+    const { applyActiveSourceTelemetry } = await import('../../src/telemetry.js');
+    const telemetry = { url: 'https://telemetry.example.com', siteId: '99' };
+    vi.mocked(resolveDiscoverySkills).mockResolvedValueOnce({
+      skills: [{
+        dirName: 'my-skill',
+        dirPath: '/tmp/source-a/my-skill',
+        skillMdPath: '/tmp/source-a/my-skill/SKILL.md',
+        meta: null,
+        sourcePin: { sourceType: 'repo' as const, installLayout: 'namespaced' as const, repoUrl: 'https://github.com/example-org/repo-a' },
+      }],
+      rovoAgents: [],
+      errors: [],
+      bundleVersion: undefined,
+    });
+    const configPath = path.join(tmpDir, 'ai-skills.yml');
+    await writeFile(configPath, 'tools: claude-code\nscope: repo\nskills:\n  - my-skill\n');
+    installMock.mockClear();
+
+    await expect(
+      runHeadless('https://cdn.example.com/discovery', configPath, false, {
+        resolvedStartup: {
+          type: 'discovery',
+          baseUrl: 'https://cdn.example.com/discovery',
+          discovery: {
+            version: '1' as const,
+            telemetry,
+            sources: [{ name: 'test-artefact', type: 'artefact', url: 'https://cdn.example.com/skill.zip' }],
+          },
+        },
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(applyActiveSourceTelemetry).toHaveBeenCalledWith(telemetry);
+    expect(installMock).toHaveBeenCalledTimes(1);
   });
 
   it('exits non-zero when a requested skill name is ambiguous across sources', async () => {
