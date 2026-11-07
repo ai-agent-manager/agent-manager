@@ -130,6 +130,18 @@ it('adds an active source and starts a catalogue reload', async () => {
   const call = fetcher.mock.calls.find(([path, options]) => path === '/api/sources' && options?.method === 'POST')!;
   expect(JSON.parse(call[1]!.body as string)).toEqual({ value: 'https://skills.example.com', activate: true });
 });
+it('lets a stored Git repository source be activated; the server decides whether it carries a discovery catalogue', async () => {
+  const onJob = vi.fn();
+  const repo = { kind: 'repo' as const, value: 'https://github.com/acme/skills' };
+  const { client, fetcher } = mockApi((path) => path === '/api/session/load' ? { jobId: 'load-job' } : { sources: [repo], active: repo });
+  render(<Sources client={client} onJob={onJob} />);
+  const reload = await screen.findByRole('button', { name: 'Reload https://github.com/acme/skills' });
+  expect((reload as HTMLButtonElement).disabled).toBe(false);
+  await userEvent.click(reload);
+  await waitFor(() => expect(onJob).toHaveBeenCalledWith('load-job'));
+  const call = fetcher.mock.calls.find(([path, options]) => path === '/api/sources/activate' && options?.method === 'POST')!;
+  expect(JSON.parse(call[1]!.body as string)).toEqual(repo);
+});
 it('persists settings and prevents toggling an environment-enforced preference', async () => {
   const { client, fetcher } = mockApi(() => ({ startupUpdateChecksDisabled: false, telemetryDisabled: false, envOverrides: { startupUpdateChecksDisabled: true, telemetryDisabled: false } }));
   render(<Settings client={client} />);

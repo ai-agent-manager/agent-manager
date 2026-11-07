@@ -1,4 +1,6 @@
+import { statSync } from 'node:fs';
 import path from 'node:path';
+import { isGithubRepoShorthand, parseGitRemoteInput } from '../discovery/git-probe.js';
 import { addSource, readConfig, setCurrentBundle, updateConfig } from '../bundle/cache.js';
 import { loadSession, resolveStartupSource, runStartupChecks, type Session } from '../operations/session.js';
 import { buildSessionCatalogue, buildRepositoryCatalogue, effectiveBundleVersion } from '../operations/catalogue.js';
@@ -45,8 +47,21 @@ export class SessionStore {
   assertAuthAvailable(): void {
     if (this.signingOut) throw new ConflictError('Sign-out is in progress.', 'AUTH_BUSY');
   }
+  /**
+   * Git remotes and URLs pass through for resolveSource; anything else is a path
+   * relative to the server's working directory. As in resolveSource, an existing
+   * directory wins over `owner/repo` shorthand; otherwise the shorthand is expanded
+   * here so later classification against process.cwd() cannot flip it back.
+   */
   normaliseInput(input: string): string {
-    return /^(https?:\/\/|git@)/i.test(input) ? input : path.resolve(this.cwd, input);
+    const trimmed = input.trim();
+    if (isGithubRepoShorthand(trimmed)) {
+      const resolved = path.resolve(this.cwd, trimmed);
+      if (statSync(resolved, { throwIfNoEntry: false })?.isDirectory()) return resolved;
+      return parseGitRemoteInput(trimmed)!.identity;
+    }
+    if (parseGitRemoteInput(trimmed) || /^https?:\/\//i.test(trimmed)) return trimmed;
+    return path.resolve(this.cwd, trimmed);
   }
   async changeSource(run: () => Promise<void>, invalidate: boolean): Promise<void> {
     await withMutation(() => this.exclusive(async () => {

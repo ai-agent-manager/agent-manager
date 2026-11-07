@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { rm } from 'node:fs/promises';
+import { mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { JobRegistry } from '../../../src/ui-server/jobs.js';
@@ -125,4 +125,26 @@ it('DTOs omit discovery auth internals, raw paths, pins and arbitrary session fi
   const dto = JSON.stringify(store.snapshot());
   expect(dto).not.toContain('not-for-the-browser'); expect(dto).not.toContain('/server-owned');
   expect(dto).not.toContain('sourcePin'); expect(dto).not.toContain('authSession');
+});
+
+it.each([
+  'git@github.com:acme/skills.git',
+  'ssh://git@git.example.com:2222/team/skills.git',
+  'https://git.example.com/team/skills.git',
+  'https://github.com/acme/skills/tree/v2',
+  'https://skills.example.com/catalogue',
+])('keeps Git remotes and URLs verbatim instead of resolving them as paths: %s', (input) => {
+  expect(store.normaliseInput(` ${input} `)).toBe(input);
+});
+
+it('expands owner/repo shorthand to its GitHub identity rather than a path under the server cwd', () => {
+  expect(store.normaliseInput('acme/skills')).toBe('https://github.com/acme/skills');
+});
+
+it('resolves relative paths against the server working directory, and lets a real directory win over owner/repo shorthand', async () => {
+  expect(store.normaliseInput('./bundles/local')).toBe(path.join(os.homedir(), 'bundles', 'local'));
+  const shorthandDir = path.join(os.homedir(), 'team', 'skills');
+  await mkdir(shorthandDir, { recursive: true });
+  try { expect(store.normaliseInput('team/skills')).toBe(shorthandDir); }
+  finally { await rm(path.join(os.homedir(), 'team'), { recursive: true, force: true }); }
 });

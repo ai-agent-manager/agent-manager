@@ -79,7 +79,11 @@ build both first. The pack hook replaces the repository README with
 - Versions lists verified cached bundles and source identities. Download remote
   versions without activating them, select a directory-source global bundle with
   optional install synchronization, and remove unused caches (including unattested
-  legacy caches). A live catalogue or installed reference prevents deletion. HTTP
+  legacy caches). A live catalogue or installed reference prevents deletion.
+  Repository installs are found through `~/.agentman/repositories.json`; a
+  repository provisioned by a release without that registry is registered the
+  first time its `.agentman.json` is read, so list or open it once before
+  relying on the check. HTTP
   inputs resolve to discovery catalogues; their versions are selected
   through Skill versions for an exact tool/scope/repository instance. Unsupported
   sources and partial sync failures are shown explicitly. Unlike the TUI global
@@ -167,7 +171,9 @@ production server modules do not import Vite or use development CSP allowances.
 Startup source resolution uses `resolveSource()` in `src/bundle/source.ts`,
 which delegates HTTP discovery to `src/discovery/`. HTTP inputs require a
 discovery document; the TUI and web UI have no legacy index fallback. Local
-directories are supported. Direct Git inputs return
+directories are supported. Git remotes (HTTPS, SSH, `owner/repo` shorthand)
+are probed for `.agents/discovery.json` and browse as discovery catalogues when
+it exists; a bare skills repository without one returns
 `DIRECT_SOURCE_UNSUPPORTED` in the browser; put Git/artefact sources inside a
 discovery document to browse them. A direct ZIP URL is treated as a discovery
 base URL and fails when the required document is absent; it does not return the

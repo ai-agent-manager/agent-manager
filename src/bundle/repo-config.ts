@@ -1,4 +1,4 @@
-import { registerRepository } from './references.js';
+import { adoptRepository, registerRepository } from './references.js';
 import { withMutation } from '../lib/mutation.js';
 import { readFile, rename } from "node:fs/promises";
 import path from "node:path";
@@ -79,8 +79,9 @@ export async function readRepoConfig(repoRoot: string): Promise<RepoAgentmanConf
         throw error;
     }
 
+    let config: RepoAgentmanConfig;
     try {
-        return JSON.parse(raw) as RepoAgentmanConfig;
+        config = JSON.parse(raw) as RepoAgentmanConfig;
     } catch {
         const backupPath = `${configPath}.corrupt-${Date.now()}`;
         await rename(configPath, backupPath).catch(() => {});
@@ -89,6 +90,10 @@ export async function readRepoConfig(repoRoot: string): Promise<RepoAgentmanConf
         );
         return null;
     }
+    // Repositories provisioned before repositories.json existed are only known
+    // once something reads them; register on read so their references count.
+    await adoptRepository(repoRoot);
+    return config;
 }
 
 /**

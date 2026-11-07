@@ -337,6 +337,22 @@ it('discards a disconnected mutation waiter while the lock is still held', async
   expect((await bundles()).cached.some((entry) => entry.version === '2.0.0')).toBe(true);
 });
 
+it('registers a repository provisioned before the registry existed before offering to delete its bundle', async () => {
+  await install('repo');
+  await ui.stop();
+  // A repository tracked by a release without repositories.json: its install record exists, the registry does not.
+  await rm(path.join(home, '.agentman', 'repositories.json'));
+  await writeFile(path.join(source, 'manifest.json'), JSON.stringify({ version: '2.0.0', published: '2026-01-01' }));
+  ui = await startUiServer({ cwd: repo, port: 0, startupSource: source, staticDir: null });
+  base = `http://127.0.0.1:${ui.port}`;
+  await vi.waitFor(async () => expect((await session()).bundleVersion).toBe('2.0.0'), { timeout: 10_000 });
+  const referenced = (await bundles()).cached.find((entry) => entry.version === '1.0.0')!;
+  expect(referenced).toMatchObject({ isCurrent: false, canRemove: false });
+  expect(referenced.removalReason).toContain('referenced by an installed skill');
+  expect((await api(`/api/bundles/${referenced.removalId}`, 'DELETE')).status).toBe(409);
+  expect(await realpath(path.join(repo, '.claude/skills/test-skill'))).toBe(path.join(getBundleVersionDir('1.0.0'), 'test-skill'));
+  expect(JSON.parse(await readFile(path.join(home, '.agentman', 'repositories.json'), 'utf8'))).toEqual([await realpath(repo)]);
+});
 it('never issues a removal identity for the reserved named-cache container', async () => {
   const container = path.join(home, '.agentman/bundles/sources');
   await mkdir(container, { recursive: true });

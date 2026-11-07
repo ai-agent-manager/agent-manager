@@ -220,16 +220,10 @@ export function App({ source, directInstallSource, forceUpdate, sourceError }: A
     }, []);
 
     const handleAuthOpen = useCallback(async () => {
-        if (authorizeUrl) {
-            try {
-                await openInBrowser(authorizeUrl);
-            } catch (openError) {
-                // Show error and return to main menu - browser launch failed
-                setError(openError instanceof Error ? openError.message : String(openError));
-                setAuthorizeUrl(null);
-                setScreen("main-menu");
-            }
-        }
+        // A failed launch rejects into AuthPrompt, which keeps the URL on screen to
+        // copy and offers a retry. Leaving the auth screen here would strand the
+        // sign-in that loadSession is still waiting on.
+        if (authorizeUrl) await openInBrowser(authorizeUrl);
     }, [authorizeUrl]);
 
     // Lazy, origin-scoped token provisioning: authentication happens at the

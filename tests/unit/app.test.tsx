@@ -243,7 +243,8 @@ import { downloadBundle } from "../../src/bundle/downloader.js";
 import { extractBundle } from "../../src/bundle/extractor.js";
 import { scanBundle } from "../../src/bundle/scanner.js";
 import { checkForStartupUpdates } from "../../src/lib/startup-update-checks.js";
-import { authenticate } from "../../src/auth/index.js";
+import { authenticate, openInBrowser } from "../../src/auth/index.js";
+import { press } from "../helpers/ink-input.js";
 import { resolveDiscoverySkills } from "../../src/discovery/index.js";
 import { listProjects, ApiError } from "../../src/api/index.js";
 import { loadSession } from "../../src/operations/session.js";
@@ -560,6 +561,28 @@ describe("App", () => {
         expect(view.lastFrame()).toContain('Source Manager Screen');
         sourceManagerState.onBack!();
         await vi.waitFor(() => expect(startupNoticeState.props?.notices).toHaveLength(1));
+        view.unmount();
+    });
+
+    it("keeps the authorization prompt, with its URL and retry, when the browser cannot be launched", async () => {
+        let completeSignIn!: () => void;
+        vi.mocked(authenticate).mockImplementationOnce(async (_url, _auth, prompt) => {
+            prompt("https://auth.example.com/authorize?state=example");
+            await new Promise<void>((resolve) => { completeSignIn = resolve; });
+            return { accessToken: "token", expiresAt: Date.now() + 60_000 } as never;
+        });
+        vi.mocked(openInBrowser).mockRejectedValueOnce(new Error("spawn xdg-open ENOENT"));
+        const view = render(<App source={restrictedSource} forceUpdate={false} />);
+        await vi.waitFor(() => expect(view.lastFrame()).toContain("Authentication required"));
+        await press(view.stdin, "\r");
+        await vi.waitFor(() => expect(view.lastFrame()).toContain("Could not open the browser"));
+        expect(view.lastFrame()).toContain("https://auth.example.com/authorize?state=example");
+        expect(view.lastFrame()).not.toContain("spawn xdg-open");
+        vi.mocked(openInBrowser).mockResolvedValueOnce(undefined);
+        await press(view.stdin, "\r");
+        await vi.waitFor(() => expect(view.lastFrame()).toContain("waiting for authorisation"));
+        expect(vi.mocked(openInBrowser)).toHaveBeenCalledTimes(2);
+        completeSignIn();
         view.unmount();
     });
 

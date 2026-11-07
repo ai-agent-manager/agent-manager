@@ -19,13 +19,28 @@ async function repositories(): Promise<string[]> {
   }
 }
 
-/** Registered before repo publication; stale entries are deliberately retained. */
+/**
+ * Registered before repo publication; stale entries are deliberately retained.
+ * The lease is taken only when the registry is actually missing the entry, so
+ * read paths can adopt repositories without serialising on every inventory read.
+ */
 export async function registerRepository(repoRoot: string): Promise<void> {
+  const root = await realpath(repoRoot);
+  if ((await repositories()).includes(root)) return;
   return withMutation(async () => {
-    const root = await realpath(repoRoot);
     const roots = await repositories();
     if (!roots.includes(root)) await writeFileAtomic(registryPath(), JSON.stringify([...roots, root]));
   });
+}
+
+/**
+ * Adopt a repository whose `.agentman.json` predates the registry (written by a
+ * release without reference tracking), so cache deletion can see its installs.
+ * Runs on the read path, so it never throws: a corrupt registry already makes
+ * assertBundleUnreferenced fail closed, and an unwritable one must not break reads.
+ */
+export async function adoptRepository(repoRoot: string): Promise<void> {
+  try { await registerRepository(repoRoot); } catch { /* Deletion still fails closed via assertBundleUnreferenced. */ }
 }
 
 /** Fail closed on unreadable/corrupt records; never invoke forgiving config migration. */

@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { realpath } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { findRepoRoot } from '../lib/repo.js';
+import { adoptRepository } from '../bundle/references.js';
 import { generateToken, isAuthorised, matchesToken } from '../server/auth.js';
 import { checkHost, checkOrigin, requireJson, responseHeaders } from './guards.js';
 import { HttpError, ValidationError } from './errors.js';
@@ -36,6 +37,9 @@ export async function startUiServer(options: UiServerOptions = {}) {
   if (!Number.isInteger(requestedPort) || requestedPort < 0 || requestedPort > 65535) throw new ValidationError('Invalid port.');
   const cwd = await realpath(options.cwd ?? process.cwd());
   const repoRoot = await findRepoRoot(cwd);
+  // The versions listing can offer a deletion before anything reads this
+  // repository's install records; make sure a pre-registry repository counts.
+  if (repoRoot) await adoptRepository(repoRoot);
   const token = options.token ?? generateToken();
   if (!/^[\x21-\x7e]{16,256}$/.test(token)) throw new ValidationError('Invalid server token.');
   // The URL carries a single-use launch code, never the bearer: the URL is handed to

@@ -151,6 +151,25 @@ describe('source-preserving version round trips', () => {
     await expect(fs.stat(second)).rejects.toMatchObject({ code: 'ENOENT' });
     expect((await fs.stat(first)).isDirectory()).toBe(true);
   });
+
+  it('adopts a repository provisioned before the registry existed as soon as its config is read', async () => {
+    const pin = pinFor(false);
+    const second = await bundle(pin, '2.0.0');
+    const repoRoot = path.join(home, 'legacy');
+    await fs.mkdir(repoRoot);
+    const provisioner = createSkillProvisioner('claude-code', 'repo', repoRoot);
+    await provisioner.install((await scanBundle(second)).skills, '2.0.0', { ...pin, bundleVersion: '2.0.0' });
+    // A repository whose .agentman.json predates repositories.json is unknown to the reference check.
+    await fs.rm(path.join(home, '.agentman', 'repositories.json'));
+    // Any inventory read of that repository (scope selection, listing, catalogue) must register it.
+    expect((await listInstalled('repo', { repoRoot }))[0].version).toBe('2.0.0');
+    expect(JSON.parse(await fs.readFile(path.join(home, '.agentman', 'repositories.json'), 'utf8'))).toEqual([await fs.realpath(repoRoot)]);
+    await expect(removeCachedBundle('2.0.0')).rejects.toMatchObject({ statusCode: 409 });
+    expect((await fs.stat(second)).isDirectory()).toBe(true);
+    await provisioner.uninstall(['skill']);
+    await removeCachedBundle('2.0.0');
+    await expect(fs.stat(second)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
 });
 
 it('uses distinct opaque IDs for equal labels from different named sources and revalidates them', async () => {
