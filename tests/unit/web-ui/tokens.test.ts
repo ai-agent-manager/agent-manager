@@ -22,6 +22,12 @@ it.each([[':root {', 'light'], [':root[data-theme="dark"]', 'dark'], ['@media (p
   for (const surface of ['surface', 'background']) expect(contrast(t['control-border']!, t[surface]!), `control-border vs ${surface}`).toBeGreaterThanOrEqual(3);
   for (const surface of ['surface', 'background', 'accent-soft']) expect(contrast(t.focus!, t[surface]!), `focus vs ${surface}`).toBeGreaterThanOrEqual(3);
 });
+it('keeps primary buttons on the accent surface while hovered', () => {
+  // The generic button hover rule outranks .primary; without restating the background, on-accent text sits on the soft surface.
+  const rule = css.split('\n').find((line) => line.startsWith('button.primary:hover'));
+  expect(rule).toContain('background: var(--accent)');
+  expect(rule).toContain('border-color: var(--accent)');
+});
 it('stops the spinner entirely under reduced motion', () => {
   const rule = css.split('\n').find((line) => line.startsWith('@media (prefers-reduced-motion: reduce)'));
   expect(rule).toContain('.spinner { animation: none; }');

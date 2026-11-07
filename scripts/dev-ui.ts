@@ -1,4 +1,5 @@
 import { createServer as createHttpServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { createServer as createViteServer, type ViteDevServer } from 'vite';
@@ -11,6 +12,11 @@ import { parseCli } from '../src/cli.js';
 export async function startDevUi(options: {
   port?: number; portExplicit?: boolean; cwd?: string; startupSource?: string; forceUpdate?: boolean; root?: string;
 } = {}) {
+  const root = options.root ?? fileURLToPath(new URL('../web-ui/', import.meta.url));
+  // The root install does not cover the web-ui workspace; fail before binding a port with the missing step named.
+  if (!options.root && !existsSync(path.join(root, 'node_modules', '@vitejs', 'plugin-react', 'package.json'))) {
+    throw new Error('The web UI workspace has no dependencies installed. Run `npm ci --prefix web-ui` first (see docs/web-ui.md).');
+  }
   let vite: ViteDevServer | undefined;
   const staticHandler = (req: IncomingMessage, res: ServerResponse) => {
     if (!vite) { sendJson(res, 503, { error: { message: 'Development server is starting.' } }); return; }
@@ -40,7 +46,7 @@ export async function startDevUi(options: {
   });
   try {
     vite = await createViteServer({
-      root: options.root ?? fileURLToPath(new URL('../web-ui/', import.meta.url)),
+      root,
       server: { middlewareMode: true, allowedHosts: ['127.0.0.1'], cors: false,
         hmr: { server: hmrTransport, host: '127.0.0.1', clientPort: ui.port, protocol: 'ws' } },
     });

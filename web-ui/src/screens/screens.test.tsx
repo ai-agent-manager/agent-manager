@@ -28,6 +28,11 @@ it('searches catalogue content and preserves source trust labels', async () => {
   await userEvent.type(screen.getByRole('searchbox'), 'test source');
   expect(screen.getByRole('heading', { name: 'Test Skill' })).toBeTruthy();
 });
+it('lists skills alphabetically across sources, not grouped by source', () => {
+  const second = { ...entry, skillId: 'alpha-skill', displayName: 'alpha skill', candidates: [{ ...entry.candidates[0]!, sourceName: 'Second source' }] };
+  render(<Catalogue session={{ ...session, catalogue: [{ ...entry, displayName: 'Zeta skill' }, second] }} />);
+  expect(screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent)).toEqual(['alpha skill', 'Zeta skill']);
+});
 it('shows restricted membership failure without offering excluded skills', () => {
   render(<Catalogue session={{ ...session, catalogue: [], membership: { state: 'error' } }} />);
   expect(screen.getByText(/Project memberships could not be verified/)).toBeTruthy();
