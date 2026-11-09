@@ -6,7 +6,6 @@ import { App } from "./app.js";
 import {
     resolveSource,
     resolvePersistedSource,
-    resolveHeadlessTelemetrySource,
     type BundleSource,
     type StartupSource,
 } from "./bundle/source.js";
@@ -37,31 +36,20 @@ if (configPath) {
     }
 
     try {
-        // Git remotes: resolve once here (probe + shorthand), use for telemetry,
-        // and pass through to runHeadless so it does not clone again.
-        // Plain HTTP / ZIP: classify without a hard discovery fetch — soft-404
-        // stays inside runHeadless.
-        let telemetrySource: BundleSource;
-        let resolvedStartup: StartupSource | undefined;
-        if (parseGitRemoteInput(sourceInput)) {
-            resolvedStartup = await resolveSource(sourceInput);
-            telemetrySource =
-                resolvedStartup.type === "repo"
-                    ? { type: "url", baseUrl: resolvedStartup.repoUrl }
-                    : resolvedStartup;
-        } else {
-            telemetrySource = await resolveHeadlessTelemetrySource(sourceInput);
-        }
+        // Git remotes: resolve once here (probe + shorthand) and pass through
+        // to runHeadless so it does not clone again. Plain HTTP / ZIP inputs
+        // are classified inside runHeadless, where the soft-404 fallback lives.
+        const resolvedStartup = parseGitRemoteInput(sourceInput)
+            ? await resolveSource(sourceInput)
+            : undefined;
         // Telemetry mode must respect the active source: once its discovery
         // document is known, point the process-wide client at its telemetry
-        // block (env vars still take precedence).
+        // block (env vars still take precedence). runHeadless re-applies the
+        // same block right before it tracks agentman_started, so every event
+        // in the run goes to the same endpoint.
         if (resolvedStartup?.type === "discovery") {
             applyActiveSourceTelemetry(resolvedStartup.discovery.telemetry);
         }
-        trackTelemetryEvent({
-            action: "agentman_started",
-            properties: { forceUpdate, ...getBundleSourceTelemetryProperties(telemetrySource) },
-        });
         const { runHeadless } = await import("./headless.js");
         await runHeadless(sourceInput, configPath, forceUpdate, { resolvedStartup });
         process.exit(0);
