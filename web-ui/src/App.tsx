@@ -1,12 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AuthDto, JobDto } from '@api-types';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { AuthDto, JobDto, SettingsDto } from '@api-types';
 import { ApiClient, ApiError } from './api/client.js';
 import { useResource, useSession } from './api/hooks.js';
 import type { ConnectionState } from './api/events.js';
 import { useHashRoute } from './router.js';
 import { ErrorMessage, Notice } from './components/Feedback.js';
 import { JobPanel, type ActionNotice } from './components/JobPanel.js';
-import { ThemeSelector } from './components/ThemeSelector.js';
 import { Catalogue } from './screens/Catalogue.js';
 import { SkillDetail } from './screens/SkillDetail.js';
 import { Installed } from './screens/Installed.js';
@@ -24,6 +23,14 @@ const connectionLabel: Record<ConnectionState, string> = { connecting: 'Connecti
 export function App({ client }: { client: ApiClient }) {
   const { session, context, jobs, connection, error: sessionError } = useSession(client);
   const route = useHashRoute();
+  // One settings resource for the whole app: the Settings screen edits it and the
+  // theme below reads it, so a save on that page recolours every route at once.
+  const settings = useResource<SettingsDto>(client, !!context && connection !== 'unauthorised' ? '/api/settings' : null);
+  const theme = settings.data?.uiTheme ?? 'system';
+  useLayoutEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    return () => { delete document.documentElement.dataset.theme; };
+  }, [theme]);
   const [selectedJob, setSelectedJob] = useState<string>();
   const dismissJob = useCallback((id: string) => setSelectedJob((selected) => selected === id ? undefined : selected), []);
   const [error, setError] = useState('');
@@ -78,7 +85,7 @@ export function App({ client }: { client: ApiClient }) {
     <aside className={styles.sidebar}>
       <a className={styles.brand} href="#/" aria-label="Agent Manager home"><img className={styles.brandMark} src={bannerUrl} alt="" /></a>
       <nav aria-label="Main navigation">{[['/', 'Catalogue', '⌘'], ['/installed', 'Installed', '▦'], ['/sources', 'Sources', '◎'], ['/versions', 'Versions', '◷'], ['/skill-versions', 'Skill versions', '⇄'], ['/settings', 'Settings', '⚙']].map(([href, label, icon]) => <a href={`#${href}`} key={href} className={(route === href || href === '/' && route.startsWith('/skills/')) ? styles.active : ''} aria-current={(route === href || href === '/' && route.startsWith('/skills/')) ? 'page' : undefined}><span aria-hidden="true">{icon}</span>{label}</a>)}</nav>
-      <div className={styles.sidebarBottom}><span className={`status-dot ${connection}`} />{connectionLabel[connection]}<small>v{context?.appVersion ?? '…'}</small><ThemeSelector client={client} enabled={!!context && connection !== 'unauthorised'} /></div>
+      <div className={styles.sidebarBottom}><span className={`status-dot ${connection}`} />{connectionLabel[connection]}<small>v{context?.appVersion ?? '…'}</small></div>
     </aside>
     <div className={styles.workspace}>
       <header className={styles.header}><div className="min-width"><small className="muted">ACTIVE SOURCE</small><div className={styles.source} title={session?.source?.value}>{session?.source?.value ?? 'No source selected'}</div></div><div className="row">{session?.bundleVersion && <span className="badge">{session.bundleVersion}</span>}<span className="badge">{auth?.authenticated ? 'Signed in' : auth?.required ? 'Sign-in required' : 'Local session'}</span>{auth?.required && <button disabled={busy || session?.state === 'loading'} onClick={() => void authAction()}>{auth.authenticated ? 'Sign out' : 'Sign in'}</button>}<button disabled={busy || session?.state === 'loading'} onClick={() => void reload()}>{session?.state === 'loading' ? 'Loading…' : 'Reload'}</button></div></header>
@@ -93,7 +100,7 @@ export function App({ client }: { client: ApiClient }) {
           : route === '/sources' ? <Sources client={client} onJob={setSelectedJob} />
           : route === '/versions' ? <Versions key={session?.sessionRevision} client={client} session={session} context={context} refreshKey={refreshKey} onJob={setSelectedJob} />
           : route === '/skill-versions' ? <SkillVersions client={client} session={session} context={context} refreshKey={refreshKey} onJob={setSelectedJob} />
-          : route === '/settings' ? <Settings client={client} />
+          : route === '/settings' ? <Settings client={client} settings={settings} />
           : <div className="empty"><h1>Page not found</h1><a href="#/">Return to the catalogue</a></div>}
       </main>
       <JobPanel client={client} jobs={missingJob && !jobs.some((job) => job.id === missingJob.id) ? [...jobs, missingJob] : jobs} selectedId={selectedJob} onDismiss={dismissJob} notices={notices} onDismissNotice={dismissNotice} />

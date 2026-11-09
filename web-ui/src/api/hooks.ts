@@ -42,3 +42,6 @@ export function useResource<T>(client: ApiClient, path: string | null, refreshKe
   const update = (data: T | undefined) => setState({ key, data, error: '', loading: false });
   return { ...current, refresh, update };
 }
+
+/** The value `useResource` returns, for components that share one fetched resource. */
+export type Resource<T> = ReturnType<typeof useResource<T>>;

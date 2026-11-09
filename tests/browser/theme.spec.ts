@@ -6,6 +6,8 @@ test('appearance follows the system, overrides it explicitly, and survives a new
   const ui = await app();
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto(ui.url);
+  const openSettings = () => page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: /Settings/ }).click();
+  await openSettings();
   const appearance = page.getByRole('group', { name: 'Appearance' });
   const light = appearance.getByRole('radio', { name: 'Light', exact: true });
   const dark = appearance.getByRole('radio', { name: 'Dark', exact: true });
@@ -45,6 +47,9 @@ test('appearance follows the system, overrides it explicitly, and survives a new
   const next = await app();
   expect(new URL(next.url).origin).not.toBe(new URL(ui.url).origin);
   await page.goto(next.url);
+  // The saved theme applies before the Settings page is opened.
+  await expect(root).toHaveCSS('color-scheme', 'dark');
+  await openSettings();
   await expect(dark).toBeChecked();
   await expect(root).toHaveCSS('color-scheme', 'dark');
 
@@ -62,8 +67,9 @@ test('appearance follows the system, overrides it explicitly, and survives a new
     await page.setViewportSize(viewport);
     await expect(appearance).toBeVisible();
     const selector = (await appearance.boundingBox())!;
-    const sidebar = (await page.locator('aside', { has: page.getByRole('navigation', { name: 'Main navigation' }) }).boundingBox())!; // not the Activity aside
-    expect(selector.y + selector.height).toBeLessThanOrEqual(sidebar.y + sidebar.height);
+    const panel = (await page.locator('.panel.settings').boundingBox())!;
+    expect(selector.x + selector.width).toBeLessThanOrEqual(panel.x + panel.width);
+    expect(selector.y + selector.height).toBeLessThanOrEqual(panel.y + panel.height);
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
   }
 });

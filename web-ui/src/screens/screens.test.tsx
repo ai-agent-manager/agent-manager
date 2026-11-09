@@ -1,9 +1,10 @@
 import { App } from '../App.js';
 import { expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { ContextDto, InstalledRecordDto, JobDto, SessionDto } from '@api-types';
+import type { ContextDto, InstalledRecordDto, JobDto, SessionDto, SettingsDto } from '@api-types';
 import { ApiClient } from '../api/client.js';
+import { useResource } from '../api/hooks.js';
 import { Catalogue } from './Catalogue.js';
 import { SkillDetail } from './SkillDetail.js';
 import { Installed } from './Installed.js';
@@ -14,6 +15,11 @@ import { JobPanel } from '../components/JobPanel.js';
 const context: ContextDto = { appVersion: '0.0.0', platform: 'linux', cwd: '/example/repo', repoRoot: '/example/repo', repoName: 'repo', tools: [{ id: 'claude-code', name: 'Claude Code' }] };
 const entry = { kind: 'skill' as const, skillId: 'test-skill', displayName: 'Test Skill', description: 'A useful test skill', candidates: [{ installKey: 'bundle/test/test-skill', sourceName: 'Test source', sourceType: 'http' as const, sourceStatus: 'official' as const }] };
 const session: SessionDto = { state: 'ready', sessionRevision: 7, auth: { required: false, authenticated: false }, membership: { state: 'not-required' }, catalogue: [entry], warnings: [], startupNotices: [] };
+// App owns the settings resource; stand in for it here.
+function SettingsHarness({ client }: { client: ApiClient }) {
+  const settings = useResource<SettingsDto>(client, '/api/settings');
+  return <Settings client={client} settings={settings} />;
+}
 function mockApi(handler: (path: string, options: RequestInit) => unknown) {
   const fetcher = vi.fn(async (path: RequestInfo | URL, options: RequestInit = {}) => new Response(JSON.stringify(handler(String(path), options))));
   return { client: new ApiClient('test-token-value', fetcher), fetcher };
@@ -149,13 +155,23 @@ it('lets a stored Git repository source be activated; the server decides whether
 });
 it('persists settings and prevents toggling an environment-enforced preference', async () => {
   const { client, fetcher } = mockApi(() => ({ startupUpdateChecksDisabled: false, telemetryDisabled: false, envOverrides: { startupUpdateChecksDisabled: true, telemetryDisabled: false } }));
-  render(<Settings client={client} />);
+  render(<SettingsHarness client={client} />);
   const startup = await screen.findByRole('checkbox', { name: /Check for updates at startup/ });
   expect((startup as HTMLInputElement).disabled).toBe(true);
   await userEvent.click(screen.getByRole('checkbox', { name: /Share anonymous usage data/ }));
   await waitFor(() => expect(fetcher.mock.calls.some(([, options]) => options?.method === 'PATCH')).toBe(true));
   const call = fetcher.mock.calls.find(([, options]) => options?.method === 'PATCH')!;
   expect(JSON.parse(call[1]!.body as string)).toEqual({ telemetryDisabled: true });
+});
+it('changes the appearance from the Settings page', async () => {
+  const { client, fetcher } = mockApi((_path, options) => options.method === 'PATCH' ? { startupUpdateChecksDisabled: false, telemetryDisabled: false, uiTheme: 'dark', envOverrides: { startupUpdateChecksDisabled: false, telemetryDisabled: false } } : { startupUpdateChecksDisabled: false, telemetryDisabled: false, uiTheme: 'system', envOverrides: { startupUpdateChecksDisabled: false, telemetryDisabled: false } });
+  render(<SettingsHarness client={client} />);
+  const appearance = await screen.findByRole('group', { name: 'Appearance' });
+  await userEvent.click(within(appearance).getByRole('radio', { name: 'Dark' }));
+  await waitFor(() => expect(fetcher.mock.calls.some(([, options]) => options?.method === 'PATCH')).toBe(true));
+  const call = fetcher.mock.calls.find(([, options]) => options?.method === 'PATCH')!;
+  expect(JSON.parse(call[1]!.body as string)).toEqual({ uiTheme: 'dark' });
+  expect((within(appearance).getByRole('radio', { name: 'Dark' }) as HTMLInputElement).checked).toBe(true);
 });
 it('exposes sign-in only as an explicit safe link and disables cancellation during commits', async () => {
   const { client } = mockApi(() => ({}));
@@ -170,7 +186,7 @@ it('rolls back the displayed setting when persistence fails', async () => {
   const fetcher = vi.fn<typeof fetch>(async (_path, options) => options?.method === 'PATCH'
     ? new Response(JSON.stringify({ error: { name: 'ConflictError', message: 'Another operation is running', category: 'conflict' } }), { status: 409 })
     : new Response(JSON.stringify({ startupUpdateChecksDisabled: false, telemetryDisabled: false, envOverrides: { startupUpdateChecksDisabled: false, telemetryDisabled: false } })));
-  render(<Settings client={new ApiClient('test-token-value', fetcher)} />);
+  render(<SettingsHarness client={new ApiClient('test-token-value', fetcher)} />);
   const checkbox = await screen.findByRole('checkbox', { name: /Share anonymous usage data/ });
   await userEvent.click(checkbox);
   await screen.findByRole('alert');

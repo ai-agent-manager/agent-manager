@@ -64,7 +64,7 @@ build both first. The pack hook replaces the repository README with
 - The sidebar footer shows the live event-stream state (Connecting, Connected, Reconnecting,
   Not authorised) and the app version. Catalogue cards list skills alphabetically across
   sources; install scope is labelled User (home directory) or Repository.
-- The Appearance selector at the bottom of the sidebar offers System (the default), Light, and Dark.
+- The Appearance selector on the Settings page offers System (the default), Light, and Dark.
   System follows OS appearance changes. The choice is saved in application settings
   and restored in both the browser and desktop app on subsequent launches.
 - The launch token is read into memory and session storage, then removed from

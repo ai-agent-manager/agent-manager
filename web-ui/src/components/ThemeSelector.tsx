@@ -1,19 +1,18 @@
-import { useLayoutEffect, useState } from 'react';
+import { useState } from 'react';
 import type { SettingsDto } from '@api-types';
 import type { ApiClient } from '../api/client.js';
-import { useResource } from '../api/hooks.js';
+import type { Resource } from '../api/hooks.js';
 import { ErrorMessage } from './Feedback.js';
 import styles from './ThemeSelector.module.css';
 
-export function ThemeSelector({ client, enabled }: { client: ApiClient; enabled: boolean }) {
-  const settings = useResource<SettingsDto>(client, enabled ? '/api/settings' : null);
+/**
+ * Radio group over the shared settings resource. App owns that resource and
+ * applies `data-theme` from it, so the palette outlives this screen.
+ */
+export function ThemeSelector({ client, settings }: { client: ApiClient; settings: Resource<SettingsDto> }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const theme = settings.data?.uiTheme ?? 'system';
-  useLayoutEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    return () => { delete document.documentElement.dataset.theme; };
-  }, [theme]);
 
   async function select(uiTheme: SettingsDto['uiTheme']) {
     if (!settings.data || busy || uiTheme === theme) return;
@@ -36,7 +35,6 @@ export function ThemeSelector({ client, enabled }: { client: ApiClient; enabled:
         </label>)}
       </div>
     </fieldset>
-    <ErrorMessage message={error || settings.error} />
-    {settings.error && <button onClick={settings.refresh}>Retry appearance settings</button>}
+    <ErrorMessage message={error} />
   </div>;
 }
