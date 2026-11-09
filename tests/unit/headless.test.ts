@@ -65,13 +65,15 @@ vi.mock('../../src/discovery/git-probe.js', async () => {
   };
 });
 
-// Mock only the function that re-points the process-wide telemetry client at
-// the active source's discovery telemetry.
+// Mock the functions that re-point the process-wide telemetry client and track
+// events, so tests can assert when agentman_started fires relative to the
+// discovery telemetry block being applied.
 vi.mock('../../src/telemetry.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/telemetry.js')>();
   return {
     ...actual,
     applyActiveSourceTelemetry: vi.fn(),
+    trackTelemetryEvent: vi.fn(),
   };
 });
 
@@ -203,8 +205,9 @@ describe('runHeadless', () => {
 
   beforeEach(async () => {
     tmpDir = await mkdtemp(path.join(os.tmpdir(), 'agentman-headless-'));
-    const { applyActiveSourceTelemetry } = await import('../../src/telemetry.js');
+    const { applyActiveSourceTelemetry, trackTelemetryEvent } = await import('../../src/telemetry.js');
     vi.mocked(applyActiveSourceTelemetry).mockClear();
+    vi.mocked(trackTelemetryEvent).mockClear();
   });
 
   afterEach(async () => {
@@ -435,9 +438,18 @@ describe('runHeadless', () => {
     expect(downloadBundle).toHaveBeenCalledWith('https://cdn.example.com', undefined);
     expect(installMock).toHaveBeenCalledTimes(1);
 
-    // No discovery document means no discovery telemetry to apply.
-    const { applyActiveSourceTelemetry } = await import('../../src/telemetry.js');
+    // No discovery document means no discovery telemetry to apply, and the
+    // started event reports the bare URL source.
+    const { applyActiveSourceTelemetry, trackTelemetryEvent } = await import('../../src/telemetry.js');
     expect(applyActiveSourceTelemetry).not.toHaveBeenCalled();
+    expect(trackTelemetryEvent).toHaveBeenCalledWith({
+      action: 'agentman_started',
+      properties: {
+        forceUpdate: false,
+        source: 'url',
+        bundleEndpoint: 'https://cdn.example.com',
+      },
+    });
   });
 
   it('does not fall back when the discovery document is invalid', async () => {
@@ -458,7 +470,7 @@ describe('runHeadless', () => {
 
   it('points the process-wide telemetry client at the discovery document telemetry block', async () => {
     const { fetchDiscoveryDocument, resolveDiscoverySkills } = await import('../../src/discovery/index.js');
-    const { applyActiveSourceTelemetry } = await import('../../src/telemetry.js');
+    const { applyActiveSourceTelemetry, trackTelemetryEvent } = await import('../../src/telemetry.js');
     const telemetry = { url: 'https://telemetry.example.com', siteId: '13' };
     vi.mocked(fetchDiscoveryDocument).mockResolvedValueOnce({
       version: '1' as const,
@@ -484,12 +496,68 @@ describe('runHeadless', () => {
     await expect(runHeadless('https://cdn.example.com/discovery', configPath, false)).resolves.toBeUndefined();
 
     expect(applyActiveSourceTelemetry).toHaveBeenCalledWith(telemetry);
+    expect(trackTelemetryEvent).toHaveBeenCalledWith({
+      action: 'agentman_started',
+      properties: {
+        forceUpdate: false,
+        source: 'discovery',
+        bundleEndpoint: 'https://cdn.example.com/discovery',
+      },
+    });
+    expect(installMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('tracks agentman_started only after applying the discovery telemetry block for plain HTTP sources', async () => {
+    // Regression: the started event used to fire in the CLI entry before the
+    // discovery document was fetched, so when the endpoint only exists in the
+    // discovery file the first event was dropped while later events were sent.
+    const { fetchDiscoveryDocument, resolveDiscoverySkills } = await import('../../src/discovery/index.js');
+    const { applyActiveSourceTelemetry, trackTelemetryEvent } = await import('../../src/telemetry.js');
+    const telemetry = { url: 'https://telemetry.example.com', siteId: '13' };
+    vi.mocked(fetchDiscoveryDocument).mockResolvedValueOnce({
+      version: '1' as const,
+      telemetry,
+      sources: [{ name: 'test-artefact', type: 'artefact', url: 'https://cdn.example.com/skill.zip' }],
+    });
+    vi.mocked(resolveDiscoverySkills).mockResolvedValueOnce({
+      skills: [{
+        dirName: 'my-skill',
+        dirPath: '/tmp/source-a/my-skill',
+        skillMdPath: '/tmp/source-a/my-skill/SKILL.md',
+        meta: null,
+        sourcePin: { sourceType: 'repo' as const, installLayout: 'namespaced' as const, repoUrl: 'https://github.com/example-org/repo-a' },
+      }],
+      rovoAgents: [],
+      errors: [],
+      bundleVersion: undefined,
+    });
+    const configPath = path.join(tmpDir, 'ai-skills.yml');
+    await writeFile(configPath, 'tools: claude-code\nscope: repo\nskills:\n  - my-skill\n');
+    installMock.mockClear();
+
+    await expect(runHeadless('https://cdn.example.com/discovery', configPath, true)).resolves.toBeUndefined();
+
+    expect(applyActiveSourceTelemetry).toHaveBeenCalledWith(telemetry);
+    expect(trackTelemetryEvent).toHaveBeenCalledTimes(1);
+    expect(trackTelemetryEvent).toHaveBeenCalledWith({
+      action: 'agentman_started',
+      properties: {
+        forceUpdate: true,
+        source: 'discovery',
+        bundleEndpoint: 'https://cdn.example.com/discovery',
+      },
+    });
+    // The started event must go out after the client was re-pointed, so it
+    // reaches the same endpoint as the events the downloaders send.
+    const applyOrder = applyActiveSourceTelemetry.mock.invocationCallOrder[0];
+    const trackOrder = trackTelemetryEvent.mock.invocationCallOrder[0];
+    expect(trackOrder).toBeGreaterThan(applyOrder);
     expect(installMock).toHaveBeenCalledTimes(1);
   });
 
   it('applies the telemetry block from a resolved startup discovery source', async () => {
     const { resolveDiscoverySkills } = await import('../../src/discovery/index.js');
-    const { applyActiveSourceTelemetry } = await import('../../src/telemetry.js');
+    const { applyActiveSourceTelemetry, trackTelemetryEvent } = await import('../../src/telemetry.js');
     const telemetry = { url: 'https://telemetry.example.com', siteId: '99' };
     vi.mocked(resolveDiscoverySkills).mockResolvedValueOnce({
       skills: [{
@@ -522,6 +590,14 @@ describe('runHeadless', () => {
     ).resolves.toBeUndefined();
 
     expect(applyActiveSourceTelemetry).toHaveBeenCalledWith(telemetry);
+    expect(trackTelemetryEvent).toHaveBeenCalledWith({
+      action: 'agentman_started',
+      properties: {
+        forceUpdate: false,
+        source: 'discovery',
+        bundleEndpoint: 'https://cdn.example.com/discovery',
+      },
+    });
     expect(installMock).toHaveBeenCalledTimes(1);
   });
 
