@@ -5,7 +5,7 @@ import { extractBundle } from './bundle/extractor.js';
 import { importLocalBundle } from './bundle/importer.js';
 import { scanBundle, type SkillInfo } from './bundle/scanner.js';
 import { setCurrentBundle } from './bundle/cache.js';
-import { resolveSource, type StartupSource } from './bundle/source.js';
+import { resolveSource, type BundleSource, type StartupSource } from './bundle/source.js';
 import {
   resolveSkillSource,
   isRepoSource,
@@ -36,7 +36,11 @@ import {
   partitionSkillsByScope,
   resolveCatalogueScope,
 } from './catalogue-scope/index.js';
-import { applyActiveSourceTelemetry } from './telemetry.js';
+import {
+  applyActiveSourceTelemetry,
+  getBundleSourceTelemetryProperties,
+  trackTelemetryEvent,
+} from './telemetry.js';
 import { createSkillProvisioner, formatSupportedSkillToolIds } from './provisioners/registry.js';
 import type { InstallScope } from './config/scopes.js';
 
@@ -104,13 +108,13 @@ export interface RunHeadlessOptions {
   resolvedStartup?: StartupSource;
 }
 
-// TODO(#39): wire _forceUpdate into the headless acquisition path so `agentman <url> --update`
+// TODO(#39): wire forceUpdate into the headless acquisition path so `agentman <url> --update`
 // bypasses the cached bundle in extractBundle (src/bundle/extractor.ts:33-37).
 // See https://github.com/ai-agent-manager/agent-manager/issues/39
 export async function runHeadless(
   sourceInput: string,
   configPath: string,
-  _forceUpdate: boolean,
+  forceUpdate: boolean,
   options: RunHeadlessOptions = {},
 ): Promise<void> {
   const config = await parseHeadlessConfig(configPath);
@@ -169,6 +173,20 @@ export async function runHeadless(
   // still take precedence; CI/non-interactive runs stay disabled).
   if (discovery) {
     applyActiveSourceTelemetry(discovery.telemetry);
+  }
+
+  // Track agentman_started only once the discovery telemetry block is applied,
+  // so the first event of a headless run goes to the same endpoint as the
+  // events the downloaders send afterwards.
+  const telemetrySource = headlessTelemetrySource(discovery, discoveryBaseUrl, repoSource, skillSource);
+  if (telemetrySource) {
+    trackTelemetryEvent({
+      action: 'agentman_started',
+      properties: {
+        forceUpdate,
+        ...getBundleSourceTelemetryProperties(telemetrySource),
+      },
+    });
   }
 
   // Handle each source type
@@ -271,7 +289,7 @@ export async function runHeadless(
     const repo = repoSource ?? (skillSource as RepoSkillSource);
     console.log(`[agentman] Downloading repository: ${repo.repoUrl}`);
     const token = process.env.GITHUB_TOKEN;
-    const { extractDir } = await downloadRepoArchive(repo, { forceUpdate: _forceUpdate, token });
+    const { extractDir } = await downloadRepoArchive(repo, { forceUpdate, token });
 
     console.log("[agentman] Scanning for skills...");
     const scanResult = await scanRepoForSkills(extractDir, repo);
@@ -283,7 +301,7 @@ export async function runHeadless(
     // Artefact (.zip) source
     console.log(`[agentman] Downloading artefact: ${skillSource.artefactUrl}`);
     const artefactSource = config.artefactSha256 ? { ...skillSource, sha256: config.artefactSha256 } : skillSource;
-    const download = await downloadArtefact(artefactSource, { forceUpdate: _forceUpdate });
+    const download = await downloadArtefact(artefactSource, { forceUpdate });
 
     console.log("[agentman] Scanning for skills...");
     const scanResult = await scanArtefactForSkills(download.extractDir, artefactSource);
@@ -422,4 +440,36 @@ export async function runHeadless(
   }
 
   console.log(`\n[agentman] Done.\n`);
+}
+
+/**
+ * Reduce the resolved headless source state to the BundleSource shape that
+ * telemetry properties are derived from. Mirrors the install dispatch above:
+ * a discovery document wins over a bare skill source, and the repo/artefact
+ * variants collapse onto the URL form the legacy bundle telemetry expects.
+ */
+function headlessTelemetrySource(
+  discovery: DiscoveryDocument | undefined,
+  discoveryBaseUrl: string,
+  repoSource: RepoSkillSource | undefined,
+  skillSource: SkillSource | undefined,
+): BundleSource | undefined {
+  if (discovery) {
+    return { type: 'discovery', baseUrl: discoveryBaseUrl, discovery };
+  }
+
+  const source = repoSource ?? skillSource;
+  if (!source) {
+    return undefined;
+  }
+
+  if (source.type === 'repo') {
+    return { type: 'url', baseUrl: source.repoUrl };
+  }
+  if (source.type === 'artefact') {
+    return { type: 'url', baseUrl: source.artefactUrl };
+  }
+  return source.dirPath
+    ? { type: 'directory', dirPath: source.dirPath }
+    : { type: 'url', baseUrl: source.baseUrl ?? '' };
 }
