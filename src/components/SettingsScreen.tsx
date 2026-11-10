@@ -103,11 +103,6 @@ export function SettingsScreen({ onBack, discoveryTelemetry }: SettingsScreenPro
                     else onBack();
                 }}
             />
-            <Text> </Text>
-            <Text dimColor>
-                {"  "}Environment variables (e.g. DISABLE_TELEMETRY,
-                AGENTMAN_DISABLE_STARTUP_UPDATE_CHECKS) still take precedence.
-            </Text>
         </Box>
     );
 }
