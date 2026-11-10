@@ -164,6 +164,11 @@ export function resolveTelemetryMode(
     const settings = resolveTelemetrySettings(env, ttyState, discoveryTelemetry);
 
     if (!settings.enabled) {
+        // Intentional: the persisted opt-out (disabledByConfig) only suppresses
+        // an endpoint that is already configured. When neither env vars nor the
+        // discovery document provide an endpoint, nothing could ever be sent, so
+        // "not-configured" is the accurate mode. The saved opt-out is not lost —
+        // it still applies once an endpoint is configured.
         return endpointConfigured ? "disabled" : "not-configured";
     }
 
