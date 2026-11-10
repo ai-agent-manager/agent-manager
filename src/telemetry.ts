@@ -29,6 +29,12 @@ interface TelemetryClientOptions {
     stdoutIsTTY?: boolean;
     sessionId?: string;
     timeoutMs?: number;
+    /**
+     * Telemetry block from the active source's discovery document. Env vars
+     * still take precedence. May also be supplied later via
+     * {@link TelemetryClient.applySettings} once the active source is known.
+     */
+    discoveryTelemetry?: DiscoveryTelemetry;
 }
 
 function hasTruthyFlag(value: string | undefined): boolean {
@@ -129,6 +135,46 @@ export function resolveTelemetrySettings(
     };
 }
 
+export type TelemetryMode = "enabled" | "disabled" | "not-configured";
+
+/**
+ * Effective telemetry mode for a given discovery telemetry block: what the
+ * process-wide client would actually do right now.
+ *
+ * - "not-configured": neither env vars nor the discovery document provide a
+ *   telemetry endpoint, so there is nothing to send to.
+ * - "disabled": an endpoint is configured, but sending is suppressed (env
+ *   opt-out, CI, non-interactive TTY, or the persisted config opt-out).
+ * - "enabled": events are being sent.
+ */
+export function resolveTelemetryMode(
+    discoveryTelemetry?: DiscoveryTelemetry,
+    env: NodeJS.ProcessEnv = process.env,
+    ttyState: { stdinIsTTY?: boolean; stdoutIsTTY?: boolean } = {
+        stdinIsTTY: process.stdin.isTTY,
+        stdoutIsTTY: process.stdout.isTTY,
+    },
+    disabledByConfig: boolean = false,
+): TelemetryMode {
+    const endpointConfigured = Boolean(
+        (env.AGENTMAN_TELEMETRY_URL ?? env.AGENTMAN_TELEMETRY_ENDPOINT ?? discoveryTelemetry?.url) &&
+            (env.AGENTMAN_TELEMETRY_SITE_ID ?? discoveryTelemetry?.siteId),
+    );
+
+    const settings = resolveTelemetrySettings(env, ttyState, discoveryTelemetry);
+
+    if (!settings.enabled) {
+        // Intentional: the persisted opt-out (disabledByConfig) only suppresses
+        // an endpoint that is already configured. When neither env vars nor the
+        // discovery document provide an endpoint, nothing could ever be sent, so
+        // "not-configured" is the accurate mode. The saved opt-out is not lost —
+        // it still applies once an endpoint is configured.
+        return endpointConfigured ? "disabled" : "not-configured";
+    }
+
+    return disabledByConfig ? "disabled" : "enabled";
+}
+
 function sanitiseToken(value: string): string {
     return value
         .trim()
@@ -201,12 +247,24 @@ export function categoriseError(error: unknown): string {
     return "unknown";
 }
 
-export function createTelemetryClient(options: TelemetryClientOptions = {}) {
+export interface TelemetryClient {
+    isEnabled(): boolean;
+    send(event: TelemetryEvent): Promise<Response | undefined>;
+    track(event: TelemetryEvent): void;
+    /**
+     * Re-resolve the endpoint settings against the same env and TTY state,
+     * e.g. once the active source's discovery telemetry is known.
+     */
+    applySettings(discoveryTelemetry?: DiscoveryTelemetry): void;
+}
+
+export function createTelemetryClient(options: TelemetryClientOptions = {}): TelemetryClient {
     const env = options.env ?? process.env;
-    const settings = resolveTelemetrySettings(env, {
+    const ttyState = {
         stdinIsTTY: options.stdinIsTTY ?? process.stdin.isTTY,
         stdoutIsTTY: options.stdoutIsTTY ?? process.stdout.isTTY,
-    });
+    };
+    let settings = resolveTelemetrySettings(env, ttyState, options.discoveryTelemetry);
     const fetchImpl = options.fetchImpl ?? globalThis.fetch;
     const sessionId = (options.sessionId ?? randomUUID()).replace(/-/g, "").slice(0, 16);
 
@@ -250,6 +308,9 @@ export function createTelemetryClient(options: TelemetryClientOptions = {}) {
     }
 
     return {
+        applySettings(discoveryTelemetry?: DiscoveryTelemetry): void {
+            settings = resolveTelemetrySettings(env, ttyState, discoveryTelemetry);
+        },
         isEnabled(): boolean {
             return settings.enabled && !telemetryDisabledByConfig;
         },
@@ -277,6 +338,17 @@ export function setTelemetryDisabledByConfig(disabled: boolean): void {
 }
 
 const telemetryClient = createTelemetryClient();
+
+/**
+ * Point the process-wide client at the active source's discovery telemetry.
+ * Called once the startup source has been resolved, so the documented rule —
+ * telemetry must be explicitly enabled in the active source's discovery file
+ * — governs real event sending, not just the settings display. Env vars
+ * still take precedence over discovery values.
+ */
+export function applyActiveSourceTelemetry(discoveryTelemetry?: DiscoveryTelemetry): void {
+    telemetryClient.applySettings(discoveryTelemetry);
+}
 
 export function trackTelemetryEvent(event: TelemetryEvent): void {
     telemetryClient.track(event);

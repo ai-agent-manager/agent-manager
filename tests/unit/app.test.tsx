@@ -1,5 +1,5 @@
 import React from "react";
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { render } from "ink-testing-library";
 import { Text } from "ink";
 
@@ -218,12 +218,18 @@ vi.mock("../../src/discovery/index.js", async () => {
     };
 });
 
-vi.mock("../../src/telemetry.js", () => ({
-    getBundleSourceTelemetryProperties: vi.fn(() => ({ source: "url" })),
-    setTelemetryDisabledByConfig: vi.fn(),
-    trackTelemetryError: vi.fn(),
-    trackTelemetryEvent: vi.fn(),
-}));
+// Keep the real resolveTelemetryMode so the SettingsScreen label is exercised;
+// mock only the functions that send or mutate the process-wide client.
+vi.mock("../../src/telemetry.js", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("../../src/telemetry.js")>();
+    return {
+        ...actual,
+        getBundleSourceTelemetryProperties: vi.fn(() => ({ source: "url" })),
+        setTelemetryDisabledByConfig: vi.fn(),
+        trackTelemetryError: vi.fn(),
+        trackTelemetryEvent: vi.fn(),
+    };
+});
 
 import { App } from "../../src/app.js";
 import { getCurrentBundleVersion, readConfig, setCurrentBundle, writeConfig, updateConfig } from "../../src/bundle/cache.js";
@@ -480,5 +486,79 @@ describe("App", () => {
 
         expect(downloadBundle).not.toHaveBeenCalled();
         expect(scanBundle).not.toHaveBeenCalled();
+    });
+
+    describe("telemetry mode in settings (issue #95)", () => {
+        // Env vars that would change the resolved telemetry mode; stubbed so the
+        // label is deterministic (in particular under CI, where CI is set).
+        const TELEMETRY_ENV_VARS = [
+            "CI",
+            "GITHUB_ACTIONS",
+            "BUILD_BUILDID",
+            "TF_BUILD",
+            "JENKINS_URL",
+            "TEAMCITY_VERSION",
+            "DISABLE_TELEMETRY",
+            "DO_NOT_TRACK",
+            "AGENTMAN_TELEMETRY_DISABLED",
+            "AGENTMAN_TELEMETRY_URL",
+            "AGENTMAN_TELEMETRY_ENDPOINT",
+            "AGENTMAN_TELEMETRY_SITE_ID",
+        ];
+        const originalStdinTTY = process.stdin.isTTY;
+        const originalStdoutTTY = process.stdout.isTTY;
+
+        beforeEach(() => {
+            for (const key of TELEMETRY_ENV_VARS) {
+                vi.stubEnv(key, undefined);
+            }
+            Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
+            Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+        });
+
+        afterEach(() => {
+            Object.defineProperty(process.stdin, "isTTY", { value: originalStdinTTY, configurable: true });
+            Object.defineProperty(process.stdout, "isTTY", { value: originalStdoutTTY, configurable: true });
+            vi.unstubAllEnvs();
+        });
+
+        async function openSettings(source: Parameters<typeof App>[0]["source"]): Promise<() => string | undefined> {
+            const { lastFrame } = render(<App source={source} forceUpdate={false} />);
+            await vi.waitFor(() => {
+                expect(mainMenuState.props).not.toBeNull();
+            });
+            mainMenuState.props?.onSelect("settings");
+            return lastFrame;
+        }
+
+        it("reports telemetry enabled when the active source's discovery file enables it", async () => {
+            const lastFrame = await openSettings({
+                type: "discovery",
+                baseUrl: "https://cdn.example.com",
+                discovery: {
+                    version: "1",
+                    telemetry: { url: "https://telemetry.example.com", siteId: "13" },
+                    sources: [],
+                },
+            });
+
+            await vi.waitFor(() => {
+                expect(lastFrame()).toContain("Telemetry               enabled");
+            });
+        });
+
+        it("reports telemetry not configured when the active source's discovery file does not enable it", async () => {
+            // Issue #95: the old UI hard-coded "enabled" regardless of the
+            // active source; the reported mode must follow the discovery file.
+            const lastFrame = await openSettings({
+                type: "discovery",
+                baseUrl: "https://cdn.example.com",
+                discovery: { version: "1", sources: [] },
+            });
+
+            await vi.waitFor(() => {
+                expect(lastFrame()).toContain("Telemetry               not configured");
+            });
+        });
     });
 });
