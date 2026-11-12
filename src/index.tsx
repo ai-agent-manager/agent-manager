@@ -7,6 +7,7 @@ import { resolveStartupSource } from "./operations/session.js";
 import { type SkillSource } from "./bundle/skill-source.js";
 import { startConsoleSpinner } from "./lib/console-spinner.js";
 import {
+    applyActiveSourceTelemetry,
     getBundleEndpointTelemetryValue,
     getBundleSourceTelemetryProperties,
     trackTelemetryError,
@@ -54,6 +55,12 @@ async function main(): Promise<void> {
             } else {
                 telemetrySource = await resolveHeadlessTelemetrySource(sourceInput);
             }
+            // Telemetry mode must respect the active source: once its discovery
+            // document is known, point the process-wide client at its telemetry
+            // block (env vars still take precedence).
+            if (resolvedStartup?.type === "discovery") {
+                applyActiveSourceTelemetry(resolvedStartup.discovery.telemetry);
+            }
             trackTelemetryEvent({
                 action: "agentman_started",
                 properties: { forceUpdate, ...getBundleSourceTelemetryProperties(telemetrySource) },
@@ -72,6 +79,13 @@ async function main(): Promise<void> {
 
     try {
         const { source, directInstallSource, sourceError } = await resolveStartupSource(sourceInput);
+
+        // Telemetry mode must respect the active source: once it is resolved,
+        // point the process-wide client at its discovery telemetry block (env
+        // vars still take precedence) before the first event is tracked.
+        if (source?.type === "discovery") {
+            applyActiveSourceTelemetry(source.discovery.telemetry);
+        }
 
         spinner.stop();
         const telemetrySource = source ?? directInstallSource;

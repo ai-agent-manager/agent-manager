@@ -111,9 +111,6 @@ dt { color: var(--muted); } dd { margin: 0; overflow-wrap: anywhere; }
 .job-toast .notice { margin: 12px 0; padding: 12px; }
 .job-toast > .row:empty { display: none; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-.status-dot { display: inline-block; width: 7px; height: 7px; background: var(--accent); border-radius: 50%; margin-right: 7px; }
-.status-dot.connecting { background: var(--muted); }
-.status-dot.reconnecting, .status-dot.unauthorised { background: var(--danger); }
 .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }

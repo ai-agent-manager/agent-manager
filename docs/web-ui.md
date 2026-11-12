@@ -61,9 +61,10 @@ build both first. The pack hook replaces the repository README with
 
 ## Browser behavior
 
-- The sidebar footer shows the live event-stream state (Connecting, Connected, Reconnecting,
-  Not authorised) and the app version. Catalogue cards list skills alphabetically across
-  sources; install scope is labelled User (home directory) or Repository.
+- The sidebar footer shows the app version; a notice appears in the workspace while the
+  event stream is reconnecting. Catalogue cards list skills alphabetically across sources,
+  the Sources list groups sources by kind, and install scope is labelled User (home
+  directory) or Repository.
 - The Appearance selector on the Settings page offers System (the default), Light, and Dark.
   System follows OS appearance changes. The choice is saved in application settings
   and restored in both the browser and desktop app on subsequent launches.

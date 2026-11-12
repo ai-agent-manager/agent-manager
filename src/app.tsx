@@ -132,6 +132,10 @@ export function App({ source, directInstallSource, forceUpdate, sourceError }: A
 
     const discoveryProjectsConfig =
         source?.type === "discovery" ? source.discovery.projects : undefined;
+    // The active source's discovery file owns the telemetry endpoint; the
+    // settings screen reports the mode resolved from it (issue #95).
+    const discoveryTelemetry =
+        source?.type === "discovery" ? source.discovery.telemetry : undefined;
     const exclusiveSource = isProjectsExclusiveSource(discoveryProjectsConfig);
     const apiBaseUrl =
         source?.type === "discovery"
@@ -511,7 +515,9 @@ export function App({ source, directInstallSource, forceUpdate, sourceError }: A
 
             {screen === "source-manager" && <SourceManager onBack={() => setScreen("main-menu")} />}
 
-            {screen === "settings" && <SettingsScreen onBack={() => setScreen("main-menu")} />}
+            {screen === "settings" && (
+                <SettingsScreen onBack={() => setScreen("main-menu")} discoveryTelemetry={discoveryTelemetry} />
+            )}
 
             {screen === "manage-installed" && (
                 <ManageFlow
