@@ -163,6 +163,27 @@ it('persists settings and prevents toggling an environment-enforced preference',
   const call = fetcher.mock.calls.find(([, options]) => options?.method === 'PATCH')!;
   expect(JSON.parse(call[1]!.body as string)).toEqual({ telemetryDisabled: true });
 });
+it('reports the effective telemetry mode beside the still-editable preference', async () => {
+  const base = { startupUpdateChecksDisabled: false, telemetryDisabled: false, uiTheme: 'system', envOverrides: { startupUpdateChecksDisabled: false, telemetryDisabled: false } };
+  const { client, fetcher } = mockApi((_path, options) => options.method === 'PATCH'
+    ? { ...base, telemetryDisabled: true, telemetryMode: 'not-configured' } : { ...base, telemetryMode: 'not-configured' });
+  const view = render(<SettingsHarness client={client} />);
+  const share = await screen.findByRole('checkbox', { name: /Share anonymous usage data/ }) as HTMLInputElement;
+  expect(screen.getByText(/Status: not configured\. No telemetry endpoint is set/)).toBeTruthy();
+  // Not configured is a status, not a lock: the saved preference can still be changed.
+  expect(share.disabled).toBe(false);
+  expect(share.checked).toBe(true);
+  await userEvent.click(share);
+  await waitFor(() => expect(fetcher.mock.calls.some(([, options]) => options?.method === 'PATCH')).toBe(true));
+  await waitFor(() => expect(share.checked).toBe(false));
+  expect(screen.getByText(/Status: not configured/)).toBeTruthy();
+  view.unmount();
+  for (const [telemetryMode, text] of [['enabled', /Status: sending anonymous usage data/], ['disabled', /Status: not sending usage data/]] as const) {
+    const next = render(<SettingsHarness client={mockApi(() => ({ ...base, telemetryMode })).client} />);
+    expect(await screen.findByText(text)).toBeTruthy();
+    next.unmount();
+  }
+});
 it('changes the appearance from the Settings page', async () => {
   const { client, fetcher } = mockApi((_path, options) => options.method === 'PATCH' ? { startupUpdateChecksDisabled: false, telemetryDisabled: false, uiTheme: 'dark', envOverrides: { startupUpdateChecksDisabled: false, telemetryDisabled: false } } : { startupUpdateChecksDisabled: false, telemetryDisabled: false, uiTheme: 'system', envOverrides: { startupUpdateChecksDisabled: false, telemetryDisabled: false } });
   render(<SettingsHarness client={client} />);

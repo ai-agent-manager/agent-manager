@@ -89,6 +89,20 @@ it('validates malformed, oversized and unknown fields without changing settings'
   expect(await (await api('/api/settings')).json()).toMatchObject({ telemetryDisabled: true });
 });
 
+it('reports the same effective telemetry mode from GET and PATCH, apart from the saved preference', async () => {
+  for (const key of ['AGENTMAN_TELEMETRY_URL', 'AGENTMAN_TELEMETRY_ENDPOINT', 'AGENTMAN_TELEMETRY_SITE_ID']) vi.stubEnv(key, undefined);
+  // No endpoint anywhere: the server never applies a source's discovery telemetry, so nothing can be sent.
+  expect(await (await api('/api/settings')).json()).toMatchObject({ telemetryDisabled: false, telemetryMode: 'not-configured' });
+  const patched = await (await api('/api/settings', 'PATCH', { telemetryDisabled: true })).json();
+  expect(patched).toMatchObject({ telemetryDisabled: true, telemetryMode: 'not-configured' });
+  expect(await (await api('/api/settings')).json()).toEqual(patched);
+  // A configured endpoint with an environment opt-out is suppressed, whatever the saved preference says.
+  vi.stubEnv('AGENTMAN_TELEMETRY_URL', 'https://telemetry.example.com'); vi.stubEnv('AGENTMAN_TELEMETRY_SITE_ID', '7'); vi.stubEnv('DO_NOT_TRACK', '1');
+  const restored = await (await api('/api/settings', 'PATCH', { telemetryDisabled: false })).json();
+  expect(restored).toMatchObject({ telemetryDisabled: false, telemetryMode: 'disabled', envOverrides: { telemetryDisabled: true } });
+  expect(await (await api('/api/settings')).json()).toEqual(restored);
+});
+
 it('loads a real bundle, installs a server-owned candidate, reads it and removes it', async () => {
   const session = await load();
   expect(session.catalogue.map((entry) => entry.skillId)).toEqual(['test-skill']);

@@ -65,6 +65,11 @@ build both first. The pack hook replaces the repository README with
   event stream is reconnecting. Catalogue cards list skills alphabetically across sources,
   the Sources list groups sources by kind, and install scope is labelled User (home
   directory) or Repository.
+- The Settings page shows the telemetry status next to the "Share anonymous usage data"
+  preference: sending, not sending, or not configured. The browser UI and desktop app send
+  events only to an endpoint set through environment variables; unlike the terminal UI they
+  do not use the active source's discovery telemetry block, so without those variables the
+  status is "not configured". The preference stays editable and is shared with the terminal UI.
 - The Appearance selector on the Settings page offers System (the default), Light, and Dark.
   System follows OS appearance changes. The choice is saved in application settings
   and restored in both the browser and desktop app on subsequent launches.

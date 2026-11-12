@@ -79,6 +79,8 @@ export interface SourcesDto { sources: StoredSourceDto[]; active: StoredSourceDt
 export interface SettingsDto {
   startupUpdateChecksDisabled: boolean;
   telemetryDisabled: boolean;
+  /** Effective behaviour of this process, distinct from the saved `telemetryDisabled` preference. */
+  telemetryMode: 'enabled' | 'disabled' | 'not-configured';
   uiTheme: 'system' | 'light' | 'dark';
   envOverrides: { startupUpdateChecksDisabled: boolean; telemetryDisabled: boolean };
 }
