@@ -11,6 +11,7 @@
 .sidebarBottom small { margin: 10px 0 0; }
 .workspace { min-width: 0; }
 .header { display: flex; align-items: center; justify-content: space-between; gap: 20px; background: var(--surface); padding: 20px 40px; border-bottom: 1px solid var(--border); min-height: 87px; }
+.header :global(.badge) { border-color: transparent; background: var(--background); }
 .header small { font-size: 9px; letter-spacing: 1.5px; }
 .source { font-size: 13px; margin-top: 5px; max-width: min(50vw, 620px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .main { max-width: 1280px; margin: auto; padding: 42px 40px 70px; }
