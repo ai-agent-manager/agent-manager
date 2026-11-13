@@ -1,6 +1,7 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import { render } from "ink-testing-library";
+import { press, settleInk } from "../../helpers/ink-input.js";
 
 const ESC = String.fromCharCode(27);
 const DOWN = `${ESC}[B`;
@@ -69,17 +70,6 @@ afterAll(() => {
     Object.defineProperty(process.stdout, "isTTY", { value: originalStdoutTTY, configurable: true });
 });
 
-async function flushInkInput(): Promise<void> {
-    await new Promise<void>((resolve) => setImmediate(resolve));
-}
-
-type Stdin = { write: (input: string) => void };
-
-async function press(stdin: Stdin, input: string): Promise<void> {
-    stdin.write(input);
-    await flushInkInput();
-}
-
 beforeEach(() => {
     vi.clearAllMocks();
     vi.unstubAllEnvs();
@@ -133,7 +123,7 @@ describe("SettingsScreen", () => {
         await vi.waitFor(() => {
             expect(lastFrame()).toContain("Startup update checks   enabled");
         });
-        await flushInkInput();
+        await settleInk();
 
         await press(stdin, ENTER);
         await vi.waitFor(() => {
@@ -149,7 +139,7 @@ describe("SettingsScreen", () => {
         await vi.waitFor(() => {
             expect(lastFrame()).toContain("Telemetry               enabled");
         });
-        await flushInkInput();
+        await settleInk();
 
         await press(stdin, DOWN);
         await press(stdin, ENTER);
@@ -175,11 +165,24 @@ describe("SettingsScreen", () => {
         await vi.waitFor(() => {
             expect(lastFrame()).toContain("Startup update checks");
         });
-        await flushInkInput();
+        await settleInk();
 
         await press(stdin, ESC);
         await vi.waitFor(() => {
             expect(onBack).toHaveBeenCalled();
         });
     });
+    it("shows contention without changing the saved toggle, and allows retry", async () => {
+        vi.mocked(updateConfig).mockRejectedValueOnce(new Error('Another Agent Manager operation is running'));
+        const view = render(<SettingsScreen onBack={() => {}} />);
+        try {
+            await vi.waitFor(() => expect(view.lastFrame()).toContain('Startup update checks   enabled'));
+            await press(view.stdin, ENTER);
+            await vi.waitFor(() => expect(view.lastFrame()).toContain('Another Agent Manager operation is running'));
+            expect(view.lastFrame()).toContain('Startup update checks   enabled');
+            await press(view.stdin, ENTER);
+            await vi.waitFor(() => expect(view.lastFrame()).toContain('Startup update checks   disabled'));
+        } finally { view.unmount(); }
+    });
+
 });

@@ -76,7 +76,7 @@ export function AppUpdateManager({ onBack, onExit }: AppUpdateManagerProps) {
                                     currentVersion: APP_VERSION,
                                 },
                             });
-                            onExit("Agent Manager updated. Restart agentman to use the new application version.");
+                            onExit("Agent Manager updated. Restart Agent Manager to use the new application version.");
                         } catch (error) {
                             trackTelemetryError("app_self_update_failed", error, {
                                 channel: plan.channelLabel,

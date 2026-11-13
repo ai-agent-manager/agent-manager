@@ -190,7 +190,10 @@ export function SkillSelector({
         setInstalling(false);
 
         setTimeout(() => onDone(), 2000);
-      })();
+      })().catch((error) => {
+        setInstalling(false);
+        setLoadError(error instanceof Error ? error.message : String(error));
+      });
       return;
     }
 
