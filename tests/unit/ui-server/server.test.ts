@@ -108,7 +108,12 @@ it('loads a real bundle, installs a server-owned candidate, reads it and removes
   expect(session.catalogue.map((entry) => entry.skillId)).toEqual(['test-skill']);
   const entry = session.catalogue[0]!;
   expect(JSON.stringify(session)).not.toContain('dirPath');
-  expect((await (await api('/api/catalogue/skills/test-skill')).json()).entry.skillId).toBe('test-skill');
+  const detail = await (await api('/api/catalogue/skills/test-skill')).json();
+  expect(detail.entry.skillId).toBe('test-skill');
+  // The fixture's README.md leads with YAML frontmatter; it must be stripped so
+  // the "About this skill" panel renders prose, not the raw "name: ... tags: ..." block.
+  expect(detail.readme).not.toContain('tags:');
+  expect(detail.readme).toContain('A test skill used by the agentman test suite.');
   const response = await api('/api/installs', 'POST', { sessionRevision: session.sessionRevision, skillId: entry.skillId,
     installKey: entry.candidates[0]!.installKey, scope: 'system', toolIds: ['claude-code'] });
   expect(response.status).toBe(202);

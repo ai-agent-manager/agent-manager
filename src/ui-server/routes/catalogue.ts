@@ -1,6 +1,7 @@
 import { open, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { buildSessionCatalogue, buildRepositoryCatalogue } from '../../operations/catalogue.js';
+import { parseFrontmatter } from '../../lib/frontmatter.js';
 import { catalogueDto } from '../dto.js';
 import { HttpError, ValidationError } from '../errors.js';
 import { sendJson } from '../http.js';
@@ -32,7 +33,12 @@ export function catalogueRoutes(router: Router, sessions: SessionStore, defaultR
           try {
             const buffer = Buffer.alloc(256 * 1024);
             const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
-            readme = buffer.subarray(0, bytesRead).toString('utf8');
+            const raw = buffer.subarray(0, bytesRead).toString('utf8');
+            // SKILL.md always starts with a YAML frontmatter block (name,
+            // description, tags, …); strip it so the body renders as prose
+            // instead of the raw YAML. README.md has no frontmatter, so this
+            // is a no-op for it.
+            readme = parseFrontmatter(raw)?.body ?? raw;
           } finally { await handle.close(); }
           break;
         } catch { /* A description is sufficient when no readable README exists. */ }

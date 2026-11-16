@@ -159,10 +159,11 @@ export async function resolveDiscoverySkills(
         case 'git': {
           onProgress?.(`Cloning source repository: ${source.name}...`);
           const { skills: gitSkills } = await importGitSkills(source.url, source.name);
-          // No ref pinned: the importer shallow-clones and doesn't surface the
-          // resolved commit, so ref stays undefined here.
+          // Pinned as 'git-clone', not 'repo': this source may not even be on
+          // GitHub, so re-acquiring it later must re-clone rather than go
+          // through the GitHub-archive-only 'repo' update path.
           const gitPin = buildSourcePin({
-            type: 'repo',
+            type: 'git-clone',
             repoUrl: source.url,
             installLayout: 'namespaced',
           });

@@ -24,7 +24,7 @@ import { canonicaliseContentRoot } from './downloader.js';
 
 // ── Primitive types ───────────────────────────────────────────────────────────
 
-export type SkillSourceType = 'repo' | 'artefact' | 'bundle';
+export type SkillSourceType = 'repo' | 'artefact' | 'bundle' | 'git-clone';
 
 /**
  * Install layout strategy.
@@ -91,8 +91,21 @@ export interface BundleSkillSource {
   installLayout: InstallLayout;
 }
 
+/**
+ * Git-clone source: install by shallow-cloning an arbitrary git remote.
+ * Used for discovery `git` sources, which may point at any git host (not only
+ * GitHub) — unlike RepoSkillSource, re-acquiring this source means re-cloning
+ * rather than downloading a GitHub archive via the REST API.
+ */
+export interface GitCloneSkillSource {
+  type: 'git-clone';
+  /** Git remote URL, e.g. an https clone URL or an SSH URL (git@host:org/repo.git). */
+  repoUrl: string;
+  installLayout: InstallLayout;
+}
+
 /** Discriminated union of all supported skill source types. */
-export type SkillSource = RepoSkillSource | ArtefactSkillSource | BundleSkillSource;
+export type SkillSource = RepoSkillSource | ArtefactSkillSource | BundleSkillSource | GitCloneSkillSource;
 
 // ── Source pin ────────────────────────────────────────────────────────────────
 
@@ -158,6 +171,11 @@ export function isArtefactSource(s: SkillSource): s is ArtefactSkillSource {
 /** Type guard: narrows SkillSource to BundleSkillSource. */
 export function isBundleSource(s: SkillSource): s is BundleSkillSource {
   return s.type === 'bundle';
+}
+
+/** Type guard: narrows SkillSource to GitCloneSkillSource. */
+export function isGitCloneSource(s: SkillSource): s is GitCloneSkillSource {
+  return s.type === 'git-clone';
 }
 
 // ── URL detection helpers ─────────────────────────────────────────────────────
@@ -268,7 +286,7 @@ export interface ResolveSkillSourceOptions {
 export async function resolveSkillSource(
   input: string,
   options: ResolveSkillSourceOptions = {},
-): Promise<SkillSource> {
+): Promise<Exclude<SkillSource, GitCloneSkillSource>> {
   const knownHosts = options.githubHosts ?? GITHUB_HOSTS_DEFAULT;
 
   // ── URL inputs ──────────────────────────────────────────────────────────────
@@ -385,6 +403,13 @@ export function buildSourcePin(
     };
   }
 
+  if (source.type === 'git-clone') {
+    return {
+      ...base,
+      repoUrl: source.repoUrl,
+    };
+  }
+
   // bundle
   return {
     ...base,
@@ -423,6 +448,9 @@ export function describeSkillSource(source: SkillSource): string {
   }
   if (source.type === 'artefact') {
     return `artefact: ${source.artefactUrl}`;
+  }
+  if (source.type === 'git-clone') {
+    return `git: ${source.repoUrl}`;
   }
   if (source.sourceName) {
     return `source: ${source.sourceName} (${source.baseUrl})`;
@@ -597,7 +625,7 @@ export function bundleSourceKey(sourceName: string): string {
  */
 export function deriveInstallNamespace(pin: SkillSourcePin): string | null {
   if (pin.installLayout !== 'namespaced') return null;
-  if (pin.sourceType === 'repo' && pin.repoUrl) {
+  if ((pin.sourceType === 'repo' || pin.sourceType === 'git-clone') && pin.repoUrl) {
     return deriveRepoNamespace(pin.repoUrl);
   }
   if (pin.sourceType === 'artefact' && pin.artefactUrl) {

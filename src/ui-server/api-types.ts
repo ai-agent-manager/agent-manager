@@ -53,7 +53,7 @@ export interface InstalledRecordDto {
   method: 'symlink' | 'copy'; linkName: string;
   /** False for installs with no remote origin (local directories, legacy records). */
   updatable: boolean;
-  source?: { type: 'repo' | 'bundle' | 'artefact'; value?: string };
+  source?: { type: 'repo' | 'bundle' | 'artefact' | 'git-clone'; value?: string };
 }
 export interface InstallResultDto {
   installed: Array<{ name: string; method: 'symlink' | 'copy'; path: string }>;

@@ -25,6 +25,21 @@ const artefactSkills: SkillInfo[] = [
   },
 ];
 
+const gitCloneSkills: SkillInfo[] = [
+  {
+    dirName: 'git-skill-a',
+    dirPath: '/tmp/git-cache/example-org~example-repo/skills/git-skill-a',
+    skillMdPath: '/tmp/git-cache/example-org~example-repo/skills/git-skill-a/SKILL.md',
+    meta: null,
+  },
+  {
+    dirName: 'git-skill-b',
+    dirPath: '/tmp/git-cache/example-org~example-repo/skills/git-skill-b',
+    skillMdPath: '/tmp/git-cache/example-org~example-repo/skills/git-skill-b/SKILL.md',
+    meta: null,
+  },
+];
+
 const bundleSkills: SkillInfo[] = [
   {
     dirName: 'bundle-skill',
@@ -56,6 +71,10 @@ vi.mock('../../../src/bundle/repo-downloader.js', () => ({
 
 vi.mock('../../../src/bundle/repo-scanner.js', () => ({
   scanRepoForSkills: vi.fn(async () => ({ skills: repoSkills, skillsDir: '/tmp/repo/skills' })),
+}));
+
+vi.mock('../../../src/discovery/git-importer.js', () => ({
+  importGitSkills: vi.fn(async () => ({ skills: gitCloneSkills, clonePath: '/tmp/git-cache/example-org~example-repo' })),
 }));
 
 vi.mock('../../../src/bundle/artefact-downloader.js', () => ({
@@ -106,9 +125,10 @@ vi.mock('../../../src/lib/repo.js', () => ({
   findRepoRoot: vi.fn(async () => '/tmp/my-repo'),
 }));
 
-const { installFromRepo, installFromArtefact, installFromBundle, installResolvedSkills, acquireSource } =
+const { installFromRepo, installFromGitClone, installFromArtefact, installFromBundle, installResolvedSkills, acquireSource } =
   await import('../../../src/operations/install.js');
 const { createSkillProvisioner } = await import('../../../src/provisioners/registry.js');
+const { importGitSkills } = await import('../../../src/discovery/git-importer.js');
 const { downloadRepoArchive } = await import('../../../src/bundle/repo-downloader.js');
 const { downloadArtefact } = await import('../../../src/bundle/artefact-downloader.js');
 const { downloadBundle } = await import('../../../src/bundle/downloader.js');
@@ -234,6 +254,65 @@ describe('installFromRepo', () => {
         toolId: 'claude-code',
       }),
     ).rejects.toThrow(/inside a git repository/);
+  });
+});
+
+describe('installFromGitClone', () => {
+  it('clones, scans, and installs all skills with a git-clone pin', async () => {
+    const result = await installFromGitClone({
+      repoUrl: 'https://gitlab.example.com/example-org/example-repo.git',
+      scope: 'system',
+      toolId: 'claude-code',
+    });
+
+    expect(importGitSkills).toHaveBeenCalledWith(
+      'https://gitlab.example.com/example-org/example-repo.git',
+      expect.any(String),
+    );
+    expect(mockProvisioner.install).toHaveBeenCalledWith(
+      gitCloneSkills,
+      '',
+      expect.objectContaining({
+        sourceType: 'git-clone',
+        installLayout: 'namespaced',
+        repoUrl: 'https://gitlab.example.com/example-org/example-repo.git',
+      }),
+    );
+    expect(result.sourcePin.sourceType).toBe('git-clone');
+    expect(createSkillProvisioner).toHaveBeenCalledWith('claude-code', 'system', undefined);
+  });
+
+  it('filters to the requested skill names', async () => {
+    await installFromGitClone({
+      repoUrl: 'https://gitlab.example.com/example-org/example-repo.git',
+      skillNames: ['git-skill-b'],
+      scope: 'system',
+      toolId: 'claude-code',
+    });
+
+    const [installed] = mockProvisioner.install.mock.calls[0]! as unknown as [SkillInfo[]];
+    expect(installed.map((s) => s.dirName)).toEqual(['git-skill-b']);
+  });
+
+  it('throws when a requested skill is not in the clone', async () => {
+    await expect(
+      installFromGitClone({
+        repoUrl: 'https://gitlab.example.com/example-org/example-repo.git',
+        skillNames: ['nope'],
+        scope: 'system',
+        toolId: 'claude-code',
+      }),
+    ).rejects.toThrow(/Skill\(s\) not found: nope/);
+  });
+
+  it('derives the repo root for repo scope when not provided', async () => {
+    await installFromGitClone({
+      repoUrl: 'https://gitlab.example.com/example-org/example-repo.git',
+      scope: 'repo',
+      toolId: 'claude-code',
+    });
+
+    expect(createSkillProvisioner).toHaveBeenCalledWith('claude-code', 'repo', '/tmp/my-repo');
   });
 });
 

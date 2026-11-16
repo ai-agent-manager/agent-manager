@@ -6,7 +6,7 @@ import type { InstallScope } from '../config/scopes.js';
 import type { SkillSourcePin } from '../bundle/skill-source.js';
 import type { InstallResult, UninstallResult } from '../provisioners/types.js';
 import { createSkillProvisioner } from '../provisioners/registry.js';
-import { installFromRepo, installFromArtefact, installFromBundle } from './install.js';
+import { installFromRepo, installFromGitClone, installFromArtefact, installFromBundle } from './install.js';
 
 /** Supplies a bearer token for a pinned content URL when one is available. */
 export type AccessTokenProvider = (contentUrl: string) => Promise<string | undefined>;
@@ -195,6 +195,18 @@ export async function updateInstalled(
       forceUpdate: true,
       beforeInstall,
       ...(opts?.signal ? { signal: opts.signal } : {}),
+    });
+    return opResult.result;
+  }
+
+  if (sourcePin.sourceType === 'git-clone' && sourcePin.repoUrl) {
+    const opResult = await installFromGitClone({
+      repoUrl: sourcePin.repoUrl,
+      skillNames: [record.skillId],
+      scope,
+      toolId,
+      repoRoot,
+      beforeInstall,
     });
     return opResult.result;
   }

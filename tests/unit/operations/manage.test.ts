@@ -23,6 +23,12 @@ const bundlePin: SkillSourcePin = {
   bundleVersion: '1.0.0',
 };
 
+const gitClonePin: SkillSourcePin = {
+  sourceType: 'git-clone',
+  installLayout: 'namespaced',
+  repoUrl: 'https://gitlab.example.com/example-org/example-repo.git',
+};
+
 const systemConfig = {
   installations: {
     'claude-code': {
@@ -42,6 +48,12 @@ const systemConfig = {
         installedAt: '2025-01-01T00:00:00.000Z',
         method: 'symlink' as const,
         bundleVersion: '0.9.0',
+      },
+      'gitlab.example.com/example-org/example-repo/git-skill': {
+        installedAt: '2026-01-04T00:00:00.000Z',
+        method: 'symlink' as const,
+        sourcePin: gitClonePin,
+        linkName: 'gitlab.example.com~example-org~example-repo__git-skill',
       },
     },
   },
@@ -87,6 +99,7 @@ vi.mock('../../../src/lib/repo.js', () => ({
 
 vi.mock('../../../src/operations/install.js', () => ({
   installFromRepo: vi.fn(async () => ({ result: { installed: [], errors: [] } })),
+  installFromGitClone: vi.fn(async () => ({ result: { installed: [], errors: [] } })),
   installFromArtefact: vi.fn(async () => ({ result: { installed: [], errors: [] } })),
   installFromBundle: vi.fn(async () => ({ result: { installed: [], errors: [] } })),
 }));
@@ -100,7 +113,7 @@ const {
   SkillNotFoundError,
 } = await import('../../../src/operations/manage.js');
 const { createSkillProvisioner } = await import('../../../src/provisioners/registry.js');
-const { installFromRepo, installFromArtefact, installFromBundle } = await import(
+const { installFromRepo, installFromGitClone, installFromArtefact, installFromBundle } = await import(
   '../../../src/operations/install.js'
 );
 const { findRepoRoot } = await import('../../../src/lib/repo.js');
@@ -136,7 +149,7 @@ describe('listInstalled', () => {
   it('lists system and repo installs with derived fields', async () => {
     const records = await listInstalled('all');
 
-    expect(records).toHaveLength(4);
+    expect(records).toHaveLength(5);
 
     const namespaced = records.find((r) => r.installKey === 'github.com/example-org/example-repo/my-skill')!;
     expect(namespaced.skillId).toBe('my-skill');
@@ -146,6 +159,10 @@ describe('listInstalled', () => {
 
     const artefact = records.find((r) => r.installKey === 'cdn.example.com/my-skill/my-skill')!;
     expect(artefact.version).toBe('1.2.0');
+
+    const gitClone = records.find((r) => r.installKey === 'gitlab.example.com/example-org/example-repo/git-skill')!;
+    expect(gitClone.scope).toBe('system');
+    expect(gitClone.sourcePin?.sourceType).toBe('git-clone');
 
     const repoScoped = records.find((r) => r.installKey === 'bundle-skill')!;
     expect(repoScoped.scope).toBe('repo');
@@ -165,7 +182,7 @@ describe('listInstalled', () => {
   it('filters by scope', async () => {
     const system = await listInstalled('system');
     expect(system.every((r) => r.scope === 'system')).toBe(true);
-    expect(system).toHaveLength(3);
+    expect(system).toHaveLength(4);
 
     const repo = await listInstalled('repo');
     expect(repo).toHaveLength(1);
@@ -268,6 +285,23 @@ describe('updateInstalled', () => {
       forceUpdate: true,
       beforeInstall: expect.any(Function),
     });
+  });
+
+  // A discovery `git` source is pinned as 'git-clone' (not 'repo') precisely so
+  // update re-clones instead of going through the GitHub-archive-only repo path —
+  // that path previously threw for any non-GitHub host and left the button broken.
+  it('updates a git-clone-pinned skill by re-cloning, not via the repo archive path', async () => {
+    await updateInstalled('gitlab.example.com/example-org/example-repo/git-skill');
+
+    expect(installFromGitClone).toHaveBeenCalledWith({
+      repoUrl: 'https://gitlab.example.com/example-org/example-repo.git',
+      skillNames: ['git-skill'],
+      scope: 'system',
+      toolId: 'claude-code',
+      repoRoot: undefined,
+      beforeInstall: expect.any(Function),
+    });
+    expect(installFromRepo).not.toHaveBeenCalled();
   });
 
   it('updates an artefact-pinned skill without the pinned sha256', async () => {

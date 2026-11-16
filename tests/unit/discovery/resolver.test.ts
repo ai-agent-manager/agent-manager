@@ -89,7 +89,7 @@ describe('resolveDiscoverySkills', () => {
     expect(result.skills).toHaveLength(1);
     expect(result.skills[0]!.dirName).toBe('git-skill-a');
     expect(result.skills[0]!.sourcePin?.installLayout).toBe('namespaced');
-    expect(result.skills[0]!.sourcePin?.sourceType).toBe('repo');
+    expect(result.skills[0]!.sourcePin?.sourceType).toBe('git-clone');
     expect(result.errors).toHaveLength(0);
   });
 

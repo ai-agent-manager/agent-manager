@@ -150,8 +150,8 @@ function skillSourceToBundleSource(source: SkillSource): BundleSource {
         }
         return { type: 'url', baseUrl: source.baseUrl ?? '' };
     }
-    // For repo and artefact sources, map to URL type for telemetry
-    if (source.type === 'repo') {
+    // For repo, git-clone and artefact sources, map to URL type for telemetry
+    if (source.type === 'repo' || source.type === 'git-clone') {
         return { type: 'url', baseUrl: source.repoUrl };
     }
     // source.type === 'artefact'

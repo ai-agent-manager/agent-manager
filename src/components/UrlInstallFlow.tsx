@@ -15,6 +15,7 @@ import {
   describeSkillSource,
   deriveSkillInstallKey,
   type SkillSource,
+  type GitCloneSkillSource,
 } from '../bundle/skill-source.js';
 import { createSkillProvisioner } from '../provisioners/registry.js';
 import { mergeInstallResults } from '../lib/merge-install-results.js';
@@ -22,6 +23,10 @@ import { useEscapeBack } from '../lib/use-escape-back.js';
 import type { SkillInfo } from '../bundle/scanner.js';
 import type { InstallScope } from '../config/scopes.js';
 import type { InstallResult } from '../provisioners/types.js';
+
+// This flow only ever drives manual repo/artefact/bundle installs — git-clone
+// sources are produced exclusively by the discovery resolver's update path.
+type UiSkillSource = Exclude<SkillSource, GitCloneSkillSource>;
 
 type FlowScreen =
   | 'source-type'
@@ -36,7 +41,7 @@ type FlowScreen =
 
 interface UrlInstallFlowProps {
   onBack: () => void;
-  initialSource?: SkillSource;
+  initialSource?: UiSkillSource;
 }
 
 export function UrlInstallFlow({ onBack, initialSource }: UrlInstallFlowProps) {
@@ -44,7 +49,7 @@ export function UrlInstallFlow({ onBack, initialSource }: UrlInstallFlowProps) {
   const [sourceType, setSourceType] = useState<InstallSourceType>(
     initialSource ? menuTypeFor(initialSource) : 'repo',
   );
-  const [source, setSource] = useState<SkillSource | null>(null);
+  const [source, setSource] = useState<UiSkillSource | null>(null);
   const [acquired, setAcquired] = useState<AcquireResult | null>(null);
   const [selectedSkills, setSelectedSkills] = useState<SkillInfo[]>([]);
   const [scope, setScope] = useState<InstallScope>('system');
@@ -58,7 +63,7 @@ export function UrlInstallFlow({ onBack, initialSource }: UrlInstallFlowProps) {
   useEscapeBack(() => setScreen('tool-selector'), screen === 'confirm');
   useEscapeBack(onBack, screen === 'result');
 
-  const acquireResolved = async (resolved: SkillSource) => {
+  const acquireResolved = async (resolved: UiSkillSource) => {
     try {
       const acquireResult = await acquireSource(resolved);
       if (acquireResult.skills.length === 0) {
@@ -284,7 +289,7 @@ function typeForMenu(menuType: InstallSourceType): SkillSource['type'] {
   return 'bundle';
 }
 
-function menuTypeFor(source: SkillSource): InstallSourceType {
+function menuTypeFor(source: UiSkillSource): InstallSourceType {
   if (source.type === 'repo') return 'repo';
   if (source.type === 'artefact') return 'artefact';
   return 'bundle';

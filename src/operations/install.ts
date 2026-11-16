@@ -7,15 +7,19 @@ import { setCurrentBundle } from '../bundle/cache.js';
 import {
   buildSourcePin,
   bundleSourceKey,
+  deriveRepoNamespace,
+  flattenNamespace,
   isRepoSource,
   resolveSkillSource,
   type SkillSource,
   type SkillSourcePin,
+  type GitCloneSkillSource,
 } from '../bundle/skill-source.js';
 import { downloadRepoArchive } from '../bundle/repo-downloader.js';
 import { scanRepoForSkills } from '../bundle/repo-scanner.js';
 import { downloadArtefact } from '../bundle/artefact-downloader.js';
 import { scanArtefactForSkills } from '../bundle/artefact-scanner.js';
+import { importGitSkills } from '../discovery/git-importer.js';
 import type { SkillInfo } from '../bundle/scanner.js';
 import type { InstallScope } from '../config/scopes.js';
 import type { InstallResult } from '../provisioners/types.js';
@@ -47,6 +51,14 @@ export interface InstallFromRepoOpts extends InstallGuard {
   toolId: string;
   repoRoot?: string;
   forceUpdate?: boolean;
+}
+
+export interface InstallFromGitCloneOpts extends InstallGuard {
+  repoUrl: string;
+  skillNames?: string[];
+  scope: InstallScope;
+  toolId: string;
+  repoRoot?: string;
 }
 
 export interface InstallFromArtefactOpts extends InstallGuard {
@@ -108,6 +120,33 @@ export async function installFromRepo(opts: InstallFromRepoOpts): Promise<Instal
   const available = new Map(scanResult.skills.map((s) => [s.dirName, s]));
   const toInstall = selectSkills(available, skillNames);
   const sourcePin = buildSourcePin(source);
+  const repoRoot = await resolveRepoRoot(scope, opts.repoRoot);
+  const provisioner = createSkillProvisioner(toolId, scope, repoRoot);
+  const result = await withMutation(async () => {
+    await opts.beforeInstall?.();
+    return provisioner.install(toInstall, '', sourcePin);
+  });
+
+  return { toolId, result, sourcePin, bundleVersion: '' };
+}
+
+/**
+ * Clone a git remote and install the requested skills for one tool.
+ *
+ * Unlike installFromRepo (GitHub archive download via the REST API), this
+ * shallow-clones with the `git` CLI, so it works for any remote the caller's
+ * git/SSH config can reach — not only github.com. Used for discovery `git`
+ * sources and for updating skills pinned from one.
+ */
+export async function installFromGitClone(opts: InstallFromGitCloneOpts): Promise<InstallOperationResult> {
+  const { repoUrl, skillNames, scope, toolId } = opts;
+
+  const cacheKey = flattenNamespace(deriveRepoNamespace(repoUrl));
+  const { skills } = await importGitSkills(repoUrl, cacheKey);
+
+  const available = new Map(skills.map((s) => [s.dirName, s]));
+  const toInstall = selectSkills(available, skillNames);
+  const sourcePin = buildSourcePin({ type: 'git-clone', repoUrl, installLayout: 'namespaced' });
   const repoRoot = await resolveRepoRoot(scope, opts.repoRoot);
   const provisioner = createSkillProvisioner(toolId, scope, repoRoot);
   const result = await withMutation(async () => {
@@ -239,7 +278,7 @@ export async function installResolvedSkills(opts: InstallResolvedSkillsOpts): Pr
  * before confirming.
  */
 export async function acquireSource(
-  source: SkillSource,
+  source: Exclude<SkillSource, GitCloneSkillSource>,
   opts: {
     sha256?: string;
     bundleVersion?: string;
