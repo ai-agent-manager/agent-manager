@@ -22,7 +22,7 @@ export function RovoMethodMenu({ onSelect, onBack }: RovoMethodMenuProps) {
             value: "chrome-extension" as const,
           },
           {
-            label: "Install Chrome Extension    Install the Agentman extension into Google Chrome",
+            label: "Install Chrome Extension    Install the Agent Manager extension into Google Chrome",
             value: "install-chrome-extension" as const,
           },
         ]

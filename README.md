@@ -48,6 +48,54 @@ Agent Manager gives you:
 
 ## Usage
 
+### Web UI (experimental)
+
+Launch a release containing the web UI with:
+
+```bash
+npx -y @ai-agent-manager/cli@latest ui https://skills.example.com
+```
+
+It opens your browser and prints a local URL. Each launch generates a new access
+token in that URL; keep it private. The browser removes the token from the address
+bar and retains it for tab reloads. Omit the source to use saved sources.
+
+| Option | Behavior |
+| --- | --- |
+| `--no-open` | Print the URL without opening a browser |
+| `--port 0` | Choose an available port |
+| `--port 19877` | Require that port; without an explicit port, a busy default falls back to an available port |
+| `--update` | Force reacquisition of the selected source |
+
+The UI browses and installs skills, manages installed skills, sources and settings,
+and supports compatible cached/per-installation versions and sign-in/out. Use a
+local bundle directory or an HTTP discovery source; direct Git inputs must be
+included in a discovery catalogue for browser use. `ui` cannot be combined with
+`--config`.
+
+Use these checkout commands while the feature is unreleased, or to inspect local
+changes:
+
+```bash
+npm ci
+npm ci --prefix web-ui
+npm run build:web-ui
+npm run preview:ui -- tests/fixtures/valid-bundle --port 0
+```
+
+`preview:ui` prints the URL without opening a browser. For live development, use
+`npm run dev:ui -- --no-open`. Closing the tab leaves the server running; use
+Ctrl-C to drain work and stop it. A second CLI Ctrl-C forces exit and may
+interrupt an operation. See [the web UI guide](docs/web-ui.md) for repository scope,
+version support, security, development and testing.
+
+### Desktop application (experimental)
+
+The Electron shell reuses the web UI and adds a native repository picker and
+macOS/Windows installer builds. See [desktop setup and packaging](docs/desktop.md).
+From a built checkout, install with `npm ci --prefix desktop` and launch with
+`npm start --prefix desktop`.
+
 ### Interactive (recommended for local use)
 
 ```bash
@@ -170,7 +218,7 @@ npx @ai-agent-manager/cli@latest https://bundles.example.com \
 
 If your bundle server requires authentication, Agent Manager runs an interactive OAuth2/OIDC flow on first use:
 
-1. A browser window opens to your provider's login page.
+1. The TUI displays the provider's login URL and opens it when you press Enter; the web UI presents an explicit sign-in link.
 2. After login, a local callback server receives the authorization code.
 3. Tokens are stored in the OS keychain when available, otherwise in `~/.agentman/auth/` (`0600`).
 4. Before each authenticated API or content download, Agent Manager reloads the store and refreshes the token if it is near expiry (or retries once after an HTTP 401).
@@ -207,13 +255,14 @@ The TUI's top-level menu has these options:
 - **My Projects** -- Shown when you are logged in, `projects.enabled` is `true`, and an API base URL is set (`api.baseUrl` in the discovery document, or `API_BASE_URL`). Lists the projects you can access; from a project you can Search & Install skills or provision Rovo agents, filtered by that project's catalogue allowlists. When `projects.exclusiveSource` is `true`, Search & Install and Bulk Sync are limited to skills/agents permitted by your project memberships (with project names shown on the Search & Install detail row). See [docs/projects.md](docs/projects.md).
 - **Search & Install** -- Search a single catalogue of skills and Rovo agents, then act on your choice. Selecting a skill installs it (choose a source, scope, and coding tool); selecting a Rovo agent provisions it in Atlassian Studio. Rovo provisioning runs Playwright-driven browser automation from the command line by default; set `AGENTMAN_CHROME_EXTENSION=1` to also offer the Chrome Extension options, including direct extension installation (see [Feature Flags](#feature-flags)).
 - **Maintenance & Updates** -- Bulk-sync a tool's skills (select the complete set for a tool; deselecting uninstalls), manage individual skill versions, manage installed skills (update/remove/inspect), manage cached bundle versions, and update the Agent Manager CLI itself.
-- **Source Management** -- Install from a source URL: a GitHub repo, an artefact zip, or a bundle URL.
+- **Manage Sources** -- Install from a source URL: a GitHub repo, an artefact zip, or a bundle URL.
 - **Settings & Config** -- Toggle startup update checks and telemetry, persisted to `~/.agentman/config.json`. Environment variables still take precedence.
 - **Exit**
 
 ### Saved sources
 
-Passing a source once saves it: `agentman <url>` resolves the source as before and also stores it, marking it the **active** source. GitHub `owner/repo` shorthand is stored as the expanded `https://github.com/…` URL (and `/tree/<ref>` pins are kept); other git remotes keep their clone URL so reload still recognises them. A later bare `agentman` (no argument) resolves the active source, so you no longer need to paste the URL every time. Manage the saved list — add, remove, or pick which one is active — from **Source Management**. When a bare invocation runs, sources are tried in order (active first); a source that is unreachable is skipped so one dead source never blocks startup. Headless (`--config`) mode is unaffected: it always requires an explicit source argument and never falls back to saved sources, keeping CI runs reproducible.
+Passing a source once saves it: `agentman <url>` resolves the source as before and also stores it, marking it the **active** source. GitHub `owner/repo` shorthand is stored as the expanded `https://github.com/…` URL (and `/tree/<ref>` pins are kept); other git remotes keep their clone URL so reload still recognises them. A later bare `agentman` (no argument) resolves the active source, so you no longer need to paste the URL every time. Manage the saved list — add, remove, or pick which one is active — from **Manage Sources**. When a bare invocation runs, sources are tried in order (active first); a source that is unreachable is skipped so one dead source never blocks startup. Headless (`--config`) mode is unaffected: it always requires an explicit source argument and never falls back to saved sources, keeping CI runs reproducible.
+
 
 On startup, if a newer app version or bundle is available, a bordered update panel appears above the menu. Press `U` to update the app, or `B` to pull the latest bundle immediately.
 
@@ -252,7 +301,7 @@ The link name depends on the install source:
 
 When you run Agent Manager from inside a git repo, the scope selector offers **System-wide** or **This repository**. Repo-scoped installs symlink from the shared bundle cache — the bundle itself isn't copied into the repo.
 
-A `.agentman.json` file is written at the repo root tracking the pinned bundle version and installed skills. Commit this so everyone on the team stays in sync.
+A `.agentman.json` file is written at the repo root tracking installed skills and their source pins. This is machine-specific runtime state: keep it gitignored and do not commit it. Share a headless install config when the team needs reproducible installation instructions.
 
 ---
 
@@ -261,7 +310,7 @@ A `.agentman.json` file is written at the repo root tracking the pinned bundle v
 1. Agent Manager resolves your source: HTTP bases fetch `.well-known/agents/discovery.json`; git remotes look for `.agents/discovery.json` in the repo (GitHub via API, other hosts via a shallow clone).
 2. If the server requires authentication, an OAuth2/OIDC flow runs interactively (PKCE, browser-based login).
 3. Each source's bundle is downloaded and extracted under `~/.agentman/bundles/sources/<source-name>/<version>/`, so two sources publishing the same version number stay separate. A bundle fetched from a bare URL rather than a declared source still lands in the older `~/.agentman/bundles/<version>/` layout.
-4. `~/.agentman/current` symlinks to the active version of that older layout, and **Maintenance & Updates → Manage Bundle Versions** operates on it. Source-scoped bundles are not yet covered by either.
+4. `~/.agentman/current` points to the active flat-cache version. Named-source caches retain independent identities; the web UI and the TUI’s Manage Skill Versions select their versions per installed skill. See [version support](docs/web-ui.md#versions-and-cache-provenance) for source-specific capabilities.
 5. Multiple bundle versions coexist on disk.
 6. Installing a skill symlinks the entire skill directory from the cache into the target tool's skills path.
 7. Installation state is tracked in `~/.agentman/config.json` (system-wide) or `.agentman.json` (repo-scoped).
@@ -292,7 +341,10 @@ Important behaviour:
 
 ## Telemetry
 
-Agent Manager can send a small set of anonymous usage events to help understand adoption and catch operational failures. Telemetry is opt-in, based on your bundle server. No prompts, skill content, repo names, file paths, or personal identifiers are ever sent. Telemetry is automatically disabled in CI.
+Agent Manager can send operational usage events when telemetry is configured.
+Events include counts, tool/scope, versions and source metadata, but not prompts
+or skill contents. Telemetry is automatically disabled in CI. The web UI has a
+launch event; its installs/removals do not emit the TUI bulk-sync events.
 
 See [docs/telemetry.md](docs/telemetry.md) for the full event list and instructions to disable or override the endpoint.
 
@@ -313,7 +365,7 @@ AGENTMAN_CHROME_EXTENSION=1 npx @ai-agent-manager/cli@latest <base-url>
 ## Development
 
 ```bash
-npm install          # install dependencies
+npm ci               # install dependencies
 npm run dev -- <url> # run locally against a bundle server
 npm run build        # compile to dist/
 npm test             # run tests once
@@ -322,6 +374,9 @@ npm run typecheck    # type check without emitting
 ./scripts/docs.sh    # preview the docs site (Docker, http://localhost:8000)
 ```
 
+For browser development, also install `web-ui/` dependencies. See the
+[web UI development guide](docs/web-ui.md#launch-and-development) and
+[test setup](tests/e2e/README.md) for builds, component tests and Playwright.
 Full documentation lives in [`docs/`](docs/) and is published to
 [GitHub Pages](https://ai-agent-manager.github.io/agent-manager/). See
 [docs/docs-preview.md](docs/docs-preview.md) for the Docker preview workflow.

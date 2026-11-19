@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
@@ -118,10 +119,11 @@ export async function fetchBundleHash(
     contentRoot: string,
     version: string,
     bearerToken?: string,
+    options: { signal?: AbortSignal } = {},
 ): Promise<string | null> {
     const url = buildHashUrl(contentRoot, version);
 
-    const response = await fetch(url, authFetchOpts(bearerToken));
+    const response = await fetch(url, options.signal ? { ...authFetchOpts(bearerToken), signal: options.signal } : authFetchOpts(bearerToken));
 
     if (response.status === 404 || response.status === 403) {
         return null;
@@ -159,10 +161,10 @@ export async function verifyBundleHash(zipPath: string, expectedHash: string): P
 /**
  * Fetch a source's index.json to discover available bundle versions.
  */
-export async function fetchIndex(contentRoot: string, bearerToken?: string): Promise<AgentsIndex> {
+export async function fetchIndex(contentRoot: string, bearerToken?: string, options: { signal?: AbortSignal } = {}): Promise<AgentsIndex> {
     const url = buildIndexUrl(contentRoot);
 
-    const response = await fetch(url, authFetchOpts(bearerToken));
+    const response = await fetch(url, options.signal ? { ...authFetchOpts(bearerToken), signal: options.signal } : authFetchOpts(bearerToken));
     if (!response.ok) {
         throw new Error(`Failed to fetch index: ${response.status} ${response.statusText} from ${url}`);
     }
@@ -211,6 +213,7 @@ export async function downloadBundle(
     version?: string,
     bearerToken?: string,
     sourceKey?: string,
+    options: { signal?: AbortSignal } = {},
 ): Promise<DownloadResult> {
     const root = canonicaliseContentRoot(contentRoot);
     const requestType = version ? "specific" : "latest";
@@ -229,7 +232,7 @@ export async function downloadBundle(
 
     try {
         if (!version) {
-            const index = await fetchIndex(root, bearerToken);
+            const index = await fetchIndex(root, bearerToken, ...(options.signal ? [options] : []));
             targetVersion = getLatestVersion(index);
         }
 
@@ -240,8 +243,9 @@ export async function downloadBundle(
         // targetVersion comes from a remote index.json, so it reaches this
         // path.join before anything has verified the download.
         assertSafeCacheSegment(targetVersion, "Bundle version");
-        const zipPath = path.join(tempDir, `${targetVersion}${sourceKey ? `-${sourceKey}` : ""}.zip`);
-        const response = await fetch(url, authFetchOpts(bearerToken));
+        const zipPath = path.join(tempDir, `${targetVersion}-${randomUUID()}${sourceKey ? `-${sourceKey}` : ""}.zip`);
+        // The signal covers the body read too, so a stalled transfer stops with the job.
+        const response = await fetch(url, options.signal ? { ...authFetchOpts(bearerToken), signal: options.signal } : authFetchOpts(bearerToken));
         if (!response.ok) {
             throw new Error(`Failed to download bundle: ${response.status} ${response.statusText} from ${url}`);
         }
@@ -251,7 +255,7 @@ export async function downloadBundle(
         let sha256: string | null = null;
 
         try {
-            const expectedHash = await fetchBundleHash(root, targetVersion, bearerToken);
+            const expectedHash = await fetchBundleHash(root, targetVersion, bearerToken, ...(options.signal ? [options] : []));
 
             if (expectedHash) {
                 await verifyBundleHash(zipPath, expectedHash);

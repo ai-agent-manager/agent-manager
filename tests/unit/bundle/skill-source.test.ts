@@ -7,6 +7,7 @@ import {
   isRepoSource,
   isArtefactSource,
   isBundleSource,
+  isGitCloneSource,
   resolveSkillSource,
   buildSourcePin,
   describeSkillSource,
@@ -21,6 +22,7 @@ import {
   type RepoSkillSource,
   type ArtefactSkillSource,
   type BundleSkillSource,
+  type GitCloneSkillSource,
 } from '../../../src/bundle/skill-source.js';
 
 // ── isArtefactUrl ─────────────────────────────────────────────────────────────
@@ -57,23 +59,34 @@ describe('type guards', () => {
   const repo: RepoSkillSource = { type: 'repo', repoUrl: 'https://github.com/org/repo', installLayout: 'namespaced' };
   const artefact: ArtefactSkillSource = { type: 'artefact', artefactUrl: 'https://cdn.example.com/skill.zip', installLayout: 'namespaced' };
   const bundle: BundleSkillSource = { type: 'bundle', baseUrl: 'https://cdn.example.com', installLayout: 'flat' };
+  const gitClone: GitCloneSkillSource = { type: 'git-clone', repoUrl: 'https://example.com/org/repo.git', installLayout: 'namespaced' };
 
   it('isRepoSource correctly identifies repo source', () => {
     expect(isRepoSource(repo)).toBe(true);
     expect(isRepoSource(artefact)).toBe(false);
     expect(isRepoSource(bundle)).toBe(false);
+    expect(isRepoSource(gitClone)).toBe(false);
   });
 
   it('isArtefactSource correctly identifies artefact source', () => {
     expect(isArtefactSource(artefact)).toBe(true);
     expect(isArtefactSource(repo)).toBe(false);
     expect(isArtefactSource(bundle)).toBe(false);
+    expect(isArtefactSource(gitClone)).toBe(false);
   });
 
   it('isBundleSource correctly identifies bundle source', () => {
     expect(isBundleSource(bundle)).toBe(true);
     expect(isBundleSource(repo)).toBe(false);
     expect(isBundleSource(artefact)).toBe(false);
+    expect(isBundleSource(gitClone)).toBe(false);
+  });
+
+  it('isGitCloneSource correctly identifies git-clone source', () => {
+    expect(isGitCloneSource(gitClone)).toBe(true);
+    expect(isGitCloneSource(repo)).toBe(false);
+    expect(isGitCloneSource(artefact)).toBe(false);
+    expect(isGitCloneSource(bundle)).toBe(false);
   });
 });
 
@@ -308,6 +321,20 @@ describe('buildSourcePin', () => {
     expect(pin.bundleVersion).toBeUndefined();
   });
 
+  it('builds a pin for a git-clone source', () => {
+    const source: GitCloneSkillSource = {
+      type: 'git-clone',
+      repoUrl: 'https://example.com/org/repo.git',
+      installLayout: 'namespaced',
+    };
+    const pin = buildSourcePin(source);
+    expect(pin.sourceType).toBe('git-clone');
+    expect(pin.installLayout).toBe('namespaced');
+    expect(pin.repoUrl).toBe('https://example.com/org/repo.git');
+    expect(pin.artefactUrl).toBeUndefined();
+    expect(pin.bundleVersion).toBeUndefined();
+  });
+
   it('builds a pin for an artefact source', async () => {
     const source = await resolveSkillSource('https://cdn.example.com/skill.zip');
     const pin = buildSourcePin(source);
@@ -418,6 +445,15 @@ describe('describeSkillSource', () => {
       installLayout: 'namespaced',
     };
     expect(describeSkillSource(source)).toBe('repo: https://github.com/org/repo@develop');
+  });
+
+  it('describes a git-clone source', () => {
+    const source: GitCloneSkillSource = {
+      type: 'git-clone',
+      repoUrl: 'https://example.com/org/repo.git',
+      installLayout: 'namespaced',
+    };
+    expect(describeSkillSource(source)).toBe('git: https://example.com/org/repo.git');
   });
 
   it('describes an artefact source', () => {
@@ -676,6 +712,15 @@ describe('deriveInstallNamespace', () => {
       installLayout: 'namespaced',
       repoUrl: 'https://github.com/my-org/my-repo',
       ref: 'main',
+    });
+    expect(ns).toBe('github.com/my-org/my-repo');
+  });
+
+  it('returns namespace for a git-clone source pin with namespaced layout, same as repo', () => {
+    const ns = deriveInstallNamespace({
+      sourceType: 'git-clone',
+      installLayout: 'namespaced',
+      repoUrl: 'https://github.com/my-org/my-repo',
     });
     expect(ns).toBe('github.com/my-org/my-repo');
   });

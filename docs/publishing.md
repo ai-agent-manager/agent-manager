@@ -19,16 +19,46 @@ git push origin main --tags
 
 CI will publish to npmjs.org, then automatically create a GitHub Release with an npm install link and a changelog generated from commits since the previous stable tag.
 
-Monitor the CI jobs to confirm both the npm publish and GitHub Release succeed.
+Only the root version needs bumping. Desktop packaging derives its application
+version from the installed CLI, so the checked-in desktop development version
+does not block verification or determine the installer version.
 
-## Required secrets
+Monitor the CI jobs to confirm the npm publish and GitHub Release succeed. The
+stable release job then calls the desktop workflow to build and attach macOS/Windows
+installers; see [desktop signing and CI](desktop.md#signing-and-ci).
+
+## Builds and verification
+
+The [CI workflow](https://github.com/ai-agent-manager/agent-manager/blob/main/.github/workflows/ci.yml) requires Ubuntu/Windows verification
+and the Git importer smoke before either registry publish job. Verification builds
+and tests the web UI, runs root and integration typechecks, root tests, the CLI
+build and Playwright browser/tarball tests, then desktop typechecks, unit tests
+and sandboxed Electron smokes. Linux also builds and exercises the hardened ASAR
+package. npm cache keys include the root, `web-ui/` and `desktop/` lockfiles.
+
+Both publish jobs install `web-ui/` dependencies, run `npm run build:web-ui`, build
+the Chrome extension and compile the CLI. `prepublishOnly` also installs/builds
+the web UI, runs root typecheck/tests and compiles the CLI. It does not replace
+CI's component/browser tests. `assets/web-ui/` is generated and included in the
+published package.
+
+For a local tarball, build first: `npm run build:web-ui` (after installing
+`web-ui/` dependencies) and `npm run build`, then `npm pack`. Packing alone does
+not run `prepublishOnly` or create missing output. The pack hooks swap in
+`scripts/README.npm.md` and restore the repository README afterward.
+
+## Publishing authentication and secrets
 
 | Secret | Purpose |
 |--------|---------|
-| `NPM_TOKEN` | Automation token with publish access to the `@ai-agent-manager` org on npmjs.org |
 | `AGENTMAN_CRX_KEY` | Base64-encoded PEM private key for signing the Chrome extension `.crx` |
 
-The GitHub Packages beta publish uses the built-in `GITHUB_TOKEN` — no extra secret needed.
+The npm publish job uses trusted publishing: it grants `id-token: write`, installs
+npm 11.9.0 and runs `npm publish --access public` without an `NPM_TOKEN` secret.
+This describes the configured CI path; a local manual publish needs its own npm
+authentication. The GitHub Packages beta job uses the built-in `GITHUB_TOKEN`
+through `NODE_AUTH_TOKEN` with `packages: write`; no separate registry secret is
+configured.
 
 ## Beta / Prerelease Builds
 

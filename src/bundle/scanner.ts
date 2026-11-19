@@ -257,6 +257,7 @@ function normaliseBeforeValidation(data: Record<string, unknown>): string[] {
 export async function parseRovoAgentYaml(
   yamlContent: string,
   baseDir: string = process.cwd(),
+  onWarning?: (warning: string) => void,
 ): Promise<RovoAgentConfig> {
   const data = parseYaml(yamlContent);
 
@@ -270,6 +271,11 @@ export async function parseRovoAgentYaml(
     });
     throw new RovoAgentValidationError(errors);
   }
+
+  // Capture warnings before resolving file references yields to another parser.
+  // lastParseWarnings remains available for legacy callers, but scanners do not
+  // read shared state after awaiting this function.
+  lastParseWarnings.forEach((warning) => onWarning?.(warning));
 
   return resolveFileRefs(data as RovoAgentConfigRaw, baseDir);
 }
@@ -431,7 +437,9 @@ async function resolveFileRefs(
 export async function scanBundle(
   bundleDir: string,
   manifestAgents?: AgentManifestEntry[],
+  opts?: { onWarning?: (warning: string) => void },
 ): Promise<BundleContents> {
+  const onWarning = opts?.onWarning ?? ((warning: string) => process.stderr.write(`[warn] ${warning}\n`));
   const skills: SkillInfo[] = [];
   const rovoAgents: RovoAgentInfo[] = [];
 
@@ -476,14 +484,8 @@ export async function scanBundle(
     if (hasRovoConfig) {
       try {
         const raw = await readFile(rovoConfigPath, 'utf-8');
-        const config = await parseRovoAgentYaml(raw, dirPath);
-
-        // Surface any normalisation warnings
-        if (lastParseWarnings.length > 0) {
-          for (const w of lastParseWarnings) {
-            process.stderr.write(`[warn] ${entry.name}/rovo-agent.yaml: ${w}\n`);
-          }
-        }
+        const config = await parseRovoAgentYaml(raw, dirPath,
+          (warning) => onWarning(`${entry.name}/rovo-agent.yaml: ${warning}`));
 
         const knowledgeBaseFiles = await scanKnowledgeBase(dirPath);
 
@@ -498,7 +500,7 @@ export async function scanBundle(
       } catch (err) {
         // Log the error so authors can diagnose why an agent was skipped
         const msg = err instanceof Error ? err.message : String(err);
-        process.stderr.write(`[warn] Skipping ${entry.name}/rovo-agent.yaml: ${msg}\n`);
+        onWarning(`Skipping ${entry.name}/rovo-agent.yaml: ${msg}`);
       }
     }
   }

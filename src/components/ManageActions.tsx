@@ -110,9 +110,9 @@ export function ManageActions({ record, onBack, onDone, getAccessToken }: Manage
       <Box flexDirection="column" marginLeft={2}>
         <AuthPrompt
           authorizeUrl={authorizeUrl}
-          onOpen={() => {
+          onOpen={async () => {
             try {
-              openInBrowser(authorizeUrl);
+              await openInBrowser(authorizeUrl);
             } catch (openError) {
               // Abort the in-flight operation and show error
               controllerRef.current?.abort();

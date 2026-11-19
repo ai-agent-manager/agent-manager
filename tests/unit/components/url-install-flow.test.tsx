@@ -87,12 +87,16 @@ async function flushInkInput(): Promise<void> {
 
 type Stdin = { write: (input: string) => void };
 
+// A screen that has just appeared in lastFrame() attaches its useInput handler in an
+// effect one tick later; writing before that tick drops the keystroke on a busy runner.
 async function press(stdin: Stdin, input: string): Promise<void> {
+  await flushInkInput();
   stdin.write(input);
   await flushInkInput();
 }
 
 async function type(stdin: Stdin, text: string): Promise<void> {
+  await flushInkInput();
   for (const char of text) {
     stdin.write(char);
     await flushInkInput();
@@ -132,7 +136,7 @@ describe('UrlInstallFlow', () => {
 
     await vi.waitFor(() => {
       expect(lastFrame()).toContain('Select skills to install:');
-    });
+    }, { timeout: 10_000 });
     expect(acquireSource).toHaveBeenCalledWith(initialSource);
     expect(lastFrame()).not.toContain('Install from GitHub repository');
   });
@@ -143,18 +147,18 @@ describe('UrlInstallFlow', () => {
     await press(stdin, ENTER);
     await vi.waitFor(() => {
       expect(lastFrame()).toContain('Install from GitHub repository');
-    });
+    }, { timeout: 10_000 });
 
     await type(stdin, 'https://github.com/acme/skills');
     await press(stdin, ENTER);
     await vi.waitFor(() => {
       expect(lastFrame()).toContain('Branch/tag/SHA');
-    });
+    }, { timeout: 10_000 });
     await press(stdin, ENTER);
 
     await vi.waitFor(() => {
       expect(lastFrame()).toContain('Select skills to install:');
-    });
+    }, { timeout: 10_000 });
     expect(acquireSource).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'repo', repoUrl: 'https://github.com/acme/skills' }),
     );
@@ -165,20 +169,20 @@ describe('UrlInstallFlow', () => {
     await press(stdin, ENTER);
     await vi.waitFor(() => {
       expect(lastFrame()).toContain('Where do you want to install skills?');
-    });
+    }, { timeout: 10_000 });
     await flushInkInput();
 
     await press(stdin, ENTER);
     await vi.waitFor(() => {
       expect(lastFrame()).toContain('Which tool do you want to install skills for?');
-    });
+    }, { timeout: 10_000 });
     await flushInkInput();
 
     await press(stdin, SPACE);
     await press(stdin, ENTER);
     await vi.waitFor(() => {
       expect(lastFrame()).toContain('Confirm install');
-    });
+    }, { timeout: 10_000 });
     const confirmFrame = lastFrame()!;
     expect(confirmFrame).toContain('(repo)');
     expect(confirmFrame).toContain('github.com/acme/skills/skill-a');
@@ -189,7 +193,7 @@ describe('UrlInstallFlow', () => {
     await press(stdin, ENTER);
     await vi.waitFor(() => {
       expect(lastFrame()).toContain('✓ github.com/acme/skills/skill-a');
-    });
+    }, { timeout: 10_000 });
 
     expect(createSkillProvisioner).toHaveBeenCalledWith('claude-code', 'system', null);
     expect(mockProvisioner.install).toHaveBeenCalledWith(repoSkills, '', acquireResult.sourcePin);
@@ -201,13 +205,13 @@ describe('UrlInstallFlow', () => {
     await press(stdin, ENTER);
     await vi.waitFor(() => {
       expect(lastFrame()).toContain('Install from GitHub repository');
-    });
+    }, { timeout: 10_000 });
     await type(stdin, 'https://github.com/acme/skills');
     await press(stdin, ENTER);
     await press(stdin, ENTER);
     await vi.waitFor(() => {
       expect(lastFrame()).toContain('Select skills to install:');
-    });
+    }, { timeout: 10_000 });
     await flushInkInput();
 
     await press(stdin, DOWN);
@@ -216,19 +220,19 @@ describe('UrlInstallFlow', () => {
     await press(stdin, ENTER);
     await vi.waitFor(() => {
       expect(lastFrame()).toContain('Where do you want to install skills?');
-    });
+    }, { timeout: 10_000 });
     await flushInkInput();
 
     await press(stdin, ENTER);
     await vi.waitFor(() => {
       expect(lastFrame()).toContain('Which tool');
-    });
+    }, { timeout: 10_000 });
     await flushInkInput();
     await press(stdin, SPACE);
     await press(stdin, ENTER);
     await vi.waitFor(() => {
       expect(lastFrame()).toContain('Confirm install');
-    });
+    }, { timeout: 10_000 });
     expect(lastFrame()).not.toContain('skill-b');
   });
 
@@ -239,13 +243,13 @@ describe('UrlInstallFlow', () => {
     await press(stdin, ENTER);
     await vi.waitFor(() => {
       expect(lastFrame()).toContain('Install from artefact zip');
-    });
+    }, { timeout: 10_000 });
 
     await type(stdin, 'https://cdn.example.com/not-a-zip');
     await press(stdin, ENTER);
     await vi.waitFor(() => {
       expect(lastFrame()).toContain('Artefact URL must end with .zip');
-    });
+    }, { timeout: 10_000 });
     expect(acquireSource).not.toHaveBeenCalled();
   });
 
@@ -256,14 +260,14 @@ describe('UrlInstallFlow', () => {
     await press(stdin, ENTER);
     await vi.waitFor(() => {
       expect(lastFrame()).toContain('Install from GitHub repository');
-    });
+    }, { timeout: 10_000 });
     await type(stdin, 'https://github.com/acme/missing');
     await press(stdin, ENTER);
     await press(stdin, ENTER);
 
     await vi.waitFor(() => {
       expect(lastFrame()).toContain('repo archive download failed (404)');
-    });
+    }, { timeout: 10_000 });
     expect(lastFrame()).toContain('Install from GitHub repository');
   });
 
@@ -273,14 +277,14 @@ describe('UrlInstallFlow', () => {
     await press(stdin, ENTER);
     await vi.waitFor(() => {
       expect(lastFrame()).toContain('Install from GitHub repository');
-    });
+    }, { timeout: 10_000 });
     await type(stdin, 'https://bundles.example.com');
     await press(stdin, ENTER);
     await press(stdin, ENTER);
 
     await vi.waitFor(() => {
       expect(lastFrame()).toContain('Not a repo source');
-    });
+    }, { timeout: 10_000 });
     expect(acquireSource).not.toHaveBeenCalled();
   });
 
@@ -294,6 +298,6 @@ describe('UrlInstallFlow', () => {
     await press(stdin, ENTER);
     await vi.waitFor(() => {
       expect(onBack).toHaveBeenCalled();
-    });
+    }, { timeout: 10_000 });
   });
 });

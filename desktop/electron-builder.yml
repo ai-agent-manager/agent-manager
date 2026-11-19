@@ -1,0 +1,42 @@
+appId: com.aiagentmanager.desktop
+productName: Agent Manager
+artifactName: agent-manager-${version}-${os}-${arch}.${ext}
+directories:
+  app: build/app
+  output: release
+  buildResources: build
+asar: true
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  grantFileProtocolExtraPrivileges: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+asarUnpack:
+  - '**/node_modules/@napi-rs/keyring*/**'
+npmRebuild: false
+files:
+  - dist/**
+  - package.json
+  - '!**/node_modules/playwright*/**'
+  - '!**/node_modules/@playwright/**'
+  - '!**/node_modules/@ai-agent-manager/cli/assets/agentman.crx'
+mac:
+  target: [dmg]
+  icon: build/icon.png
+  category: public.app-category.developer-tools
+  hardenedRuntime: true
+  notarize: false
+win:
+  target: [nsis]
+  icon: build/icon.png
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+publish:
+  provider: github
+  owner: ai-agent-manager
+  repo: agent-manager

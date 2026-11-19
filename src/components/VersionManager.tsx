@@ -3,20 +3,19 @@ import { Box, Text, useInput } from 'ink';
 import SelectInput from 'ink-select-input';
 import {
   listCachedBundles,
+  getRecordVersion,
   readConfig,
   removeCachedBundle,
-  setCurrentBundle,
-  updateSkillVersion,
   type AgentmanConfig,
   type CachedBundle,
 } from '../bundle/cache.js';
-import { downloadBundle, fetchIndex, type IndexEntry } from '../bundle/downloader.js';
-import { extractBundle } from '../bundle/extractor.js';
+import type { IndexEntry } from '../bundle/downloader.js';
+import { downloadBundleVersion, listRemoteVersions, switchBundleVersion } from '../operations/versions.js';
 import { readRepoConfig, type RepoAgentmanConfig } from '../bundle/repo-config.js';
 import type { BundleSource } from '../bundle/source.js';
 import { getSkillTools } from '../config/tools.js';
 import { findRepoRoot } from '../lib/repo.js';
-import { getValidBearerToken, type AuthSession } from '../auth/index.js';
+import { type AuthSession } from '../auth/index.js';
 import {
   getBundleSourceTelemetryProperties,
   trackTelemetryError,
@@ -100,14 +99,6 @@ export function VersionManager({
       ? { discoveryBaseUrl: source.baseUrl, auth: source.discovery.auth }
       : undefined);
 
-  async function resolveDownloadBearer(): Promise<string | undefined> {
-    if (!downloadAuthSession) return undefined;
-    return getValidBearerToken(
-      downloadAuthSession.discoveryBaseUrl,
-      downloadAuthSession.auth,
-    );
-  }
-
   useEffect(() => {
     (async () => {
       const [cachedBundles, currentConfig, repoRoot] = await Promise.all([
@@ -145,12 +136,12 @@ export function VersionManager({
     let count = 0;
     if (config) {
       count += Object.values(config.installations).reduce((total, skills) => {
-        return total + Object.values(skills).filter((record) => record.bundleVersion === version).length;
+        return total + Object.values(skills).filter((record) => getRecordVersion(record) === version).length;
       }, 0);
     }
     if (repoConfig) {
       count += Object.values(repoConfig.installations).reduce((total, skills) => {
-        return total + Object.values(skills).filter((record) => record.bundleVersion === version).length;
+        return total + Object.values(skills).filter((record) => getRecordVersion(record) === version).length;
       }, 0);
     }
     return count;
@@ -269,18 +260,7 @@ export function VersionManager({
             setBrowseLoading(true);
             (async () => {
               try {
-                const bearer = await resolveDownloadBearer();
-                const { zipPath } = await downloadBundle(source.baseUrl, version, bearer);
-
-                try {
-                  await extractBundle(zipPath);
-                } catch (error) {
-                  trackTelemetryError('bundle_extract_failed', error, {
-                    ...bundleTelemetryProps,
-                    version,
-                  });
-                  throw error;
-                }
+                await downloadBundleVersion(source, version, downloadAuthSession);
 
                 setStatusMessage('success', `Downloaded and cached version ${version}`);
                 await refreshBundles();
@@ -338,7 +318,7 @@ export function VersionManager({
 
             (async () => {
               try {
-                await setCurrentBundle(item.value);
+                await switchBundleVersion({ version: item.value, syncInstalled: false });
                 trackTelemetryEvent({
                   action: 'bundle_version_switched',
                   properties: { ...bundleTelemetryProps, version: item.value, syncedInstalledSkills: 'false' },
@@ -363,7 +343,7 @@ export function VersionManager({
 
   if (subScreen === 'confirm-skill-update' && pendingVersion) {
     const items = [
-      { label: 'Yes, update all skills to this version  (recommended)', value: 'yes' },
+      { label: 'Update supported skills from their own sources', value: 'yes' },
       { label: 'No, keep skills at their current versions', value: 'no' },
       { label: '← Back', value: 'back' },
     ];
@@ -373,7 +353,7 @@ export function VersionManager({
         <Text bold>Switch to bundle {pendingVersion}</Text>
         <Text> </Text>
         <Text>Update all installed skills to this version too?</Text>
-        <Text dimColor> Recommended — keeps skills in sync with the active bundle.</Text>
+        <Text dimColor> Each skill stays within its original source. Unsupported skills will be reported.</Text>
         <Text> </Text>
         <SelectInput
           items={items}
@@ -386,39 +366,12 @@ export function VersionManager({
 
             (async () => {
               try {
-                await setCurrentBundle(pendingVersion);
-
-                let updateFailures: string[] = [];
-                if (item.value === 'yes') {
-                  setUpdatingSkills(true);
-
-                  // Update system-scoped skills
-                  if (config) {
-                    for (const [toolId, skills] of Object.entries(config.installations)) {
-                      for (const skillName of Object.keys(skills)) {
-                        const result = await updateSkillVersion(toolId, skillName, pendingVersion);
-                        if (!result.success) {
-                          updateFailures.push(`${toolId}/${skillName}: ${result.error ?? 'Unknown error'}`);
-                        }
-                      }
-                    }
-                  }
-
-                  // Update repo-scoped skills
-                  if (repoConfig && detectedRepoRoot) {
-                    for (const [toolId, skills] of Object.entries(repoConfig.installations)) {
-                      for (const skillName of Object.keys(skills)) {
-                        const result = await updateSkillVersion(toolId, skillName, pendingVersion, {
-                          scope: 'repo',
-                          repoRoot: detectedRepoRoot,
-                        });
-                        if (!result.success) {
-                          updateFailures.push(`${toolId}/${skillName} (repo): ${result.error ?? 'Unknown error'}`);
-                        }
-                      }
-                    }
-                  }
-
+                const syncInstalled = item.value === 'yes';
+                if (syncInstalled) setUpdatingSkills(true);
+                const { failures: updateFailures } = await switchBundleVersion({
+                  version: pendingVersion, syncInstalled, repoRoot: detectedRepoRoot ?? undefined,
+                });
+                if (syncInstalled) {
                   await refreshConfig();
                   setUpdatingSkills(false);
                 }
@@ -439,7 +392,7 @@ export function VersionManager({
                 if (updateFailures.length > 0) {
                   setStatusMessage(
                     'warning',
-                    `Switched to ${pendingVersion}, but ${updateFailures.length} skill update(s) failed.`
+                    `Switched to ${pendingVersion}. ${updateFailures.join("; ")}`
                   );
                 } else if (item.value === 'yes') {
                   setStatusMessage('success', `Switched to ${pendingVersion} — all skills updated`);
@@ -543,7 +496,7 @@ export function VersionManager({
         const toolName = tool?.name ?? toolId;
 
         for (const [skillName, record] of Object.entries(skills)) {
-          if (record.bundleVersion === pendingRemoveVersion) {
+          if (getRecordVersion(record) === pendingRemoveVersion) {
             pinnedSkills.push({ toolName, skillName, scope: 'system' });
           }
         }
@@ -556,7 +509,7 @@ export function VersionManager({
         const toolName = tool?.name ?? toolId;
 
         for (const [skillName, record] of Object.entries(skills)) {
-          if (record.bundleVersion === pendingRemoveVersion) {
+          if (getRecordVersion(record) === pendingRemoveVersion) {
             pinnedSkills.push({ toolName, skillName, scope: 'repo' });
           }
         }
@@ -565,7 +518,6 @@ export function VersionManager({
 
     const items = [
       { label: 'Cancel', value: 'cancel' },
-      { label: 'Remove anyway', value: 'remove' },
     ];
 
     return (
@@ -580,7 +532,7 @@ export function VersionManager({
           </Text>
         ))}
         <Text> </Text>
-        <Text dimColor>Removing it will leave those skills pointing at a missing bundle version.</Text>
+        <Text dimColor>Remove or switch these installations before deleting the bundle.</Text>
         <Text> </Text>
         <SelectInput
           items={items}
@@ -674,9 +626,7 @@ export function VersionManager({
             setSubScreen('browse');
             (async () => {
               try {
-                const bearer = await resolveDownloadBearer();
-                const index = await fetchIndex(source.baseUrl, bearer);
-                setRemoteVersions(index.agents);
+                setRemoteVersions(await listRemoteVersions(source, downloadAuthSession));
               } catch (error) {
                 trackTelemetryError('bundle_version_index_fetch_failed', error, bundleTelemetryProps);
                 setBrowseError(error instanceof Error ? error.message : String(error));
