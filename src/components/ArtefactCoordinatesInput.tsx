@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
-import TextInput from './ink/TextInput.js';
+import TextInput from 'ink-text-input';
 
 interface ArtefactCoordinatesInputProps {
   onSubmit: (url: string) => void;

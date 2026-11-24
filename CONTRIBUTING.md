@@ -59,6 +59,12 @@ for launch/security contracts and instructions for adding routes and DTOs.
   reuses the local server; see [desktop development/testing](docs/desktop.md).
 - `npm pack` swaps in `scripts/README.npm.md`. Update both READMEs when launch
   instructions change, and build CLI/browser assets before packing.
+- `react`, `ink` and the `ink-*` widgets are listed in `bundleDependencies`, so
+  they ship inside the tarball. The `ink-*` packages peer-depend on `react >=18`
+  and `ink >=4`. Without bundling, npx can upgrade a cached install in place and
+  leave a stale top-level React that those peers still accept. Two Reacts then
+  load and the CLI crashes with "Invalid hook call" (1.23.1 → 1.24.0). Add any new
+  React/Ink-based dependency to this list.
 Documentation is built with MkDocs Material and published to GitHub Pages on
 push to `main`. Preview locally with `./scripts/docs.sh` (requires Docker).
 

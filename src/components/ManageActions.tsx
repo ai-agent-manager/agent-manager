@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
-import SelectInput from './ink/SelectInput.js';
+import SelectInput from 'ink-select-input';
 import type { AccessTokenProvider, InstalledSkillRecord } from '../operations/manage.js';
 import { updateInstalled, removeInstalled } from '../operations/manage.js';
 import type { InteractiveAccessTokenProvider } from '../auth/access-token-provider.js';

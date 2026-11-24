@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Text } from 'ink';
-import SelectInput from './ink/SelectInput.js';
+import SelectInput from 'ink-select-input';
 import { SkillBrowser, TrustBadge } from './SkillBrowser.js';
 import { candidateCoordinate } from './SkillSourcePicker.js';
 import { ScopeSelector } from './ScopeSelector.js';

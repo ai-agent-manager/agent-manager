@@ -1,7 +1,7 @@
 import { toCatalogueSkills, loadRepositoryBundle } from "./operations/catalogue.js";
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { Box, Text } from "ink";
-import SelectInput from "./components/ink/SelectInput.js";
+import SelectInput from "ink-select-input";
 import { APP_VERSION } from "./app-info.js";
 import { AppUpdateManager } from "./components/AppUpdateManager.js";
 import { AuthPrompt } from "./components/AuthPrompt.js";

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Box, Text } from "ink";
-import SelectInput from "./ink/SelectInput.js";
+import SelectInput from "ink-select-input";
 import { installChromeExtension } from "../lib/chrome-extension-installer.js";
 import { LoadingSpinner } from "./Spinner.js";
 import { StatusMessage } from "./StatusMessage.js";

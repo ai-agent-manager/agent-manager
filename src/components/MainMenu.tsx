@@ -1,6 +1,6 @@
 import React from "react";
 import { Box, Text } from "ink";
-import SelectInput from "./ink/SelectInput.js";
+import SelectInput from "ink-select-input";
 
 export type MainMenuAction =
     | "my-projects"
