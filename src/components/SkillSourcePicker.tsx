@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Text } from 'ink';
-import SelectInput from 'ink-select-input';
+import SelectInput from './ink/SelectInput.js';
 import type { SkillCatalogueEntry, SkillCandidate } from '../discovery/catalogue.js';
 
 interface SkillSourcePickerProps {

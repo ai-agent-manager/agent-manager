@@ -13,7 +13,7 @@ let directory: string;
 let menu: { items: { label: string; value: string }[]; onSelect: (item: { label: string; value: string }) => void };
 vi.mock('../../../src/lib/platform.js', async (original) => ({ ...await original<typeof import('../../../src/lib/platform.js')>(), getHomeDir: () => home }));
 vi.mock('../../../src/lib/repo.js', () => ({ findRepoRoot: async () => null }));
-vi.mock('ink-select-input', () => ({ default: (props: typeof menu) => { menu = props; return <Text>{props.items.map((item) => item.label).join('\n')}</Text>; } }));
+vi.mock('../../../src/components/ink/SelectInput.js', () => ({ default: (props: typeof menu) => { menu = props; return <Text>{props.items.map((item) => item.label).join('\n')}</Text>; } }));
 
 beforeEach(async () => {
   home = await mkdtemp(path.join(await realpath(os.tmpdir()), 'agentman-version-ui-'));

@@ -1,6 +1,6 @@
 import React from "react";
 import { Box, Text } from "ink";
-import SelectInput from "ink-select-input";
+import SelectInput from "./ink/SelectInput.js";
 import { featureFlags } from "../lib/feature-flags.js";
 import { useEscapeBack } from "../lib/use-escape-back.js";
 

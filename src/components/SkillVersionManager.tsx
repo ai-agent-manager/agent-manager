@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import path from "node:path";
 import { Box, Text, useInput } from "ink";
-import SelectInput from "ink-select-input";
+import SelectInput from "./ink/SelectInput.js";
 import { listCachedBundles, type CachedBundle } from "../bundle/cache.js";
 import { listSkillVersionInstances, listInstalledSkillVersions, updateInstalledSkillVersion, alignInstalledSkillVersions } from "../operations/versions.js";
 import { findRepoRoot } from "../lib/repo.js";

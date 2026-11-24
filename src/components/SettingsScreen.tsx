@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Box, Text } from "ink";
-import SelectInput from "ink-select-input";
+import SelectInput from "./ink/SelectInput.js";
 import { LoadingSpinner } from "./Spinner.js";
 import { getSettings, updateSettings } from "../operations/settings.js";
 import { resolveTelemetryMode, type TelemetryMode } from "../telemetry.js";

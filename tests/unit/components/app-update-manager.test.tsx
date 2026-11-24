@@ -9,7 +9,7 @@ const selectState = vi.hoisted(() => ({
     onSelect: null as null | ((item: SelectItem) => void),
 }));
 
-vi.mock("ink-select-input", async () => {
+vi.mock("../../../src/components/ink/SelectInput.js", async () => {
     return {
         default: function MockSelectInput({
             items,

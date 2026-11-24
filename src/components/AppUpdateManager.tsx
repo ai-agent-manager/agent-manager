@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Box, Text } from "ink";
-import SelectInput from "ink-select-input";
+import SelectInput from "./ink/SelectInput.js";
 import { APP_VERSION } from "../app-info.js";
 import { createSelfUpdatePlan, runSelfUpdate } from "../lib/self-update.js";
 import { trackTelemetryError, trackTelemetryEvent } from "../telemetry.js";

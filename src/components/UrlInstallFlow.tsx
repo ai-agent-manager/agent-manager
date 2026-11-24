@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text } from 'ink';
-import SelectInput from 'ink-select-input';
+import SelectInput from './ink/SelectInput.js';
 import { InstallSourceMenu, type InstallSourceType } from './InstallSourceMenu.js';
 import { RepoCoordinatesInput, type RepoCoordinates } from './RepoCoordinatesInput.js';
 import { ArtefactCoordinatesInput } from './ArtefactCoordinatesInput.js';

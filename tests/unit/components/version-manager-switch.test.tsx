@@ -9,7 +9,7 @@ const menu = vi.hoisted(() => ({ current: undefined as undefined | {
   items: Array<{ value: string; label: string }>;
   onSelect: (item: { value: string }) => void;
 } }));
-vi.mock('ink-select-input', () => ({ default: (props: typeof menu.current) => { menu.current = props; return null; } }));
+vi.mock('../../../src/components/ink/SelectInput.js', () => ({ default: (props: typeof menu.current) => { menu.current = props; return null; } }));
 vi.mock('../../../src/bundle/cache.js', () => ({
   readConfig: vi.fn(async () => ({ installations: {
     'claude-code': { skill: { bundleVersion: '1.0.0', installedAt: '2026-01-01', method: 'symlink' } },

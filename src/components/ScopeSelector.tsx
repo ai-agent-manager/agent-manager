@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text } from "ink";
-import SelectInput from "ink-select-input";
+import SelectInput from "./ink/SelectInput.js";
 import type { InstallScope } from "../config/scopes.js";
 import { findRepoRoot, getRepoName } from "../lib/repo.js";
 import { readRepoConfig } from "../bundle/repo-config.js";
