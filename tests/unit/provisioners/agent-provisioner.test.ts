@@ -6,6 +6,7 @@ import { homedir } from "node:os";
 import { ClaudeCodeAgentProvisioner } from "../../../src/provisioners/ClaudeCodeAgentProvisioner.js";
 import { CopilotAgentProvisioner } from "../../../src/provisioners/CopilotAgentProvisioner.js";
 import { CursorAgentProvisioner } from "../../../src/provisioners/CursorAgentProvisioner.js";
+import { recordInstall } from "../../../src/bundle/cache.js";
 
 describe("AgentProvisioner", () => {
   let tempDir: string;
@@ -20,15 +21,25 @@ describe("AgentProvisioner", () => {
   });
 
   describe("checkDependencies", () => {
+    let originalHome: { HOME?: string; USERPROFILE?: string };
+    let skillsDir: string;
+
+    beforeEach(() => {
+      originalHome = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
+      process.env.HOME = tempDir;
+      process.env.USERPROFILE = tempDir;
+      skillsDir = join(tempDir, ".claude", "skills");
+    });
+
+    afterEach(() => {
+      process.env.HOME = originalHome.HOME;
+      process.env.USERPROFILE = originalHome.USERPROFILE;
+    });
+
     it("returns installed and missing skills", async () => {
-      // Create a fake installed skill
-      const skillsDir = join(tempDir, ".claude", "skills");
       await mkdir(join(skillsDir, "installed-skill"), { recursive: true });
 
-      // Mock getSkillsDir to use our temp directory
-      const provisionerWithTempDir = new TestAgentProvisioner(tempDir);
-
-      const result = await provisionerWithTempDir.checkDependencies({
+      const result = await new ClaudeCodeAgentProvisioner({ scope: "system" }).checkDependencies({
         bundle: "self",
         skills: ["installed-skill", "missing-skill"],
       });
@@ -38,9 +49,7 @@ describe("AgentProvisioner", () => {
     });
 
     it("returns all missing when no skills installed", async () => {
-      const provisionerWithTempDir = new TestAgentProvisioner(tempDir);
-
-      const result = await provisionerWithTempDir.checkDependencies({
+      const result = await new ClaudeCodeAgentProvisioner({ scope: "system" }).checkDependencies({
         bundle: "self",
         skills: ["skill-a", "skill-b"],
       });
@@ -50,19 +59,61 @@ describe("AgentProvisioner", () => {
     });
 
     it("returns all installed when all skills exist", async () => {
-      const skillsDir = join(tempDir, ".claude", "skills");
       await mkdir(join(skillsDir, "skill-a"), { recursive: true });
       await mkdir(join(skillsDir, "skill-b"), { recursive: true });
 
-      const provisionerWithTempDir = new TestAgentProvisioner(tempDir);
-
-      const result = await provisionerWithTempDir.checkDependencies({
+      const result = await new ClaudeCodeAgentProvisioner({ scope: "system" }).checkDependencies({
         bundle: "self",
         skills: ["skill-a", "skill-b"],
       });
 
       expect(result.installed).toEqual(["skill-a", "skill-b"]);
       expect(result.missing).toHaveLength(0);
+    });
+
+    it("reports same-named skills agentman did not install as unmanaged", async () => {
+      await mkdir(join(skillsDir, "personal"), { recursive: true });
+      await mkdir(join(skillsDir, "managed"), { recursive: true });
+      await recordInstall("claude-code", "managed", { installedAt: "now", method: "symlink" });
+
+      const result = await new ClaudeCodeAgentProvisioner({ scope: "system" }).checkDependencies({
+        bundle: "self",
+        skills: ["personal", "managed"],
+      });
+
+      expect(result.installed).toEqual(["personal", "managed"]);
+      expect(result.unmanaged).toEqual(["personal"]);
+    });
+
+    it("reports a differently named folder declaring the dependency's name", async () => {
+      await mkdir(join(skillsDir, "my-notes"), { recursive: true });
+      await writeFile(join(skillsDir, "my-notes", "SKILL.md"), "---\nname: skill-a\n---\n");
+
+      const result = await new ClaudeCodeAgentProvisioner({ scope: "system" }).checkDependencies({
+        bundle: "self",
+        skills: ["skill-a"],
+      });
+
+      expect(result.unmanaged).toEqual(["skill-a"]);
+      expect(result.clashes).toEqual({ "skill-a": ["my-notes"] });
+    });
+
+    it("treats a namespaced agentman install as satisfying the dependency", async () => {
+      await mkdir(join(skillsDir, "bootstrap~skill-a"), { recursive: true });
+      await recordInstall("claude-code", "bootstrap/skill-a", {
+        installedAt: "now",
+        method: "symlink",
+        linkName: "bootstrap~skill-a",
+      });
+
+      const result = await new ClaudeCodeAgentProvisioner({ scope: "system" }).checkDependencies({
+        bundle: "self",
+        skills: ["skill-a"],
+      });
+
+      expect(result.installed).toEqual(["skill-a"]);
+      expect(result.missing).toHaveLength(0);
+      expect(result.unmanaged).toHaveLength(0);
     });
   });
 
@@ -100,10 +151,6 @@ class TestAgentProvisioner extends ClaudeCodeAgentProvisioner {
 
   override getAgentsDir(): string {
     return join(this.tempDir, ".claude", "agents");
-  }
-
-  override getSkillsDir(): string {
-    return join(this.tempDir, ".claude", "skills");
   }
 }
 

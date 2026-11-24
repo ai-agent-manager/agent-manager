@@ -6,13 +6,17 @@ import { candidateCoordinate } from './SkillSourcePicker.js';
 import { ScopeSelector } from './ScopeSelector.js';
 import { ToolSelector } from './ToolSelector.js';
 import { LoadingSpinner } from './Spinner.js';
-import { installResolvedSkills, installResolvedAgents } from '../operations/install.js';
+import {
+  installResolvedSkills,
+  installResolvedAgents,
+  findExistingSkillConflicts,
+} from '../operations/install.js';
 import { mergeInstallResults } from '../lib/merge-install-results.js';
 import { useEscapeBack } from '../lib/use-escape-back.js';
 import type { CatalogueEntry, SkillCatalogueEntry, AgentCatalogueEntry, SkillCandidate } from '../discovery/catalogue.js';
 import type { RovoAgentInfo } from '../bundle/scanner.js';
 import type { InstallScope } from '../config/scopes.js';
-import type { InstallResult } from '../provisioners/types.js';
+import type { ExistingSkillPolicy, InstallResult } from '../provisioners/types.js';
 import type { AuthSession } from '../auth/index.js';
 
 type FlowScreen =
@@ -43,17 +47,33 @@ export function SkillInstallFlow({ entries, bundleVersion, authSession, onSelect
   const [toolIds, setToolIds] = useState<string[]>([]);
   const [result, setResult] = useState<InstallResult | null>(null);
   const [installError, setInstallError] = useState<string | null>(null);
+  const [conflicts, setConflicts] = useState<Array<{ toolId: string; names: string[] }>>([]);
 
   useEscapeBack(() => setScreen('tool-selector'), screen === 'confirm');
   useEscapeBack(onBack, screen === 'result');
 
   const runInstall = async (selectedToolIds: string[]) => {
-    if (!candidate) return;
+    if (!candidate || !entry) return;
     setToolIds(selectedToolIds);
+    try {
+      setConflicts(
+        await findExistingSkillConflicts({
+          entry: entry.kind === 'agent'
+            ? { kind: 'agent', agent: entry.agent }
+            : { kind: 'skill', skill: candidate.skill },
+          toolIds: selectedToolIds,
+          scope,
+          repoRoot: repoRoot ?? undefined,
+        }),
+      );
+    } catch {
+      // The install itself still refuses to replace unmanaged skills.
+      setConflicts([]);
+    }
     setScreen('confirm');
   };
 
-  const confirmInstall = async () => {
+  const confirmInstall = async (existingSkills?: ExistingSkillPolicy) => {
     if (!candidate || !entry) return;
     setScreen('installing');
     try {
@@ -68,6 +88,7 @@ export function SkillInstallFlow({ entries, bundleVersion, authSession, onSelect
                 bundleVersion: candidate.sourceType === 'http' ? bundleVersion : '',
                 bundleUrl: candidate.skill.sourcePin?.bundleBaseUrl,
                 authSession,
+                existingSkills,
               })
             : installResolvedSkills({
                 skills: [candidate.skill],
@@ -75,6 +96,7 @@ export function SkillInstallFlow({ entries, bundleVersion, authSession, onSelect
                 scope,
                 repoRoot: repoRoot ?? undefined,
                 bundleVersion: candidate.sourceType === 'http' ? bundleVersion : '',
+                existingSkills,
               }),
         ),
       );
@@ -132,6 +154,23 @@ export function SkillInstallFlow({ entries, bundleVersion, authSession, onSelect
   }
 
   if (screen === 'confirm' && entry && candidate) {
+    const isAgent = entry.kind === 'agent';
+    const confirmItems: Array<{ label: string; value: ExistingSkillPolicy | 'install' | 'back' }> =
+      conflicts.length === 0
+        ? [
+            { label: 'Install', value: 'install' },
+            { label: '← Back', value: 'back' },
+          ]
+        : isAgent
+          ? [
+              { label: 'Install, using my existing skills as-is', value: 'keep' },
+              { label: 'Install, backing up and replacing my existing skills', value: 'backup' },
+              { label: '← Back (skip this agent)', value: 'back' },
+            ]
+          : [
+              { label: 'Back up my existing skill and install', value: 'backup' },
+              { label: '← Back (keep my existing skill)', value: 'back' },
+            ];
     return (
       <Box flexDirection="column" marginLeft={2}>
         <Text bold>Confirm install</Text>
@@ -151,15 +190,31 @@ export function SkillInstallFlow({ entries, bundleVersion, authSession, onSelect
           {scope === 'system' ? 'local (home directory)' : `repo (${repoRoot ?? ''})`}
         </Row>
         <Row label="Tool">{toolIds.join(', ')}</Row>
+        {conflicts.length > 0 && (
+          <>
+            <Text> </Text>
+            <Text color="yellow">
+              ⚠{' '}
+              {isAgent
+                ? 'These required skills already exist but were not installed by agentman'
+                : 'This skill already exists but was not installed by agentman'}{' '}
+              (e.g. a personal or third-party skill):
+            </Text>
+            {conflicts.map((c) => (
+              <Text key={c.toolId} color="yellow">
+                {'    '}
+                {c.toolId}: {c.names.join(', ')}
+              </Text>
+            ))}
+            <Text dimColor>    Backups are moved to ~/.agentman/backups.</Text>
+          </>
+        )}
         <Text> </Text>
         <SelectInput
-          items={[
-            { label: 'Install', value: 'install' },
-            { label: '← Back', value: 'back' },
-          ]}
+          items={confirmItems}
           onSelect={(item) => {
-            if (item.value === 'install') void confirmInstall();
-            else setScreen('tool-selector');
+            if (item.value === 'back') setScreen('tool-selector');
+            else void confirmInstall(item.value === 'install' ? undefined : item.value);
           }}
         />
       </Box>
@@ -184,6 +239,11 @@ export function SkillInstallFlow({ entries, bundleVersion, authSession, onSelect
             ✗ {err.name}: {err.error}
           </Text>
         ))}
+        {result?.warnings?.map((warning, index) => (
+          <Text key={`warning-${index}`} color="yellow">
+            ⚠ {warning}
+          </Text>
+        ))}
         <Text> </Text>
         <SelectInput
           items={[
@@ -196,6 +256,7 @@ export function SkillInstallFlow({ entries, bundleVersion, authSession, onSelect
               setCandidate(null);
               setResult(null);
               setInstallError(null);
+              setConflicts([]);
               setScreen('browse');
             } else {
               onBack();

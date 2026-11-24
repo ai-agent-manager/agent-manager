@@ -1,10 +1,19 @@
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
-import type { Provisioner, InstalledSkill, InstallResult, ProvisionerScope, UninstallResult } from './types.js';
+import type {
+  Provisioner,
+  InstalledSkill,
+  InstallResult,
+  ProvisionerScope,
+  SkillInstallOptions,
+  UninstallResult,
+} from './types.js';
 import type { SkillInfo } from '../bundle/scanner.js';
 import type { InstallScope } from '../config/scopes.js';
 import { createLink, removeLink, resolveSkillVersion } from '../lib/symlink.js';
 import { ensureDir, pathExists } from '../lib/fs.js';
+import { backupPath } from '../lib/backup.js';
+import { readDeclaredSkillName } from '../lib/frontmatter.js';
 import { recordInstall, removeInstallRecord, readConfig, getRecordVersion } from '../bundle/cache.js';
 import { recordRepoInstall, removeRepoInstallRecord, readRepoConfig } from '../bundle/repo-config.js';
 import { deriveInstallNamespace, buildInstallKey, buildLinkName } from '../bundle/skill-source.js';
@@ -15,6 +24,23 @@ type InstallRecordMap = Record<
   string,
   { bundleVersion?: string; installedAt?: string; method?: string; sourcePin?: SkillSourcePin; linkName?: string }
 >;
+
+/** Unmanaged skills-dir entry name → skill name declared in its SKILL.md. */
+type UnmanagedEntries = Map<string, string | undefined>;
+
+/** Where a skill would be installed, and the skill name it declares. */
+export interface SkillTarget {
+  linkName: string;
+  name: string;
+}
+
+// Exact match, like dependency names: a mis-cased dependency must stay
+// unresolved rather than be satisfied by a user's similarly named skill.
+function clashesFor(target: SkillTarget, unmanaged: UnmanagedEntries): string[] {
+  return [...unmanaged]
+    .filter(([entry, declared]) => entry === target.linkName || declared === target.name)
+    .map(([entry]) => entry);
+}
 
 type ResolveResult =
   | { type: 'found'; key: string }
@@ -169,20 +195,89 @@ export abstract class SkillProvisioner implements Provisioner {
     return installed;
   }
 
-  async install(items: SkillInfo[], bundleVersion: string, sourcePin?: SkillSourcePin): Promise<InstallResult> {
+  private async readInstallRecords(): Promise<InstallRecordMap> {
+    if (this.scope === 'repo' && this.repoRoot) {
+      const repoConfig = await readRepoConfig(this.repoRoot);
+      return repoConfig?.installations[this.id] ?? {};
+    }
+    const config = await readConfig();
+    return config.installations[this.id] ?? {};
+  }
+
+  /**
+   * Skill ids that agentman has installed for this tool under any layout
+   * (bare or namespaced link name) and that are still present on disk.
+   */
+  async findManagedSkillIds(skillIds: string[]): Promise<Set<string>> {
+    const skillsDir = this.getEffectiveSkillsDir();
+    const wanted = new Set(skillIds);
+    const managed = new Set<string>();
+
+    for (const [key, record] of Object.entries(await this.readInstallRecords())) {
+      const segments = key.split('/');
+      const bareId = segments[segments.length - 1];
+      if (!wanted.has(bareId) || managed.has(bareId)) continue;
+      if (await pathExists(path.join(skillsDir, record.linkName ?? bareId))) managed.add(bareId);
+    }
+
+    return managed;
+  }
+
+  /**
+   * Skills-dir entries with no agentman install record (personal or third-party
+   * skills), mapped to the skill name each declares in its SKILL.md.
+   */
+  private async scanUnmanaged(): Promise<UnmanagedEntries> {
+    const skillsDir = this.getEffectiveSkillsDir();
+    const unmanaged: UnmanagedEntries = new Map();
+    if (!(await pathExists(skillsDir))) return unmanaged;
+
+    const recorded = new Set<string>();
+    for (const [key, record] of Object.entries(await this.readInstallRecords())) {
+      const segments = key.split('/');
+      recorded.add(record.linkName ?? segments[segments.length - 1]);
+    }
+
+    for (const entry of await readdir(skillsDir, { withFileTypes: true })) {
+      if (recorded.has(entry.name) || entry.name.startsWith('.')) continue;
+      if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
+      const entryPath = path.join(skillsDir, entry.name);
+      if (!(await pathExists(entryPath))) continue; // dangling symlink: nothing to lose
+      unmanaged.set(entry.name, await readDeclaredSkillName(path.join(entryPath, 'SKILL.md')));
+    }
+    return unmanaged;
+  }
+
+  /**
+   * For each target, the unmanaged entries it would clash with: one occupying
+   * its folder, or one declaring the same skill name (the tool would then load
+   * two skills by that name). Only targets with clashes appear in the result.
+   */
+  async findUnmanagedClashes(targets: SkillTarget[]): Promise<Map<string, string[]>> {
+    const unmanaged = await this.scanUnmanaged();
+    const clashes = new Map<string, string[]>();
+    for (const target of targets) {
+      const hits = clashesFor(target, unmanaged);
+      if (hits.length > 0) clashes.set(target.linkName, hits);
+    }
+    return clashes;
+  }
+
+  async install(
+    items: SkillInfo[],
+    bundleVersion: string,
+    sourcePin?: SkillSourcePin,
+    options: SkillInstallOptions = {},
+  ): Promise<InstallResult> {
+    const existingPolicy = options.existing ?? 'abort';
     const skillsDir = this.getEffectiveSkillsDir();
     await ensureDir(skillsDir);
 
     const result: InstallResult = { installed: [], errors: [] };
+    const warnings: string[] = [];
 
-    let toolInstalls: InstallRecordMap = {};
-    if (this.scope === 'repo' && this.repoRoot) {
-      const repoConfig = await readRepoConfig(this.repoRoot);
-      toolInstalls = repoConfig?.installations[this.id] ?? {};
-    } else {
-      const config = await readConfig();
-      toolInstalls = config.installations[this.id] ?? {};
-    }
+    const toolInstalls = await this.readInstallRecords();
+    const unmanaged = await this.scanUnmanaged();
 
     // Reverse index for the Fix-1 collision guard below: every linkName currently
     // on record, mapped back to the install key that owns it.
@@ -257,6 +352,37 @@ export abstract class SkillProvisioner implements Provisioner {
         }
 
         const linkPath = path.join(skillsDir, linkName);
+
+        // createLink deletes whatever sits at linkPath, and a second skill with the
+        // same declared name leaves the tool with a duplicate. Only proceed over
+        // installs agentman owns; anything else may be a user's own skill.
+        const name = (await readDeclaredSkillName(item.skillMdPath)) ?? item.dirName;
+        const hits = clashesFor({ linkName, name }, unmanaged);
+        if (hits.length > 0) {
+          const described = hits
+            .map((hit) =>
+              hit === linkName
+                ? `${path.join(skillsDir, hit)} already exists`
+                : `${path.join(skillsDir, hit)} already declares the skill name "${name}"`,
+            )
+            .join('; ');
+          if (existingPolicy === 'keep') {
+            warnings.push(`Kept existing skill: ${described} (not installed by agentman); skipped "${linkName}".`);
+            continue;
+          }
+          if (existingPolicy === 'abort') {
+            throw new Error(
+              `Refusing to install "${linkName}": ${described} (not installed by agentman). ` +
+              `Move it aside, or choose to back it up and replace it.`,
+            );
+          }
+          for (const hit of hits) {
+            const backup = await backupPath(path.join(skillsDir, hit), this.id);
+            unmanaged.delete(hit);
+            warnings.push(`Backed up existing "${hit}" to ${backup} before replacing it.`);
+          }
+        }
+
         const linkResult = await createLink(item.dirPath, linkPath);
 
         result.installed.push({
@@ -323,6 +449,7 @@ export abstract class SkillProvisioner implements Provisioner {
       }
     }
 
+    if (warnings.length > 0) result.warnings = warnings;
     return result;
   }
 

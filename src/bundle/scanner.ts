@@ -511,7 +511,9 @@ export async function scanBundle(
         agentMdPath,
         tools,
         meta,
-        dependencies: manifestEntry?.dependencies,
+        dependencies: manifestEntry
+          ? manifestEntry.dependencies
+          : await readAgentDependencies(agentMdPath),
       });
       continue;
     }
@@ -593,6 +595,23 @@ async function readAssetMeta(dirPath: string): Promise<AssetConfig | null> {
     return result?.meta ?? null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Read `dependencies` from AGENT.md frontmatter. Used when there is no
+ * manifest entry (local directories without manifest.json), so orchestrators
+ * still get their dependencies checked instead of installing without them.
+ */
+async function readAgentDependencies(agentMdPath: string): Promise<AgentDependencies | undefined> {
+  try {
+    const content = await readFile(agentMdPath, 'utf-8');
+    const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    const deps = match ? parseYaml(match[1])?.dependencies : undefined;
+    if (!deps || typeof deps.bundle !== 'string' || !Array.isArray(deps.skills)) return undefined;
+    return { bundle: deps.bundle, skills: deps.skills.map(String) };
+  } catch {
+    return undefined;
   }
 }
 

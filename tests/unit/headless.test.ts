@@ -141,6 +141,26 @@ describe('parseHeadlessConfig', () => {
     expect(config.artefactSha256).toBe('a'.repeat(64));
   });
 
+  it('parses existing-skills', async () => {
+    const configPath = await writeConfigFile(
+      'tools: claude-code\nagents:\n  - orch\nexisting-skills: backup\n',
+    );
+
+    const config = await parseHeadlessConfig(configPath);
+
+    expect(config.existingSkills).toBe('backup');
+  });
+
+  it('rejects an unknown existing-skills policy', async () => {
+    const configPath = await writeConfigFile(
+      'tools: claude-code\nagents:\n  - orch\nexisting-skills: overwrite\n',
+    );
+
+    await expect(parseHeadlessConfig(configPath)).rejects.toThrow(
+      '"existing-skills" must be one of keep, backup, abort',
+    );
+  });
+
   it('rejects a malformed artefact-sha256', async () => {
     const configPath = await writeConfigFile(
       'tools: claude-code\nskills:\n  - my-skill\nartefact-sha256: not-a-hash\n',
@@ -346,6 +366,7 @@ describe('runHeadless', () => {
         repoUrl: repoSource.repoUrl,
         ref: 'main',
       }),
+      { existing: undefined },
     );
   });
 

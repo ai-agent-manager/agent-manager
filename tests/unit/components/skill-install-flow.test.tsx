@@ -15,6 +15,7 @@ vi.mock('../../../src/operations/install.js', () => ({
     installed: [{ name: 'github.com/acme/skills/my-skill', method: 'symlink', path: '/tmp/link' }],
     errors: [],
   })),
+  findExistingSkillConflicts: vi.fn(async () => []),
 }));
 
 vi.mock('../../../src/lib/repo.js', () => ({
@@ -43,7 +44,7 @@ vi.mock('../../../src/telemetry.js', () => ({
 }));
 
 const { SkillInstallFlow } = await import('../../../src/components/SkillInstallFlow.js');
-const { installResolvedSkills } = await import('../../../src/operations/install.js');
+const { installResolvedSkills, findExistingSkillConflicts } = await import('../../../src/operations/install.js');
 
 const skills: ResolvedSkill[] = [
   {
@@ -78,6 +79,7 @@ async function press(stdin: Stdin, input: string): Promise<void> {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(findExistingSkillConflicts).mockResolvedValue([]);
   vi.mocked(installResolvedSkills).mockResolvedValue({
     installed: [{ name: 'github.com/acme/skills/my-skill', method: 'symlink', path: '/tmp/link' }],
     errors: [],
@@ -132,6 +134,35 @@ describe('SkillInstallFlow', () => {
       scope: 'system',
       repoRoot: undefined,
       bundleVersion: '',
+    });
+  });
+
+  it('asks before replacing a same-named skill agentman did not install', async () => {
+    vi.mocked(findExistingSkillConflicts).mockResolvedValue([
+      { toolId: 'claude-code', names: ['github.com~acme~skills~my-skill'] },
+    ]);
+    const { lastFrame, stdin } = render(
+      <SkillInstallFlow entries={entries} bundleVersion="1.0.0" onSelectRovoAgent={() => {}} onBack={() => {}} />,
+    );
+
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain('Browse agents and skills');
+    });
+    await flushInkInput();
+
+    for (const key of [ENTER, ENTER, SPACE, ENTER]) {
+      await press(stdin, key);
+      await flushInkInput();
+    }
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain('Back up my existing skill and install');
+    });
+    expect(lastFrame()).toContain('not installed by agentman');
+    expect(lastFrame()).toContain('claude-code: github.com~acme~skills~my-skill');
+
+    await press(stdin, ENTER);
+    await vi.waitFor(() => {
+      expect(installResolvedSkills).toHaveBeenCalledWith(expect.objectContaining({ existingSkills: 'backup' }));
     });
   });
 

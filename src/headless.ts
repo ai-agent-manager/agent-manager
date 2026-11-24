@@ -39,6 +39,7 @@ import {
 } from './catalogue-scope/index.js';
 import { createSkillProvisioner, formatSupportedSkillToolIds } from './provisioners/registry.js';
 import type { InstallScope } from './config/scopes.js';
+import type { ExistingSkillPolicy } from './provisioners/types.js';
 
 export interface HeadlessConfig {
   tools: string[];
@@ -49,7 +50,14 @@ export interface HeadlessConfig {
   bundleVersion?: string;
   /** Expected SHA-256 of the artefact zip — artefact sources only. */
   artefactSha256?: string;
+  /**
+   * How to treat same-named skills agentman did not install. When unset,
+   * requested skills refuse to replace them and agent dependencies reuse them.
+   */
+  existingSkills?: ExistingSkillPolicy;
 }
+
+const EXISTING_SKILL_POLICIES: readonly ExistingSkillPolicy[] = ['keep', 'backup', 'abort'];
 
 export async function parseHeadlessConfig(configPath: string): Promise<HeadlessConfig> {
   const raw = await readFile(configPath, "utf-8");
@@ -98,6 +106,13 @@ export async function parseHeadlessConfig(configPath: string): Promise<HeadlessC
     artefactSha256 = value.toLowerCase();
   }
 
+  const existingSkills = parsed["existing-skills"] as ExistingSkillPolicy | undefined;
+  if (existingSkills !== undefined && !EXISTING_SKILL_POLICIES.includes(existingSkills)) {
+    throw new Error(
+      `ai-skills.yml: "existing-skills" must be one of ${EXISTING_SKILL_POLICIES.join(", ")}`
+    );
+  }
+
   return {
     tools,
     scope,
@@ -105,6 +120,7 @@ export async function parseHeadlessConfig(configPath: string): Promise<HeadlessC
     agents,
     bundleVersion,
     artefactSha256,
+    existingSkills,
   };
 }
 
@@ -441,13 +457,19 @@ export async function runHeadless(
     if (toInstall.length > 0) {
       console.log(`\n[agentman] Installing ${toInstall.length} skill(s) for ${toolId}...`);
       const provisioner = createSkillProvisioner(toolId, config.scope, repoRoot);
-      const result = await provisioner.install(toInstall, bundleVersion, sourcePin);
+      const result = await provisioner.install(toInstall, bundleVersion, sourcePin, {
+        existing: config.existingSkills,
+      });
 
       if (result.installed.length > 0) {
         console.log(`[agentman] Installed (${toolId}):`);
         for (const item of result.installed) {
           console.log(`  ✓ ${item.name} (${item.method}) → ${item.path}`);
         }
+      }
+
+      for (const warning of result.warnings ?? []) {
+        console.warn(`  ⚠ ${warning}`);
       }
 
       if (result.errors.length > 0) {
@@ -477,6 +499,7 @@ export async function runHeadless(
             bundleVersion,
             bundleUrl: sourcePin?.bundleBaseUrl,
             authSession: undefined, // Headless mode doesn't have auth session
+            existingSkills: config.existingSkills,
           });
 
           if (result.installed.length > 0) {
@@ -484,6 +507,10 @@ export async function runHeadless(
             for (const item of result.installed) {
               console.log(`  ✓ ${item.name} (${item.method}) → ${item.path}`);
             }
+          }
+
+          for (const warning of result.warnings ?? []) {
+            console.warn(`  ⚠ ${warning}`);
           }
 
           if (result.errors.length > 0) {

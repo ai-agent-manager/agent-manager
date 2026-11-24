@@ -30,6 +30,21 @@ describe('scanBundle', () => {
     expect(result.rovoAgents[0].meta?.tags).toContain('rovo-agent');
   });
 
+  it('reads agent dependencies from AGENT.md frontmatter when there is no manifest entry', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'scan-agent-deps-'));
+    await mkdir(path.join(dir, 'orch'));
+    await writeFile(
+      path.join(dir, 'orch', 'AGENT.md'),
+      '---\nname: orch\ndescription: d\ndependencies:\n  bundle: self\n  skills:\n    - skill-a\n---\nbody\n',
+    );
+
+    const fromFrontmatter = await scanBundle(dir);
+    expect(fromFrontmatter.agents[0].dependencies).toEqual({ bundle: 'self', skills: ['skill-a'] });
+
+    const fromManifest = await scanBundle(dir, [{ id: 'orch', name: 'orch', description: 'd', kind: 'agent' }]);
+    expect(fromManifest.agents[0].dependencies).toBeUndefined();
+  });
+
   it('uses manifest metadata when provided', async () => {
     const manifestAgents: AgentManifestEntry[] = [
       { id: 'test-skill', name: 'Manifest Skill Name', description: 'From manifest', tags: ['agent-skill', 'manifest-tag'] },

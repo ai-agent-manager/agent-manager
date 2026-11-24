@@ -73,17 +73,24 @@ tools: claude-code        # one or more: claude-code | windsurf (Devin Desktop) 
 scope: repo              # repo (default) | system
 skills:
   - my-skill-name
+agents:                  # optional — harness agents (AGENT.md); dependencies install automatically
+  - my-orchestrator
 bundle-version: 1.2.0   # optional — bundle sources only, omit to use latest
 artefact-sha256: <hex>  # optional — artefact sources only, pins the expected zip hash
+existing-skills: keep   # optional — keep | backup | abort; see "Existing skills with the same name"
 ```
 
 | Field | Required | Description |
 |-------|----------|-------------|
 | `tools` | Yes | AI coding tool(s) to install skills for |
 | `scope` | No | `repo` installs into the current directory; `system` installs to the home directory |
-| `skills` | Yes | Names of skills to install (matched by directory name) |
+| `skills` | Yes¹ | Names of skills to install (matched by directory name) |
+| `agents` | Yes¹ | Names of harness agents to install; their skill dependencies are installed first (see [Agents and skill dependencies](#agents-and-skill-dependencies)) |
 | `bundle-version` | No | Bundle sources only — pin to a specific version, or omit to track latest |
 | `artefact-sha256` | No | Artefact sources only — expected SHA-256 of the zip; the install fails if the download doesn't match |
+| `existing-skills` | No | What to do when a skill name is already taken by a skill agentman didn't install: `keep`, `backup` or `abort` (see [Existing skills with the same name](#existing-skills-with-the-same-name)) |
+
+¹ At least one of `skills` or `agents` is required.
 
 Skill names are matched against the skills resolved from all sources. Use the bare skill id when it's unambiguous. If two sources ship a skill with the same id, use the fully-qualified name instead:
 
@@ -247,6 +254,60 @@ The link name depends on the install source:
 - **Local directory sources** — flat (bare `<skill-id>/`), and out of scope for the no-collision guarantee: same-id skills from two local bundles can still overwrite each other.
 
 > **Windows note:** If symlink creation fails (requires admin rights or Developer Mode), the tool falls back to copying the skill directory instead.
+
+### Agents and skill dependencies
+
+An orchestrator agent declares the skills it needs in its `AGENT.md` frontmatter:
+
+```yaml
+dependencies:
+  bundle: self        # the bundle the agent came from, or a bundle URL
+  skills:
+    - idea-forge
+    - rapid-prd
+```
+
+Published bundles carry this in `manifest.json`. For a local directory without a `manifest.json`, the frontmatter is read directly.
+
+When you install the agent, agentman:
+
+1. Works out which dependencies are already installed for the chosen tool. A skill agentman installed earlier counts, whether its link name is bare or namespaced (`<source>~<skill-id>/`).
+2. Looks up every missing skill in the dependency source **before installing anything**.
+3. Installs the missing skills, then the agent.
+
+**Every dependency is mandatory.** If any dependency can't be found in the source (misspelt, wrong case, or moved out of the library), neither the agent nor any of its dependencies is installed, and the error lists each missing name with a suggestion for likely typos:
+
+```
+✗ orch: Required skill(s) not found in bundle https://…: rapid-prdd (did you mean "rapid-prd"?). Nothing was installed for this agent.
+```
+
+When you install several agents at once, an agent with broken dependencies doesn't stop the others.
+
+Library maintainers can catch these problems before publishing with `npm run check:agent-deps` in the skills library. It fails on missing skills, case mismatches, and skill directories without a `SKILL.md`.
+
+### Existing skills with the same name
+
+agentman records every skill it installs. A skill directory with no such record (one you wrote yourself, copied in by hand, or installed with another tool) is never deleted, replaced or duplicated without your say-so.
+
+A skill clashes with an existing one when either of these is true:
+- **Same folder.** The install target is already taken. For example, `idea-forge/` already exists.
+- **Same declared name.** A differently named folder's `SKILL.md` declares the same `name:` (exact, case-sensitive match). For example, your `my-ideas/SKILL.md` says `name: idea-forge`, or you already have a flat `idea-forge/` and the new install would land at `bootstrap~idea-forge/`. Installing anyway would leave the tool with two skills of the same name.
+
+**When it's an orchestrator's dependency:**
+
+| Choice | TUI option | `existing-skills` | Result |
+|--------|-----------|-------------------|--------|
+| Keep (default) | *Install, using my existing skills as-is* | `keep` | Your skill is left untouched and the agent uses it. A warning notes that it may differ from the bundled version. |
+| Back up and replace | *Install, backing up and replacing my existing skills* | `backup` | Your skill is moved to `~/.agentman/backups/<tool>/<name>-<timestamp>/`, then the bundled version is installed. |
+| Skip | *← Back (skip this agent)* | `abort` | Nothing is installed. |
+
+The TUI lists the conflicting skills on the confirm screen before anything happens.
+
+**When you install the skill itself:** agentman refuses by default and tells you which path is in the way. In the TUI you can choose *Back up my existing skill and install*. In headless mode, set `existing-skills: backup`, or `keep` to skip that skill.
+
+Skills that agentman installed itself (for example, an earlier version from the same or another bundle) are reinstalled in place without asking. They are also reused as dependencies without checking which source they came from.
+
+To restore a backup, move it from `~/.agentman/backups/` back into the tool's skills directory.
 
 ### Repository-scoped installation
 

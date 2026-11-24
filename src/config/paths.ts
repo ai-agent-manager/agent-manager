@@ -36,6 +36,11 @@ export function getTempDir(): string {
   return path.join(getAgentmanDir(), 'tmp');
 }
 
+/** Directory holding skills that were moved aside before being replaced */
+export function getBackupsDir(): string {
+  return path.join(getAgentmanDir(), 'backups');
+}
+
 /** Directory containing cached repository downloads */
 export function getReposDir(): string {
   return path.join(getAgentmanDir(), 'repos');

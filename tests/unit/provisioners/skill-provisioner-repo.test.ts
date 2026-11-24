@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm, mkdir, writeFile, readlink, readFile } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, writeFile, readlink, readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { ClaudeCodeProvisioner } from "../../../src/provisioners/ClaudeCodeProvisioner.js";
@@ -217,6 +217,122 @@ describe("SkillProvisioner (repo scope)", () => {
       const config = JSON.parse(configRaw);
       // Tool entry should be cleaned up since no skills remain
       expect(config.installations["claude-code"]).toBeUndefined();
+    });
+  });
+  describe("existing skills agentman did not install", () => {
+    let originalHome: { HOME?: string; USERPROFILE?: string };
+
+    beforeEach(async () => {
+      originalHome = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
+      process.env.HOME = path.join(tmpDir, "home");
+      process.env.USERPROFILE = path.join(tmpDir, "home");
+      const personal = path.join(repoRoot, ".claude", "skills", "test-skill");
+      await mkdir(personal, { recursive: true });
+      await writeFile(path.join(personal, "SKILL.md"), "PERSONAL");
+    });
+
+    afterEach(() => {
+      process.env.HOME = originalHome.HOME;
+      process.env.USERPROFILE = originalHome.USERPROFILE;
+    });
+
+    const personalSkillMd = () => path.join(repoRoot, ".claude", "skills", "test-skill", "SKILL.md");
+
+    it("refuses to replace them by default", async () => {
+      const prov = new ClaudeCodeProvisioner({ scope: "repo", repoRoot });
+      const result = await prov.install([getSkillInfo()], "v1");
+
+      expect(result.installed).toHaveLength(0);
+      expect(result.errors[0].error).toContain("not installed by agentman");
+      expect(await readFile(personalSkillMd(), "utf8")).toBe("PERSONAL");
+    });
+
+    it("skips them under the keep policy", async () => {
+      const prov = new ClaudeCodeProvisioner({ scope: "repo", repoRoot });
+      const result = await prov.install([getSkillInfo()], "v1", undefined, { existing: "keep" });
+
+      expect(result.installed).toHaveLength(0);
+      expect(result.errors).toHaveLength(0);
+      expect(result.warnings?.[0]).toContain("Kept existing");
+      expect(await readFile(personalSkillMd(), "utf8")).toBe("PERSONAL");
+    });
+
+    it("backs them up before replacing under the backup policy", async () => {
+      const prov = new ClaudeCodeProvisioner({ scope: "repo", repoRoot });
+      const result = await prov.install([getSkillInfo()], "v1", undefined, { existing: "backup" });
+
+      expect(result.errors).toHaveLength(0);
+      expect(await readFile(personalSkillMd(), "utf8")).toBe("# Test Skill");
+      const backup = result.warnings?.[0].match(/to (.+) before replacing/)?.[1];
+      expect(backup).toBeDefined();
+      expect(await readFile(path.join(backup!, "SKILL.md"), "utf8")).toBe("PERSONAL");
+    });
+
+    it("replaces its own earlier installs without asking", async () => {
+      const prov = new ClaudeCodeProvisioner({ scope: "repo", repoRoot });
+      await rm(path.join(repoRoot, ".claude", "skills", "test-skill"), { recursive: true });
+      await prov.install([getSkillInfo()], "v1");
+
+      const result = await prov.install([getSkillInfo()], "v2");
+
+      expect(result.errors).toHaveLength(0);
+      expect(result.warnings).toBeUndefined();
+    });
+  });
+  describe("existing skills declaring the same name", () => {
+    let originalHome: { HOME?: string; USERPROFILE?: string };
+    const namespacedPin: SkillSourcePin = {
+      sourceType: "repo",
+      installLayout: "namespaced",
+      repoUrl: "https://github.com/acme/skills",
+      ref: "main",
+    };
+
+    beforeEach(async () => {
+      originalHome = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
+      process.env.HOME = path.join(tmpDir, "home");
+      process.env.USERPROFILE = path.join(tmpDir, "home");
+      const personal = path.join(repoRoot, ".claude", "skills", "my-notes");
+      await mkdir(personal, { recursive: true });
+      await writeFile(path.join(personal, "SKILL.md"), "---\nname: test-skill\n---\nPERSONAL");
+    });
+
+    afterEach(() => {
+      process.env.HOME = originalHome.HOME;
+      process.env.USERPROFILE = originalHome.USERPROFILE;
+    });
+
+    it("refuses to install a duplicate under a different folder name", async () => {
+      const prov = new ClaudeCodeProvisioner({ scope: "repo", repoRoot });
+      const result = await prov.install([getSkillInfo()], "v1", namespacedPin);
+
+      expect(result.installed).toHaveLength(0);
+      expect(result.errors[0].error).toContain('my-notes already declares the skill name "test-skill"');
+    });
+
+    it("backs up the differently named folder under the backup policy", async () => {
+      const prov = new ClaudeCodeProvisioner({ scope: "repo", repoRoot });
+      const result = await prov.install([getSkillInfo()], "v1", namespacedPin, { existing: "backup" });
+
+      expect(result.errors).toHaveLength(0);
+      expect(result.warnings?.[0]).toContain('Backed up existing "my-notes"');
+      const remaining = await readdir(path.join(repoRoot, ".claude", "skills"));
+      expect(remaining).toEqual(["github.com~acme~skills~test-skill"]);
+    });
+
+    it("matches declared names exactly and ignores unrelated skills", async () => {
+      const other = path.join(repoRoot, ".claude", "skills", "unrelated");
+      await mkdir(other, { recursive: true });
+      await writeFile(path.join(other, "SKILL.md"), "---\nname: something-else\n---\n");
+      const prov = new ClaudeCodeProvisioner({ scope: "repo", repoRoot });
+
+      const clashes = await prov.findUnmanagedClashes([
+        { linkName: "x~test-skill", name: "test-skill" },
+        { linkName: "y~test-skill", name: "Test-Skill" },
+      ]);
+
+      expect(clashes.get("x~test-skill")).toEqual(["my-notes"]);
+      expect(clashes.has("y~test-skill")).toBe(false);
     });
   });
 });

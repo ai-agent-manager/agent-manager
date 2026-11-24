@@ -32,6 +32,22 @@ export type InstalledItem = InstalledSkill | InstalledAgent;
 export interface InstallResult {
   installed: Array<{ name: string; method: 'symlink' | 'copy'; path: string }>;
   errors: Array<{ name: string; error: string }>;
+  /** Non-fatal notices, e.g. an existing skill that was reused or backed up. */
+  warnings?: string[];
+}
+
+/**
+ * What to do when the install target is already occupied by a skill that
+ * agentman did not install (a personal skill, or one from another tool):
+ * - `keep`: leave it in place and use it as-is
+ * - `backup`: move it to ~/.agentman/backups, then install over it
+ * - `abort`: refuse to install
+ */
+export type ExistingSkillPolicy = 'keep' | 'backup' | 'abort';
+
+export interface SkillInstallOptions {
+  /** Defaults to `abort`. */
+  existing?: ExistingSkillPolicy;
 }
 
 export interface UninstallResult {
@@ -58,7 +74,12 @@ export interface Provisioner {
   getInstalled(): Promise<InstalledSkill[]>;
 
   /** Install skills from the specified source */
-  install(items: SkillInfo[], bundleVersion: string, sourcePin?: SkillSourcePin): Promise<InstallResult>;
+  install(
+    items: SkillInfo[],
+    bundleVersion: string,
+    sourcePin?: SkillSourcePin,
+    options?: SkillInstallOptions,
+  ): Promise<InstallResult>;
 
   /** Uninstall previously installed skills */
   uninstall(names: string[]): Promise<UninstallResult>;
@@ -98,7 +119,19 @@ export interface AgentProvisionerInterface {
   /** Check which skills from dependencies are installed */
   checkDependencies(
     dependencies: AgentDependencies,
-  ): Promise<{ installed: string[]; missing: string[] }>;
+  ): Promise<DependencyCheck>;
+}
+
+export interface DependencyCheck {
+  installed: string[];
+  missing: string[];
+  /** Subset of `installed` satisfied by a skill agentman did not install. */
+  unmanaged: string[];
+  /**
+   * For each `unmanaged` dependency, the skills-dir entries it clashes with:
+   * its own folder, or a differently named folder declaring the same skill name.
+   */
+  clashes: Record<string, string[]>;
 }
 
 /** Progress callback for long-running operations (e.g., Rovo provisioning) */

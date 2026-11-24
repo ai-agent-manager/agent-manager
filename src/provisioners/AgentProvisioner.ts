@@ -13,6 +13,7 @@ import type { AgentDependencies } from '../bundle/manifest.js';
 import type { InstallScope } from '../config/scopes.js';
 import type { SkillSourcePin } from '../bundle/skill-source.js';
 import type {
+  DependencyCheck,
   InstalledAgent,
   InstallResult,
   UninstallResult,
@@ -198,32 +199,23 @@ export abstract class AgentProvisioner implements AgentProvisionerInterface {
 
   /**
    * Check which skills from dependencies are already installed.
-   * Returns a report of installed vs missing skills.
+   * A skill counts as installed when agentman installed it (under any link
+   * name), or when a skill agentman did not install occupies its folder or
+   * declares its name — the latter is also reported in `unmanaged`.
    */
-  async checkDependencies(
-    dependencies: AgentDependencies,
-  ): Promise<{ installed: string[]; missing: string[] }> {
-    const installed: string[] = [];
-    const missing: string[] = [];
-    const skillsDir = this.getSkillsDir();
-
-    for (const skill of dependencies.skills) {
-      const skillPath = path.join(skillsDir, skill);
-      if (await pathExists(skillPath)) {
-        installed.push(skill);
-      } else {
-        missing.push(skill);
-      }
-    }
-
-    return { installed, missing };
-  }
-
-  /** Get the skills directory for this tool (where dependencies are checked). */
-  private getSkillsDir(): string {
-    // Use the skill provisioner to get the correct skills directory path
+  async checkDependencies(dependencies: AgentDependencies): Promise<DependencyCheck> {
     const skillProvisioner = createSkillProvisioner(this.id, this.scope, this.repoRoot);
-    return skillProvisioner.getEffectiveSkillsDir();
+    const managed = await skillProvisioner.findManagedSkillIds(dependencies.skills);
+    const clashes = await skillProvisioner.findUnmanagedClashes(
+      dependencies.skills
+        .filter((skill) => !managed.has(skill))
+        .map((skill) => ({ linkName: skill, name: skill })),
+    );
+
+    const unmanaged = dependencies.skills.filter((s) => clashes.has(s));
+    const installed = dependencies.skills.filter((s) => managed.has(s) || clashes.has(s));
+    const missing = dependencies.skills.filter((s) => !installed.includes(s));
+    return { installed, missing, unmanaged, clashes: Object.fromEntries(clashes) };
   }
 
   async uninstallAgents(names: string[]): Promise<UninstallResult> {
