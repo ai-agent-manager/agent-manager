@@ -10,11 +10,27 @@
  * postpack.mjs restores both files afterwards.
  */
 
-import { copyFile, readFile, writeFile } from 'node:fs/promises';
+import { access, copyFile, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const tmp = tmpdir();
+
+// npm copies bundleDependencies from node_modules and silently omits missing
+// ones, which ships a CLI that cannot start. Fail before touching any files.
+const manifest = JSON.parse(await readFile('package.json', 'utf-8'));
+const missing = [];
+for (const name of manifest.bundleDependencies ?? []) {
+  try {
+    await access(join('node_modules', name, 'package.json'));
+  } catch {
+    missing.push(name);
+  }
+}
+if (missing.length > 0) {
+  console.error(`prepack: bundled dependencies missing from node_modules: ${missing.join(', ')}. Run npm ci before packing.`);
+  process.exit(1);
+}
 
 // Back up README.md to temp dir, then replace with the public-facing version.
 // README.npm.md lives in scripts/ so npm's automatic readme detection doesn't

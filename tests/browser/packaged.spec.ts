@@ -1,7 +1,7 @@
 import { npmEnvironment } from '../support/npm-env.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { cp, mkdir, readFile, stat } from 'node:fs/promises';
+import { cp, mkdir, readFile, stat, symlink, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { test, expect } from './fixtures.js';
 import { checkout } from '../support/sandbox.js';
@@ -23,13 +23,23 @@ test('installed npm tarball serves assets and installs/removes outside the check
   const npm = process.env.npm_execpath;
   expect(npm, 'Run browser tests through npm so its portable CLI entry point is available').toBeTruthy();
   const env = await npmEnvironment(temporary);
-  const packed = await exec(process.execPath, [npm!, 'pack', '--json', '--pack-destination', consumer], { cwd: staging, env, timeout: 60_000 });
+  // bundleDependencies are copied from node_modules at pack time, as in the
+  // release job. Unlink straight after packing so no cleanup can reach the checkout's copy.
+  const linkedModules = path.join(staging, 'node_modules');
+  await symlink(path.join(checkout, 'node_modules'), linkedModules, 'junction');
+  let packed;
+  try {
+    packed = await exec(process.execPath, [npm!, 'pack', '--json', '--pack-destination', consumer], { cwd: staging, env, timeout: 60_000 });
+  } finally {
+    await unlink(linkedModules);
+  }
   // Lifecycle scripts write progress before npm's JSON report.
   const reportStart = packed.stdout.search(/^\s*\[/m);
   expect(reportStart).toBeGreaterThanOrEqual(0);
   const metadata = JSON.parse(packed.stdout.slice(reportStart));
   expect(metadata[0].files.some((file: { path: string }) => file.path === 'assets/web-ui/index.html')).toBe(true);
   expect(metadata[0].files.some((file: { path: string }) => file.path.startsWith('tests/'))).toBe(false);
+  expect(metadata[0].bundled).toEqual(expect.arrayContaining(['react', 'ink', 'ink-spinner', 'ink-select-input', 'ink-text-input']));
   await exec(process.execPath, [npm!, 'install', '--omit=optional', '--no-audit', '--no-fund', '--package-lock=false', path.join(consumer, metadata[0].filename)], { cwd: consumer, env, timeout: 180_000 });
   const installed = path.join(consumer, 'node_modules/@ai-agent-manager/cli');
   await expect(stat(path.join(consumer, 'node_modules/playwright'))).rejects.toMatchObject({ code: 'ENOENT' });
