@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { installMutationSignalHandlers } from "./lib/mutation.js";
+import { configureProxyFromEnv } from "./lib/proxy.js";
 import { parseCli, BANNER } from "./cli.js";
 import { resolveSource, resolveHeadlessTelemetrySource, type BundleSource, type StartupSource } from "./bundle/source.js";
 import { parseGitRemoteInput } from "./discovery/git-probe.js";
@@ -13,6 +14,8 @@ import {
     trackTelemetryError,
     trackTelemetryEvent,
 } from "./telemetry.js";
+
+configureProxyFromEnv();
 
 async function main(): Promise<void> {
     const cli = parseCli();
