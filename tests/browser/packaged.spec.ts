@@ -1,7 +1,7 @@
 import { npmEnvironment } from '../support/npm-env.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { cp, mkdir, readFile, stat } from 'node:fs/promises';
+import { cp, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { test, expect } from './fixtures.js';
 import { checkout } from '../support/sandbox.js';
@@ -33,6 +33,16 @@ test('installed npm tarball serves assets and installs/removes outside the check
   await exec(process.execPath, [npm!, 'install', '--omit=optional', '--no-audit', '--no-fund', '--package-lock=false', path.join(consumer, metadata[0].filename)], { cwd: consumer, env, timeout: 180_000 });
   const installed = path.join(consumer, 'node_modules/@ai-agent-manager/cli');
   await expect(stat(path.join(consumer, 'node_modules/playwright'))).rejects.toMatchObject({ code: 'ENOENT' });
+  // React, Ink and other pure-JS dependencies are bundled into dist/, so npm has
+  // nothing to hoist. A stale copy left at the top level (as an in-place npx cache
+  // upgrade does, see #933) must never be loaded: plant broken ones and run anyway.
+  for (const name of ['react', 'ink']) {
+    await expect(stat(path.join(consumer, 'node_modules', name))).rejects.toMatchObject({ code: 'ENOENT' });
+    const stale = path.join(consumer, 'node_modules', name);
+    await mkdir(stale);
+    await writeFile(path.join(stale, 'package.json'), JSON.stringify({ name, version: '0.0.0-stale', main: 'index.js', exports: { '.': { import: './index.js', require: './index.js' } } }));
+    await writeFile(path.join(stale, 'index.js'), `throw new Error('stale top-level ${name} was loaded');\n`);
+  }
   expect(await readFile(path.join(installed, 'assets/web-ui/index.html'), 'utf8')).toContain('/assets/');
   const ui = await startCli({ entry: path.join(installed, 'dist/index.js'), cwd: consumer, source: state.source });
   cleanup(() => ui.stop());

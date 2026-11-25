@@ -1,14 +1,11 @@
 import { existsSync } from "node:fs";
 import { copyFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { packagePath } from "./package-root.js";
 import { getHomeDir, getPlatform } from "./platform.js";
 
 export const EXTENSION_ID = "jfplibfgoojmkffdcglchjdkpliiljbh";
 export const EXTENSION_VERSION = "0.1.0";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const CRX_ASSET_PATH = path.resolve(__dirname, "../../assets/agentman.crx");
 
 export type InstallResult =
   | { status: "installed"; crxPath: string; jsonPath: string }
@@ -33,7 +30,7 @@ export function getCrxDestPath(): string {
   return path.join(getHomeDir(), ".agentman", "chrome-extension", "agentman.crx");
 }
 
-export async function installChromeExtension(crxSourcePath: string = CRX_ASSET_PATH): Promise<InstallResult> {
+export async function installChromeExtension(crxSourcePath: string = packagePath("assets", "agentman.crx")): Promise<InstallResult> {
   try {
     if (!existsSync(crxSourcePath)) {
       return {

@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { realpath } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
 import { findRepoRoot } from '../lib/repo.js';
+import { packagePath } from '../lib/package-root.js';
 import { adoptRepository } from '../bundle/references.js';
 import { generateToken, isAuthorised, matchesToken } from '../server/auth.js';
 import { checkHost, checkOrigin, requireJson, responseHeaders } from './guards.js';
@@ -46,7 +46,7 @@ export async function startUiServer(options: UiServerOptions = {}) {
   // the OS browser launcher and shows up in process listings, so anything in it must
   // be worthless once the page has loaded.
   const launch = { code: generateToken(), issuedAt: Date.now(), used: false, ttlMs: options.launchTtlMs ?? 5 * 60_000 };
-  const staticDir = options.staticDir === undefined ? fileURLToPath(new URL('../../assets/web-ui/', import.meta.url)) : options.staticDir;
+  const staticDir = options.staticDir === undefined ? packagePath('assets', 'web-ui') : options.staticDir;
   const jobs = new JobRegistry();
   const sessions = new SessionStore(jobs, cwd, (dto) => events.broadcast('session', dto));
   const events = new SseHub(() => ({ session: sessions.snapshot(), jobs: jobs.snapshot() }));
