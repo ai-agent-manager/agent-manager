@@ -15,7 +15,9 @@ export async function renderTuiInPty(options: { entry: string; args: string[]; c
     ? ['script', ['-q', '/dev/null', ...command]]
     : ['script', ['-qfec', command.map(quote).join(' '), '/dev/null']];
   // BSD `script` (macOS) cannot read a socket stdin, which is what Node pipes are there.
-  const child = spawn(file, args, { cwd: options.cwd, env: { ...process.env, ...options.env, COLUMNS: '120', LINES: '40' }, stdio: [process.platform === 'darwin' ? 'ignore' : 'pipe', 'pipe', 'pipe'], detached: true });
+  // Ink only writes its final frame, on exit, when it detects CI (`CI`/`CONTINUOUS_INTEGRATION`).
+  const env = { ...process.env, ...options.env, COLUMNS: '120', LINES: '40', CI: 'false', CONTINUOUS_INTEGRATION: 'false' };
+  const child = spawn(file, args, { cwd: options.cwd, env, stdio: [process.platform === 'darwin' ? 'ignore' : 'pipe', 'pipe', 'pipe'], detached: true });
   let raw = '';
   const screen = () => raw.replace(/\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07|\r/g, '');
   try {
