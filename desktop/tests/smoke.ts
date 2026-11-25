@@ -38,8 +38,7 @@ try {
     shell.openExternal = async (url) => { globalThis.externalUrls.push(url); };
     dialog.showOpenDialog = async () => { globalThis.pickerCalls++; return { canceled: false, filePaths: [${JSON.stringify(state.repo)}] }; };
     dialog.showErrorBox = (title, message) => { console.error(title, message); };
-    const { _disableKeychain } = await import(${JSON.stringify(pathToFileURL(path.join(checkout, 'dist/auth/token-store.js')).href)});
-    _disableKeychain();
+    await import(${JSON.stringify(pathToFileURL(path.join(checkout, 'tests/support/disable-keychain.mjs')).href)});
     await import(${JSON.stringify(pathToFileURL(path.join(checkout, 'desktop/dist/main.js')).href)});
   `);
   app = await electron.launch({ executablePath: createRequire(import.meta.url)('electron') as string, chromiumSandbox: true,
