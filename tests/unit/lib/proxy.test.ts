@@ -38,6 +38,27 @@ describe('configureProxyFromEnv', () => {
     expect(getGlobalDispatcher()).toBe(originalDispatcher);
   });
 
+  it('still fetches direct, unchanged, when no proxy is configured (pre-PR behavior)', async () => {
+    vi.stubEnv('HTTP_PROXY', undefined);
+    vi.stubEnv('http_proxy', undefined);
+    vi.stubEnv('HTTPS_PROXY', undefined);
+    vi.stubEnv('https_proxy', undefined);
+
+    const target = createServer((req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain' });
+      res.end('direct-ok');
+    });
+    await new Promise<void>((resolve) => target.listen(0, '127.0.0.1', resolve));
+    const { port } = target.address() as AddressInfo;
+
+    configureProxyFromEnv();
+
+    const response = await fetch(`http://127.0.0.1:${port}/`);
+    expect(await response.text()).toBe('direct-ok');
+
+    target.close();
+  });
+
   it('installs a proxy-aware dispatcher when HTTPS_PROXY is set', () => {
     vi.stubEnv('HTTPS_PROXY', 'http://127.0.0.1:1');
 
