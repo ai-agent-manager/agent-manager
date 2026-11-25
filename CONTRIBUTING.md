@@ -63,9 +63,14 @@ for launch/security contracts and instructions for adding routes and DTOs.
   `dist/` with esbuild, so React, Ink and other pure-JS libraries ship inside our
   own files and npm/npx can never pair them with a stale hoisted copy (see #933).
   Add such libraries to `devDependencies`; only native or optional packages
-  (`@napi-rs/keyring`, `playwright`) belong in `dependencies` and are kept
-  external. Code in `src/` must not locate files relative to its own module (it
-  may end up in a shared chunk); use `packagePath()` from `src/lib/package-root.ts`.
+  (`@napi-rs/keyring`, `playwright`) belong in `dependencies`, and they must also
+  be listed in `RUNTIME_EXTERNALS` in `scripts/build.mjs`. The build fails if
+  `dist/` would import any other package, if esbuild warns (e.g. an unbundleable
+  native module) or if a bundled package has no licence text; it writes
+  `dist/THIRD_PARTY_NOTICES.txt` from each bundled package's licence file (or
+  `scripts/third-party-licenses/<name>.txt` when the package ships none). Code
+  in `src/` must not locate files relative to its own module (it may end up in a
+  shared chunk); use `packagePath()` from `src/lib/package-root.ts`.
 Documentation is built with MkDocs Material and published to GitHub Pages on
 push to `main`. Preview locally with `./scripts/docs.sh` (requires Docker).
 
