@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { realpath } from 'node:fs/promises';
 import type { Socket } from 'node:net';
+import { configureProxyFromEnv } from '../lib/proxy.js';
 import { findRepoRoot } from '../lib/repo.js';
 import { packagePath } from '../lib/package-root.js';
 import { adoptRepository } from '../bundle/references.js';
@@ -34,6 +35,9 @@ export interface UiServerOptions {
   staticHandler?: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>;
 }
 export async function startUiServer(options: UiServerOptions = {}) {
+  // Consumers can import this entry point directly (e.g. the desktop app) without ever
+  // loading index.tsx, so proxy configuration has to happen here too, not just there.
+  configureProxyFromEnv();
   const requestedPort = options.port ?? 19877;
   if (!Number.isInteger(requestedPort) || requestedPort < 0 || requestedPort > 65535) throw new ValidationError('Invalid port.');
   const cwd = await realpath(options.cwd ?? process.cwd());
