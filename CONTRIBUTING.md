@@ -4,7 +4,7 @@ Contributions are welcome. This document covers the practical bits.
 
 ## Prerequisites
 
-- Node.js 22.12 or higher (use [nvm](https://github.com/nvm-sh/nvm): `nvm use`)
+- Node.js 22.15 or higher (use [nvm](https://github.com/nvm-sh/nvm): `nvm use`)
 - npm (bundled with Node)
 
 ## Setup
@@ -22,7 +22,7 @@ npm run dev -- https://your-bundle-server.com  # run locally
 npm run typecheck                               # type check
 npm test                                        # run tests once
 npm run test:watch                              # watch mode
-npm run build                                   # compile to dist/
+npm run build                                   # bundle to dist/ (esbuild) + .d.ts
 ./scripts/docs.sh                               # docs site preview (Docker)
 ```
 
@@ -59,6 +59,18 @@ for launch/security contracts and instructions for adding routes and DTOs.
   reuses the local server; see [desktop development/testing](docs/desktop.md).
 - `npm pack` swaps in `scripts/README.npm.md`. Update both READMEs when launch
   instructions change, and build CLI/browser assets before packing.
+- `npm run build` bundles `src/index.tsx` and `src/ui-server/index.ts` into
+  `dist/` with esbuild, so React, Ink and other pure-JS libraries ship inside our
+  own files and npm/npx can never pair them with a stale hoisted copy.
+  Add such libraries to `devDependencies`; only native or optional packages
+  (`@napi-rs/keyring`, `playwright`) belong in `dependencies`, and they must also
+  be listed in `RUNTIME_EXTERNALS` in `scripts/build.mjs`. The build fails if
+  `dist/` would import any other package, if esbuild warns (e.g. an unbundleable
+  native module) or if a bundled package has no licence text; it writes
+  `dist/THIRD_PARTY_NOTICES.txt` from each bundled package's licence file (or
+  `scripts/third-party-licenses/<name>.txt` when the package ships none). Code
+  in `src/` must not locate files relative to its own module (it may end up in a
+  shared chunk); use `packagePath()` from `src/lib/package-root.ts`.
 Documentation is built with MkDocs Material and published to GitHub Pages on
 push to `main`. Preview locally with `./scripts/docs.sh` (requires Docker).
 

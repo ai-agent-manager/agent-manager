@@ -21,7 +21,7 @@
     "capture-banner": "node scripts/capture-banner.mjs",
     "capture-icon-letter": "node scripts/capture-icon-letter.mjs",
     "prepare": "git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks || true",
-    "build": "tsc",
+    "build": "node scripts/build.mjs",
     "build:chrome-extension": "npm run build:crx --prefix chrome-extension && mkdir -p assets && cp chrome-extension/dist/agentman.crx assets/agentman.crx",
     "prepack": "node scripts/prepack.mjs",
     "postpack": "node scripts/postpack.mjs",
@@ -64,26 +64,14 @@
     "url": "https://github.com/ai-agent-manager/agent-manager.git"
   },
   "engines": {
-    "node": ">=22.12"
+    "node": ">=22.15"
   },
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
   },
   "dependencies": {
-    "@napi-rs/keyring": "^2.1.0",
-    "ajv": "^8.18.0",
-    "ajv-formats": "^3.0.1",
-    "chalk": "^5.4.1",
-    "ink": "^8.0.0",
-    "ink-select-input": "^6.0.0",
-    "ink-spinner": "^5.0.0",
-    "ink-text-input": "^6.0.0",
-    "meow": "^13.2.0",
-    "react": "^19.3.0",
-    "yaml": "^2.7.1",
-    "yauzl": "3.4.0",
-    "zip-lib": "1.4.0"
+    "@napi-rs/keyring": "^2.1.0"
   },
   "devDependencies": {
     "@babel/parser": "^7.29.12",
@@ -91,12 +79,25 @@
     "@types/react": "^19.3.0",
     "@types/yauzl": "3.4.0",
     "@vitest/coverage-v8": "^5.0.3",
+    "ajv": "^8.18.0",
+    "ajv-formats": "^3.0.1",
+    "chalk": "^5.4.1",
+    "esbuild": "^0.28.1",
+    "ink": "^8.0.0",
+    "ink-select-input": "^6.0.0",
+    "ink-spinner": "^5.0.0",
     "ink-testing-library": "^4.0.0",
+    "ink-text-input": "^6.0.0",
+    "meow": "^13.2.0",
     "oxlint": "^1.71.0",
+    "react": "^19.3.0",
     "tsx": "^4.19.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.3",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.3",
+    "yaml": "^2.7.1",
+    "yauzl": "3.4.0",
+    "zip-lib": "1.4.0"
   },
   "optionalDependencies": {
     "playwright": "^1.61.1"

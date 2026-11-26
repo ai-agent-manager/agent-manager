@@ -1,11 +1,11 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import type { ErrorObject } from 'ajv/dist/2020.js';
 import { parseFrontmatter, type AssetConfig } from '../lib/frontmatter.js';
+import { packagePath } from '../lib/package-root.js';
 import type { AgentManifestEntry } from './manifest.js';
 import type { SkillSourcePin } from './skill-source.js';
 
@@ -13,14 +13,7 @@ import type { SkillSourcePin } from './skill-source.js';
 // Schema validation setup
 // ---------------------------------------------------------------------------
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Load the JSON Schema from the schemas/ directory at the package root.
-// In the compiled output (dist/bundle/scanner.js) the schema is at
-// ../../schemas/rovo-agent.schema.json relative to the .js file.
-// In the source (src/bundle/scanner.ts) it's also ../../schemas/.
-const schemaPath = path.resolve(__dirname, '../../schemas/rovo-agent.schema.json');
+const schemaPath = packagePath('schemas', 'rovo-agent.schema.json');
 const schema = JSON.parse(readFileSync(schemaPath, 'utf-8'));
 
 const ajv = new Ajv2020({ allErrors: true });

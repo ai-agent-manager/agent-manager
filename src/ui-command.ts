@@ -1,6 +1,6 @@
 import { access } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { packagePath } from './lib/package-root.js';
 import { releaseOwnedLocks } from './lib/mutation.js';
 import { startUiServer, type UiServerOptions } from './ui-server/index.js';
 import { openInBrowser } from './auth/flow.js';
@@ -14,7 +14,7 @@ export interface UiCommandOptions extends Pick<UiServerOptions, 'cwd' | 'startup
 
 /** CLI lifetime policy lives here; the embeddable HTTP server never exits. */
 export async function runUiCommand(options: UiCommandOptions = {}) {
-  const staticDir = options.staticDir === undefined ? fileURLToPath(new URL('../assets/web-ui/', import.meta.url)) : options.staticDir;
+  const staticDir = options.staticDir === undefined ? packagePath('assets', 'web-ui') : options.staticDir;
   if (!staticDir) throw new Error('Web UI assets are missing. Reinstall Agent Manager, or run npm run build:web-ui from the source checkout.');
   await access(path.join(staticDir, 'index.html')).catch(() => {
     throw new Error('Web UI assets are missing. Reinstall Agent Manager, or run npm run build:web-ui from the source checkout.');

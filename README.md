@@ -367,7 +367,7 @@ AGENTMAN_CHROME_EXTENSION=1 npx @ai-agent-manager/cli@latest <base-url>
 ```bash
 npm ci               # install dependencies
 npm run dev -- <url> # run locally against a bundle server
-npm run build        # compile to dist/
+npm run build        # bundle to dist/
 npm test             # run tests once
 npm run test:watch   # watch mode
 npm run typecheck    # type check without emitting

@@ -1,7 +1,8 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { realpath } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
+import type { Socket } from 'node:net';
 import { findRepoRoot } from '../lib/repo.js';
+import { packagePath } from '../lib/package-root.js';
 import { adoptRepository } from '../bundle/references.js';
 import { generateToken, isAuthorised, matchesToken } from '../server/auth.js';
 import { checkHost, checkOrigin, requireJson, responseHeaders } from './guards.js';
@@ -46,7 +47,7 @@ export async function startUiServer(options: UiServerOptions = {}) {
   // the OS browser launcher and shows up in process listings, so anything in it must
   // be worthless once the page has loaded.
   const launch = { code: generateToken(), issuedAt: Date.now(), used: false, ttlMs: options.launchTtlMs ?? 5 * 60_000 };
-  const staticDir = options.staticDir === undefined ? fileURLToPath(new URL('../../assets/web-ui/', import.meta.url)) : options.staticDir;
+  const staticDir = options.staticDir === undefined ? packagePath('assets', 'web-ui') : options.staticDir;
   const jobs = new JobRegistry();
   const sessions = new SessionStore(jobs, cwd, (dto) => events.broadcast('session', dto));
   const events = new SseHub(() => ({ session: sessions.snapshot(), jobs: jobs.snapshot() }));
@@ -99,6 +100,12 @@ export async function startUiServer(options: UiServerOptions = {}) {
   server.requestTimeout = 15_000;
   server.headersTimeout = 10_000;
   server.setTimeout(30_000, (socket) => socket.destroy());
+  // Browsers open speculative connections that may never carry a request. Once Node's
+  // connection check has seen one, closeIdleConnections() no longer reaps it, so
+  // close() would wait for it to time out.
+  const unused = new Set<Socket>();
+  server.on('connection', (socket: Socket) => { unused.add(socket); socket.once('close', () => unused.delete(socket)); });
+  server.on('request', (req: IncomingMessage) => { unused.delete(req.socket); });
   const stop = (): Promise<void> => {
     if (!stopPromise) {
       stopping = true;
@@ -110,6 +117,7 @@ export async function startUiServer(options: UiServerOptions = {}) {
         await Promise.all([jobs.stop(), ...requests]);
         events.close(); unsubscribe();
         server.closeIdleConnections();
+        for (const socket of unused) socket.destroy();
         await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
       })();
     }
