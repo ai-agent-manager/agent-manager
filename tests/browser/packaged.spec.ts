@@ -6,7 +6,7 @@ import path from 'node:path';
 import { test, expect } from './fixtures.js';
 import { checkout } from '../support/sandbox.js';
 import { startCli } from '../support/cli.js';
-import { renderTuiInPty } from '../support/tui.js';
+import { renderTui } from '../support/tui.js';
 import { exerciseUi } from './workflow.js';
 
 const exec = promisify(execFile);
@@ -46,11 +46,9 @@ test('installed npm tarball serves assets and installs/removes outside the check
     await writeFile(path.join(stale, 'index.js'), `throw new Error('stale top-level ${name} was loaded');\n`);
   }
   // The terminal UI is the path that crashed in #933 (Ink widgets calling hooks on a
-  // stale React); the web UI below never loads Ink. Windows has no `script` pty.
-  if (process.platform !== 'win32') {
-    const screen = await renderTuiInPty({ entry: path.join(installed, 'dist/index.js'), args: [state.source], cwd: consumer, expected: /What would you like to do/ });
-    expect(screen).not.toContain('stale top-level');
-  }
+  // stale React); the web UI below never loads Ink. A real pty on POSIX, a faked TTY on Windows.
+  const screen = await renderTui({ entry: path.join(installed, 'dist/index.js'), args: [state.source], cwd: consumer, expected: /What would you like to do/ });
+  expect(screen).not.toContain('stale top-level');
   expect(await readFile(path.join(installed, 'assets/web-ui/index.html'), 'utf8')).toContain('/assets/');
   const ui = await startCli({ entry: path.join(installed, 'dist/index.js'), cwd: consumer, source: state.source });
   cleanup(() => ui.stop());
