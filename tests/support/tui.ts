@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { stripVTControlCharacters } from 'node:util';
 
 const quote = (value: string) => `'${value.replaceAll("'", `'\\''`)}'`;
 // Ink errors render in a red "ERROR" box; React reports hook misuse as "Invalid hook call".
@@ -19,7 +20,7 @@ export async function renderTuiInPty(options: { entry: string; args: string[]; c
   const env = { ...process.env, ...options.env, COLUMNS: '120', LINES: '40', CI: 'false', CONTINUOUS_INTEGRATION: 'false' };
   const child = spawn(file, args, { cwd: options.cwd, env, stdio: [process.platform === 'darwin' ? 'ignore' : 'pipe', 'pipe', 'pipe'], detached: true });
   let raw = '';
-  const screen = () => raw.replace(/\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07|\r/g, '');
+  const screen = () => stripVTControlCharacters(raw).replaceAll('\r', '');
   try {
     return await new Promise<string>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error(`TUI did not render ${options.expected} within ${options.timeoutMs ?? 20_000}ms:\n${screen()}`)), options.timeoutMs ?? 20_000);
