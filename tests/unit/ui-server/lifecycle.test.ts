@@ -108,6 +108,19 @@ it('stop closes sockets that were mid-request when the server began closing', as
   expect(Date.now() - started).toBeLessThan(2_000);
 });
 
+it('stop closes connections that never sent a request', async () => {
+  // Chromium opens speculative connections; Node 22's closeIdleConnections() leaves a
+  // socket that never carried a request open, which held close() until it timed out.
+  const socket = net.connect(server.port, '127.0.0.1');
+  socket.on('error', () => undefined);
+  await new Promise<void>((resolve) => socket.once('connect', resolve));
+  const closed = new Promise<void>((resolve) => socket.once('close', () => resolve()));
+  await new Promise((resolve) => setTimeout(resolve, 1_200)); // past one connectionsCheckingInterval
+  const started = Date.now();
+  await Promise.all([server.stop(), closed]);
+  expect(Date.now() - started).toBeLessThan(2_000);
+});
+
 it('stop cancels authentication promptly and waits for its asynchronous cleanup', async () => {
   const entered = barrier(), cleanup = barrier();
   vi.mocked(loadSession).mockImplementation(async (_startup, options) => {
