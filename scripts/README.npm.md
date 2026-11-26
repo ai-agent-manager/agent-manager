@@ -17,7 +17,7 @@ discovery metadata is an error.
 
 ## Requirements
 
-- Node.js 22.15 or higher
+- Node.js 22.19 or higher
 - Playwright (optional, only needed for Rovo agent provisioning)
 
 ## Usage
