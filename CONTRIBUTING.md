@@ -4,7 +4,7 @@ Contributions are welcome. This document covers the practical bits.
 
 ## Prerequisites
 
-- Node.js 22.12 or higher (use [nvm](https://github.com/nvm-sh/nvm): `nvm use`)
+- Node.js 22.15 or higher (use [nvm](https://github.com/nvm-sh/nvm): `nvm use`)
 - npm (bundled with Node)
 
 ## Setup
@@ -61,7 +61,7 @@ for launch/security contracts and instructions for adding routes and DTOs.
   instructions change, and build CLI/browser assets before packing.
 - `npm run build` bundles `src/index.tsx` and `src/ui-server/index.ts` into
   `dist/` with esbuild, so React, Ink and other pure-JS libraries ship inside our
-  own files and npm/npx can never pair them with a stale hoisted copy (see #933).
+  own files and npm/npx can never pair them with a stale hoisted copy.
   Add such libraries to `devDependencies`; only native or optional packages
   (`@napi-rs/keyring`, `playwright`) belong in `dependencies`, and they must also
   be listed in `RUNTIME_EXTERNALS` in `scripts/build.mjs`. The build fails if

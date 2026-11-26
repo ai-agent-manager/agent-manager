@@ -35,9 +35,8 @@ test('installed npm tarball serves assets and installs/removes outside the check
   await exec(process.execPath, [npm!, 'install', '--omit=optional', '--no-audit', '--no-fund', '--package-lock=false', path.join(consumer, metadata[0].filename)], { cwd: consumer, env, timeout: 180_000 });
   const installed = path.join(consumer, 'node_modules/@ai-agent-manager/cli');
   await expect(stat(path.join(consumer, 'node_modules/playwright'))).rejects.toMatchObject({ code: 'ENOENT' });
-  // React, Ink and other pure-JS dependencies are bundled into dist/, so npm has
-  // nothing to hoist. A stale copy left at the top level (as an in-place npx cache
-  // upgrade does, see #933) must never be loaded: plant broken ones and run anyway.
+  // React and Ink are bundled into dist/, so npm has nothing to hoist. A stale
+  // top-level copy must never be loaded: plant broken ones and run anyway.
   for (const name of ['react', 'ink']) {
     await expect(stat(path.join(consumer, 'node_modules', name))).rejects.toMatchObject({ code: 'ENOENT' });
     const stale = path.join(consumer, 'node_modules', name);
@@ -45,8 +44,8 @@ test('installed npm tarball serves assets and installs/removes outside the check
     await writeFile(path.join(stale, 'package.json'), JSON.stringify({ name, version: '0.0.0-stale', main: 'index.js', exports: { '.': './index.js', './*': './index.js' } }));
     await writeFile(path.join(stale, 'index.js'), `throw new Error('stale top-level ${name} was loaded');\n`);
   }
-  // The terminal UI is the path that crashed in #933 (Ink widgets calling hooks on a
-  // stale React); the web UI below never loads Ink. A real pty on POSIX, a faked TTY on Windows.
+  // Only the terminal UI loads Ink, so only it exercises the React copy. A real pty
+  // on POSIX, a faked TTY on Windows.
   const screen = await renderTui({ entry: path.join(installed, 'dist/index.js'), args: [state.source], cwd: consumer, expected: /What would you like to do/ });
   expect(screen).not.toContain('stale top-level');
   expect(await readFile(path.join(installed, 'assets/web-ui/index.html'), 'utf8')).toContain('/assets/');

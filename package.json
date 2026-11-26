@@ -64,7 +64,7 @@
     "url": "https://github.com/ai-agent-manager/agent-manager.git"
   },
   "engines": {
-    "node": ">=22.12"
+    "node": ">=22.15"
   },
   "publishConfig": {
     "access": "public",

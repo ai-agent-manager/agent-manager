@@ -4,8 +4,7 @@
  * Bundles the CLI and the embeddable UI server into dist/ with esbuild, so the
  * published package ships React, Ink and every other pure-JS dependency inside
  * its own files. npm/npx cannot hoist or reuse a stale copy of something that
- * is not resolved from node_modules — that is what broke the 1.23 → 1.24 npx
- * upgrade (two Reacts). Type declarations are still emitted by tsc for
+ * is not resolved from node_modules. Type declarations are still emitted by tsc for
  * `@ai-agent-manager/cli/ui-server` consumers (the desktop app).
  *
  * The build fails if the output imports any package outside RUNTIME_EXTERNALS,
