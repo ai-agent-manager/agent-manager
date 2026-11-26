@@ -4,7 +4,7 @@ Contributions are welcome. This document covers the practical bits.
 
 ## Prerequisites
 
-- Node.js 22.15 or higher (use [nvm](https://github.com/nvm-sh/nvm): `nvm use`)
+- Node.js 22.19 or higher (use [nvm](https://github.com/nvm-sh/nvm): `nvm use`)
 - npm (bundled with Node)
 
 ## Setup

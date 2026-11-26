@@ -35,8 +35,8 @@ export interface UiServerOptions {
   staticHandler?: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>;
 }
 export async function startUiServer(options: UiServerOptions = {}) {
-  // Consumers can import this entry point directly (e.g. the desktop app) without ever
-  // loading index.tsx, so proxy configuration has to happen here too, not just there.
+  // Direct consumers of this entry point (e.g. the desktop app) never load index.tsx,
+  // so the proxy is configured here.
   configureProxyFromEnv();
   const requestedPort = options.port ?? 19877;
   if (!Number.isInteger(requestedPort) || requestedPort < 0 || requestedPort > 65535) throw new ValidationError('Invalid port.');
