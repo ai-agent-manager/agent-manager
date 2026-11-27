@@ -473,7 +473,7 @@ function editDistance(a: string, b: string): number {
   return prev[b.length];
 }
 
-/** "idea-forge", or "idea-forge (in my-ideas/)" when the clash is a differently named folder. */
+/** "code-review", or "code-review (in my-reviews/)" when the clash is a differently named folder. */
 function describeClash(name: string, folders: string[] = []): string {
   const others = folders.filter((folder) => folder !== name);
   return others.length > 0 ? `${name} (in ${others.map((f) => `${f}/`).join(', ')})` : name;

@@ -263,8 +263,8 @@ An orchestrator agent declares the skills it needs in its `AGENT.md` frontmatter
 dependencies:
   bundle: self        # the bundle the agent came from, or a bundle URL
   skills:
-    - idea-forge
-    - rapid-prd
+    - code-review
+    - write-tests
 ```
 
 Published bundles carry this in `manifest.json`. For a local directory without a `manifest.json`, the frontmatter is read directly.
@@ -278,7 +278,7 @@ When you install the agent, agentman:
 **Every dependency is mandatory.** If any dependency can't be found in the source (misspelt, wrong case, or moved out of the library), neither the agent nor any of its dependencies is installed, and the error lists each missing name with a suggestion for likely typos:
 
 ```
-✗ orch: Required skill(s) not found in bundle https://…: rapid-prdd (did you mean "rapid-prd"?). Nothing was installed for this agent.
+✗ orch: Required skill(s) not found in bundle https://…: write-tset (did you mean "write-tests"?). Nothing was installed for this agent.
 ```
 
 When you install several agents at once, an agent with broken dependencies doesn't stop the others.
@@ -290,8 +290,8 @@ Library maintainers can catch these problems before publishing with `npm run che
 agentman records every skill it installs. A skill directory with no such record (one you wrote yourself, copied in by hand, or installed with another tool) is never deleted, replaced or duplicated without your say-so.
 
 A skill clashes with an existing one when either of these is true:
-- **Same folder.** The install target is already taken. For example, `idea-forge/` already exists.
-- **Same declared name.** A differently named folder's `SKILL.md` declares the same `name:` (exact, case-sensitive match). For example, your `my-ideas/SKILL.md` says `name: idea-forge`, or you already have a flat `idea-forge/` and the new install would land at `bootstrap~idea-forge/`. Installing anyway would leave the tool with two skills of the same name.
+- **Same folder.** The install target is already taken. For example, `code-review/` already exists.
+- **Same declared name.** A differently named folder's `SKILL.md` declares the same `name:` (exact, case-sensitive match). For example, your `my-reviews/SKILL.md` says `name: code-review`, or you already have a flat `code-review/` and the new install would land at `team-skills~code-review/`. Installing anyway would leave the tool with two skills of the same name.
 
 **When it's an orchestrator's dependency:**
 

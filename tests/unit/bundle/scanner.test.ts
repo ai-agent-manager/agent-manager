@@ -112,7 +112,7 @@ describe('scanBundle', () => {
         tools: ['claude-code', 'cursor'],
         dependencies: {
           bundle: 'self',
-          skills: ['idea-forge', 'rapid-prd', 'prototype-scaffolding', 'frontend-prototyping'],
+          skills: ['skill-a', 'skill-b', 'skill-c', 'skill-d'],
         },
       },
     ];
@@ -132,10 +132,10 @@ describe('scanBundle', () => {
       expect(orchestrator.dependencies).toBeDefined();
       expect(orchestrator.dependencies?.bundle).toBe('self');
       expect(orchestrator.dependencies?.skills).toEqual([
-        'idea-forge',
-        'rapid-prd',
-        'prototype-scaffolding',
-        'frontend-prototyping',
+        'skill-a',
+        'skill-b',
+        'skill-c',
+        'skill-d',
       ]);
     }
   });

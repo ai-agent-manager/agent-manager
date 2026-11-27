@@ -257,25 +257,25 @@ dependencies:
     });
 
     it('suggests the correctly-cased name for a case mismatch', async () => {
-      await sourceSkill('idea-forge');
-      const agent = await orchestrator('orch', ['Idea-Forge']);
+      await sourceSkill('code-review');
+      const agent = await orchestrator('orch', ['Code-Review']);
 
       const result = await install([agent]);
 
-      expect(result.errors[0].error).toContain('did you mean "idea-forge"?');
+      expect(result.errors[0].error).toContain('did you mean "code-review"?');
       expect(await readdir(skillsDir)).toEqual([]);
     });
 
     it('does not let a personal skill satisfy a mis-cased dependency', async () => {
-      await sourceSkill('idea-forge');
-      await mkdir(join(skillsDir, 'idea-forge'), { recursive: true });
-      await writeFile(join(skillsDir, 'idea-forge', 'SKILL.md'), '---\nname: idea-forge\n---\nPERSONAL');
-      const agent = await orchestrator('orch', ['Idea-Forge']);
+      await sourceSkill('code-review');
+      await mkdir(join(skillsDir, 'code-review'), { recursive: true });
+      await writeFile(join(skillsDir, 'code-review', 'SKILL.md'), '---\nname: code-review\n---\nPERSONAL');
+      const agent = await orchestrator('orch', ['Code-Review']);
 
       const result = await install([agent]);
 
       expect(result.installed).toHaveLength(0);
-      expect(result.errors[0].error).toContain('Idea-Forge (did you mean "idea-forge"?)');
+      expect(result.errors[0].error).toContain('Code-Review (did you mean "code-review"?)');
     });
 
     it('rejects dependency names that would escape the skills directory', async () => {

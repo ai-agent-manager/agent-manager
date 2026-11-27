@@ -99,11 +99,11 @@ describe("AgentProvisioner", () => {
     });
 
     it("treats a namespaced agentman install as satisfying the dependency", async () => {
-      await mkdir(join(skillsDir, "bootstrap~skill-a"), { recursive: true });
-      await recordInstall("claude-code", "bootstrap/skill-a", {
+      await mkdir(join(skillsDir, "team-skills~skill-a"), { recursive: true });
+      await recordInstall("claude-code", "team-skills/skill-a", {
         installedAt: "now",
         method: "symlink",
-        linkName: "bootstrap~skill-a",
+        linkName: "team-skills~skill-a",
       });
 
       const result = await new ClaudeCodeAgentProvisioner({ scope: "system" }).checkDependencies({
